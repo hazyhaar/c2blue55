@@ -1,0 +1,11 @@
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.test
+*.prof
+*.pprof
+.DS_Store
+.coverage
