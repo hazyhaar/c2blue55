@@ -134,6 +134,17 @@ GOWORK=off go test -bench=. -benchmem -run=^$ .
 GOWORK=off go vet . ./cmd/c2agent ./socagent ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web
 ```
 
+### Téléchargement des poids SLM open-source (GGUF) :
+
+Les poids du modèle d'arbitrage **Qwen2.5-0.5B-Instruct-GGUF** (468 Mo) se téléchargent directement depuis les dépôts officiels HuggingFace :
+
+```bash
+make download-model
+# Télécharge models/qwen2.5-0.5b-instruct-q4_k_m.gguf (468 Mo)
+```
+
+L'agent `c2agent` et ses tests résolvent automatiquement les poids dans `./models/`, via la variable `C2BLUE_MODEL_PATH` ou le flag `-model <chemin>`.
+
 ### Compilation des binaires autonomes :
 
 ```bash

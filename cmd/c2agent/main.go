@@ -20,9 +20,27 @@ import (
 	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
 )
 
+func resolveDefaultModelPath() string {
+	if p := os.Getenv("C2BLUE_MODEL_PATH"); p != "" {
+		return p
+	}
+	candidates := []string{
+		"models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+		"../models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+		"../../models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+		"/data/models/qwen2.5-0.5b-gguf/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+}
+
 func main() {
 	listenAddr := flag.String("listen", "127.0.0.1:5353", "Adresse d'écoute UDP DNS passive")
-	modelPath := flag.String("model", "/data/models/qwen2.5-0.5b-gguf/qwen2.5-0.5b-instruct-q4_k_m.gguf", "Chemin des poids SLM GGUF (Qwen2.5-0.5B-Instruct Q4_K_M)")
+	modelPath := flag.String("model", resolveDefaultModelPath(), "Chemin des poids SLM GGUF (Qwen2.5-0.5B-Instruct Q4_K_M ou env C2BLUE_MODEL_PATH)")
 	logPath := flag.String("log", "c2_events.jsonl", "Chemin du journal d'audit JSONL append-only")
 	syncHours := flag.Int("sync-hours", 24, "Fréquence de resynchronisation des référentiels (heures)")
 	verbose := flag.Bool("v", false, "Mode verbeux (affiche chaque décision en direct)")

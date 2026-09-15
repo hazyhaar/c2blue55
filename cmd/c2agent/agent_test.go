@@ -63,7 +63,7 @@ func TestSanitizePromptInput(t *testing.T) {
 }
 
 func TestRealSLMArbitrator_LiveInference(t *testing.T) {
-	modelPath := "/data/models/qwen2.5-0.5b-gguf/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+	modelPath := resolveDefaultModelPath()
 	if _, err := os.Stat(modelPath); err != nil {
 		t.Skipf("Modele absent sur %s: skipping test live", modelPath)
 	}
