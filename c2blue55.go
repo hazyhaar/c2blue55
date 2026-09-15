@@ -1,8 +1,11 @@
-// Package c2blue55 — Socle unifié de défense système, surveillance d'agents IA et métrologie d'entropie ARCHTIME.
-// Zéro allocation sur le chemin chaud (0 B/op), sans CGO, conforme Go 1.27.
+// Package c2blue55 evaluates caller-provided observations and payloads.
+// It does not connect host probes or apply system/network interdictions.
 package c2blue55
 
 import (
+	"errors"
+	"sync"
+
 	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
 )
 
@@ -19,29 +22,30 @@ const (
 
 // Actions captées
 const (
-	ActExec       uint16 = 1
-	ActFork       uint16 = 2
-	ActFileOpen   uint16 = 3
-	ActFileWrite  uint16 = 4
-	ActFileDelete uint16 = 5
-	ActNetConnect uint16 = 6
-	ActToolCall   uint16 = 7
-	ActToolResult uint16 = 8
+	ActExec     uint16 = 1
+	ActOpen     uint16 = 2
+	ActConnect  uint16 = 3
+	ActToolCall uint16 = 4
+	ActRead     uint16 = 5
+	ActWrite    uint16 = 6
+	ActMmapExec uint16 = 7
 )
 
 // Drapeaux de verdicts et classification de menaces (Flags)
 const (
+	FlagNone             uint32 = 0x0000
 	FlagVerdictOK        uint32 = 0x0001
-	FlagAnomaly          uint32 = 0x0002
-	FlagBlocked          uint32 = 0x0004
+	FlagBlocked          uint32 = 0x0002
+	FlagAnomaly          uint32 = 0x0004
 	FlagLOLBAS           uint32 = 0x0008
-	FlagCryptoPayload    uint32 = 0x0010
-	FlagBase64Payload    uint32 = 0x0020
+	FlagBeaconing        uint32 = 0x0010
+	FlagDrift            uint32 = 0x0020
 	FlagHexPayload       uint32 = 0x0040
-	FlagSuspiciousMCP    uint32 = 0x0080
-	FlagFSMutation       uint32 = 0x0100
-	FlagNetActivity      uint32 = 0x0200
-	FlagCorrelatedThreat uint32 = 0x0400
+	FlagBase64Payload    uint32 = 0x0080
+	FlagCryptoPayload    uint32 = 0x0100
+	FlagCorrelatedThreat uint32 = 0x0200
+	FlagSuspiciousMCP    uint32 = 0x0400
+	FlagBurstCollapsed   uint32 = 0x0800
 )
 
 // Classes de charge utile (PayloadClass)
@@ -120,7 +124,9 @@ func (c *Channel) Drops() uint64 {
 	return engine.C2bt_channel_get_drops(&c.raw)
 }
 
-// Context est le superviseur in-place intégrant canaux, règles et corrélateur.
+// Context evaluates caller-injected observations; it captures no host activity
+// and applies no OS or network interdiction. Lifecycle calls must not run
+// concurrently with injection or polling; injection is SPSC.
 type Context struct {
 	raw engine.C2bt_ctx_t
 }
@@ -161,20 +167,41 @@ func NewContext(cfg Config) *Context {
 	return ctx
 }
 
-// Start démarre la surveillance.
+var ErrUnsupportedConfig = errors.New("c2blue55: probes and interception are not connected; use Config{} for injected observation only")
+
+// Start enables injected observation only. All Enable*, active enforcement,
+// fail-close and probe path settings are rejected, never silently ignored.
 func (c *Context) Start() error {
-	engine.C2bt_start(&c.raw)
+	if c == nil || engine.C2bt_start(&c.raw) != 0 {
+		return ErrUnsupportedConfig
+	}
 	return nil
 }
 
-// Stop arrête la surveillance et libère les descripteurs sous-jacents.
+// Stop suspends polling; queued observations are retained for the next Start.
 func (c *Context) Stop() error {
+	if c == nil {
+		return ErrUnsupportedConfig
+	}
 	engine.C2bt_stop(&c.raw)
 	return nil
 }
 
-// PollBatch relève et évalue équitablement les événements des 4 canaux en round-robin.
+// InjectObservation queues a caller observation, not an independently attested
+// capture. One producer is allowed. Returns -1 when stopped/invalid, -2 on full.
+func (c *Context) InjectObservation(ev *Event) int {
+	if c == nil || c.raw.Running == 0 || ev == nil || ev.Subsystem < SubProc || ev.Subsystem > SubGPU {
+		return -1
+	}
+	return engine.C2bt_channel_write(&c.raw.Chan_proc, ev)
+}
+
+// PollBatch evaluates injected observations. Flags are detection/veto advice,
+// including FlagBlocked; they do not attest an applied system interdiction.
 func (c *Context) PollBatch(outBatch []Event, maxEvents int) int {
+	if c == nil {
+		return 0
+	}
 	return engine.C2bt_poll_batch(&c.raw, outBatch, maxEvents)
 }
 
@@ -205,4 +232,45 @@ func ProfilePayload(data []byte) EntropyProfile {
 // EvalRulesBatch évalue les règles de filtrage LOLBAS, MCP et doctrine par lot.
 func EvalRulesBatch(inEvents []Event, outEvents []Event, count int) int {
 	return engine.C2bt_eval_rules_batch(inEvents, outEvents, count)
+}
+
+var (
+	grammarMu              sync.RWMutex
+	grammarTable           engine.C2bt_grammar_table_t
+	vetoGrammarJSON        = []byte(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"C2BLUE_VETO: Tool grammar divergence D_JS violation"}}`)
+	vetoUnknownGrammarJSON = []byte(`{"jsonrpc":"2.0","error":{"code":-32601,"message":"C2BLUE_VETO: unknown or invalid tool grammar"}}`)
+	ErrInvalidToolGrammar  = errors.New("c2blue55: invalid grammar: require a non-NUL name of 1..31 bytes and a nonempty sample")
+	ErrGrammarTableFull    = errors.New("c2blue55: grammar catalog full (32 tools)")
+)
+
+func RegisterToolGrammar(tool string, sample []byte, mask uint32, thresholdQ8 uint16) error {
+	grammarMu.Lock()
+	rc := engine.C2bt_grammar_register_tool(&grammarTable, tool, sample, mask, thresholdQ8)
+	grammarMu.Unlock()
+	if rc == -2 {
+		return ErrGrammarTableFull
+	}
+	if rc != 0 {
+		return ErrInvalidToolGrammar
+	}
+	return nil
+}
+
+func EvalGrammar(tool string, payload []byte) (djsQ8 uint32, flags uint32, vetoJSON []byte) {
+	grammarMu.RLock()
+	rc := engine.C2bt_grammar_eval(&grammarTable, tool, payload, &djsQ8, &flags)
+	grammarMu.RUnlock()
+	if rc < 0 {
+		return djsQ8, FlagBlocked | FlagAnomaly | FlagSuspiciousMCP, vetoUnknownGrammarJSON
+	}
+	if rc == 1 {
+		return djsQ8, flags, vetoGrammarJSON
+	}
+	return djsQ8, flags, nil
+}
+
+// EvalToolCall is the explicit tool-call entry point. EvalGrammar remains
+// available to existing consumers with the same fail-closed behavior.
+func EvalToolCall(tool string, payload []byte) (uint32, uint32, []byte) {
+	return EvalGrammar(tool, payload)
 }
