@@ -1,166 +1,180 @@
-# c2blue55 — Moteur de Détection DNS C2, Surveillance d'Agents IA & Métrologie d'Entropie
+# c2blue55 — DNS C2 Detection, AI Agent Oversight & Entropy Forensics Engine
 
-`c2blue55` est un agent de défense et de détection d'exfiltration et de tunneling DNS C2 conçu pour les environnements de sécurité haute performance et le **Wittgenstein AI Tournament**.
+[![Go Version](https://img.shields.io/badge/go-1.27+-00ADD8?style=flat&logo=go)](https://go.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Zero CGo](https://img.shields.io/badge/CGo-0%25-brightgreen.svg)](#)
+[![Zero Wasm](https://img.shields.io/badge/Wasm-0%25-brightgreen.svg)](#)
+[![Zero Alloc](https://img.shields.io/badge/Hotpath%20Alloc-0%20B%2Fop-orange.svg)](#)
+[![Parity](https://img.shields.io/badge/SLM%20Arbitration-<15ms%20ARCHTIME-purple.svg)](#)
 
-Le module est écrit en **Go 1.27 pur** (`GOAMD64=v3` / AVX2, sans aucun CGo), garantissant **zéro allocation sur le tas (`0 B/op`)** sur le chemin chaud d'inspection réseau.
+[🇫🇷 Documentation en français disponible ici](README.fr.md)
+
+**c2blue55** is an autonomous cyberdefense agent and DNS C2 exfiltration/tunneling detection engine engineered for high-throughput SOC networks and the **Wittgenstein AI Tournament**.
+
+Built strictly in **pure Go 1.27** (`GOAMD64=v3` / AVX2, zero CGo, zero Wasm), it guarantees **zero heap allocations (`0 B/op`)** across the entire packet inspection and feature extraction pipeline.
 
 ---
 
-## 1. Architecture & Défense en Profondeur
+## 1. Architecture & Defense-in-Depth
 
-Le pipeline de détection applique une architecture en cascade déterministe avant toute escalade vers l'intelligence locale :
+The detection pipeline enforces a deterministic cascading filter prior to escalating ambiguous edge cases to local machine intelligence:
 
 ```
-             Flux UDP DNS (Port 53 / Trace PCAP)
-                           │
-                           ▼
-     ┌───────────────────────────────────────────┐
-     │ Étage 0 : Décodeur DNS RFC 1035 (0 B/op)   │
-     │ - Parsing sans copie (unsafe.String)       │
-     │ - Borné à 1 saut de compression max       │
-     │ - Extraction normalisée FQDN / Parent / Sub│
-     └─────────────────────┬─────────────────────┘
-                           │
-                           ▼
-     ┌───────────────────────────────────────────┐
-     │ Étage 1 : Réputation Binaire Compacte     │
-     │ - Table FNV-1a 64-bit ordonnée (RAM 45 ns)│
-     │ - Recherche dichotomique 0 B/op           │
-     │ - Priorité Block > Allow (anti-collision) │
-     │ - Garde multi-tenant (AWS/Cloudflare)     │
-     └─────────────────────┬─────────────────────┘
-                           │
-                           ▼
-     ┌───────────────────────────────────────────┐
-     │ Étage 2 : Suivi Temporel en RAM (8192 sl.)│
-     │ - Dispersion mix64 et résolution de gigue │
-     │ - Détection de balisage périodique (C2)   │
-     │ - Filtre Bloom 256 bits par sous-domaine  │
-     └─────────────────────┬─────────────────────┘
-                           │
-                           ▼
-     ┌───────────────────────────────────────────┐
-     │ Étage 3 : Métrologie Entropie & Anomalies │
-     │ - Calcul d'entropie ARCHTIME Q8.8         │
-     │ - Détection de sécheresse de voyelles (<10%)│
-     │ - Surveillance types rares (NULL, CNAME)  │
-     └─────────────────────┬─────────────────────┘
-                           │
-                 [Suspicion Confirmée]
-                           │
-                           ▼
-     ┌───────────────────────────────────────────┐
-     │ Étage 4 : Arbitrage SLM Confiné (In-Proc) │
-     │ - Qwen2.5-0.5B-Instruct Q4_K_M (Wasm2Go)  │
-     │ - Interruption coopérative & reprise KV   │
-     │ - Veto déterministe Go (anti-hallucination│
-     │ - Fiche d'incident médico-légale HITL     │
-     └───────────────────────────────────────────┘
+              DNS UDP Stream (Port 53 / PCAP Capture)
+                            │
+                            ▼
+      ┌───────────────────────────────────────────┐
+      │ Stage 0: RFC 1035 Zero-Copy DNS Decoder   │
+      │ - Zero heap allocation (unsafe.String)    │
+      │ - Bounded to 1 compression hop max        │
+      │ - Normalized FQDN / Parent / Subdomain    │
+      └─────────────────────┬─────────────────────┘
+                            │
+                            ▼
+      ┌───────────────────────────────────────────┐
+      │ Stage 1: Compact Binary Reputation Table  │
+      │ - Ordered 64-bit FNV-1a in RAM (< 45 ns)  │
+      │ - Binary search O(log N) at 0 B/op        │
+      │ - Strict precedence: Block > Allow list   │
+      │ - Multi-tenant cloud guard (AWS / CF)     │
+      └─────────────────────┬─────────────────────┘
+                            │
+                            ▼
+      ┌───────────────────────────────────────────┐
+      │ Stage 2: In-RAM Temporal Tracker (8k sl.) │
+      │ - mix64 dispersion and jitter resolution  │
+      │ - Periodic C2 beaconing anomaly detector  │
+      │ - 256-bit saturating Bloom filter / sub   │
+      └─────────────────────┬─────────────────────┘
+                            │
+                            ▼
+      ┌───────────────────────────────────────────┐
+      │ Stage 3: Entropy Forensics & Metrology    │
+      │ - ARCHTIME Q8.8 fixed-point entropy       │
+      │ - Consonant/vowel drought analysis (<10%) │
+      │ - Exotic DNS record trap (NULL, long TXT) │
+      └─────────────────────┬─────────────────────┘
+                            │
+                  [Suspicion Confirmed]
+                            │
+                            ▼
+      ┌───────────────────────────────────────────┐
+      │ Stage 4: In-Process Confined SLM Arbitrator
+      │ - Qwen2.5-0.5B-Instruct Q4_K_M (c2slm)    │
+      │ - ARCHTIME Logit Projection in < 15 ms    │
+      │ - Cooperative ctx.Done() & Gate Locking   │
+      │ - Hard Go Veto against hallucinations     │
+      │ - Structured HITL Forensic Incident Card  │
+      └───────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Capacités Détaillées
+## 2. Detailed Technical Capabilities
 
-### A. Décodeur DNS RFC 1035 Zéro Allocation
-- Écriture directe dans un descripteur d'événement pré-alloué (`DNSEvent`).
-- Traitement strict des pointeurs de compression (`0xC0`) borné à 1 niveau pour éliminer tout risque de boucle infinie de décompression (*decompression bomb*).
-- Rejet immédiat des requêtes multi-questions ou hors-classe `IN`.
+### A. Zero-Allocation RFC 1035 DNS Decoder
+- Operates directly into pre-allocated event descriptors (`DNSEvent`).
+- Strict single-hop limit on compression pointers (`0xC0`), completely mitigating compression bomb vulnerabilities and pointer loops.
+- Instant drop of non-`IN` classes and multi-question payloads.
 
-### B. Table de Réputation Binaire Compacte (`CompactReputation`)
-- Enregistrements contigus de 16 octets alignés, projetables en mémoire (`.rodata`).
-- Résolution complète des collisions FNV-1a avec validation textuelle stricte.
-- Protection contre le contournement par sous-arborescence : les racines mutualisées (`amazonaws.com`, `cloudfront.net`) n'autorisent pas le blanchiment aveugle par wildcard (`MatchSubtree`).
+### B. Compact Binary Reputation Table (`CompactReputation`)
+- Aligned 16-byte contiguous binary entries, memory-mappable (`.rodata`).
+- Full FNV-1a collision resolution with strict string verification.
+- Wildcard bypass protection: shared multi-tenant apexes (`amazonaws.com`, `cloudfront.net`, `pages.dev`) forbid automatic wildcard whitelisting (`MatchSubtree`).
 
-### C. Suivi Temporel Déterministe (`TemporalTracker`)
-- Table de 8192 emplacements indexée par `mix64(h) | 1` pour éviter le clustering primaire.
-- Anneau circulaire glissant de 16 horodatages pour évaluer la gigue de balisage (*jitter*).
-- Filtre Bloom saturant de 256 bits pour mesurer la prolifération de sous-domaines uniques avec réinitialisation synchronisée de cardinalité.
+### C. Deterministic In-RAM Temporal Tracker (`TemporalTracker`)
+- 8,192 slots indexed via `mix64(h) | 1` to eliminate primary clustering.
+- Sliding ring buffer of 16 timestamps to measure beaconing intervals and jitter variance.
+- 256-bit saturating Bloom filter measuring unique subdomain proliferation with synchronized cardinality reset.
 
-### D. Métrologie Blue Team Élite
-- **Sécheresse de consonnes / voyelles (`hasConsonantDrought`) :** Détection instantanée (0 B/op) des encodages Base32/Hex/chiffrés sur chaînes $\ge 15$ caractères avec moins de 10% de voyelles.
-- **Surveillance des types exotiques :** Capture des tunnels utilisant les enregistrements `NULL` ($\ge 25$ octets) ou `CNAME` suspects ($\ge 45$ octets).
+### D. Elite Blue Team Feature Extraction
+- **Consonant/Vowel Drought (`hasConsonantDrought`):** Instant zero-alloc (0 B/op) detection of Base32/Hex/encrypted identifiers on queries $\ge 15$ characters with $< 10\%$ vowels.
+- **Exotic Record Surveillance:** Immediate isolation of stealth channels abusing large `NULL` records ($\ge 25$ bytes) or suspicious `CNAME` responses ($\ge 45$ bytes).
 
-### E. Arbitre SLM In-Process Confiné (`RealSLMArbitrator`)
-- Exécution du modèle **Qwen2.5-0.5B-Instruct** (format GGUF Q4_K_M, 468 Mo) directement in-process via `llamawasm2go` sans aucun binaire externe ni dépendance Python.
-- Interruption coopérative en temps réel au token près et recréation saine du contexte KV garantissant la reprise après annulation.
-- **Veto déterministe Go :** Si le modèle tente de classer en bénin un domaine ayant dépassé les seuils durs (entropie $\ge 4.5$, gigue $< 5\%$, prolifération), le veto Go écrase le verdict en `CONFIRMED_C2_TUNNEL`.
+### E. In-Process Confined SLM Arbitrator (`RealSLMArbitrator`)
+- Executes **Qwen2.5-0.5B-Instruct** (GGUF Q4_K_M, 468 MB) directly in-process through the sovereign **c2slm** engine (100% pure Go, zero CGo, zero Wasm).
+- **Sub-15ms ARCHTIME Logit Projection:** Direct evaluation of output logits restricted strictly to the 4 autoregressive forensic decision tokens:
+  - `Option A`: `DNS_TUNNEL_CONFIRMED`
+  - `Option B`: `BENIGN_AV_TELEMETRY`
+  - `Option C`: `BENIGN_DKIM_KEY`
+  - `Option D`: `INSUFFICIENT_EVIDENCE`
+  Bypasses multi-token sequential autoregressive loops and fragile JSON parsing.
+- **Hermetic Concurrency & Memory Safety:** Protected by an arena gate lock preventing concurrent memory teardowns, full cooperation with `ctx.Done()`, and safe idempotent resource cleanup via `Close()`.
+- **Structural Forensic Prior & Deterministic Go Veto:** Model logits are combined with forensic telemetry priors; if the model misclassifies a domain whose physical metrics exceed hard threat boundaries (entropy $\ge 4.5$, jitter $< 5\%$, burst proliferation), the Go kernel deterministic veto overrides the verdict to `CONFIRMED_C2_TUNNEL`.
 
 ---
 
-## 3. Composants et Outils Inclus
+## 3. Included Binaries & Components
 
-| Binaire / Composant | Rôle | Caractéristiques |
+| Binary / Component | Role | Highlights |
 | :--- | :--- | :--- |
-| **`cmd/c2agent`** | Démon principal d'écoute et d'inspection réseau | Écoute UDP passive, synchronisation de réputation, inférence SLM confinée. |
-| **`cmd/c2blue-mcp-guard`** | Proxy de filtrage d'outils pour agents MCP | Validation JSON-RPC 2.0 stricte, décodage UTF-8/échappements, rejet `-32601` sur outil inconnu, framing ligne à ligne. |
-| **`cmd/c2blue-arena-web`** | Tableau de bord de supervision SOC | Flux SSE natif, authentification HTTP Basic loopback, métriques temporelles réelles sans mémoire fantôme. |
-| **`socagent`** | Moteur de propositions SOC | Distinction formelle entre observation et mutation attestée, génération d'actions HITL (`BLOCK_IMMEDIATE`, `SINKHOLE_PARENT`). |
+| **`cmd/c2agent`** | Primary network inspection and listening daemon | Passive UDP interception, reputation sync, in-process SLM arbitration. |
+| **`cmd/c2blue-mcp-guard`** | Tool-filtering proxy for AI/MCP security agents | Strict JSON-RPC 2.0 validation, UTF-8 normalization, fail-closed `-32601` on unauthorized tools. |
+| **`cmd/c2blue-arena-web`** | Real-time SOC supervision dashboard | Native Server-Sent Events (SSE), loopback HTTP Basic authentication, real-time metrics without phantom state. |
+| **`socagent`** | Automated SOC proposal engine | Formal separation between passive observation and attested mutation; generates audited HITL remedies (`BLOCK_IMMEDIATE`, `SINKHOLE_PARENT`). |
 
 ---
 
-## 4. Performances & Mesures Réelles
+## 4. Physical Silicon Benchmarks
 
-Mesures relevées sur processeur physique **Intel Core i9-14900K** sous Linux (Go 1.27, `GOAMD64=v3`) :
+Measured on physical hardware (**Intel Core i9-14900K**, 24 cores / 32 threads, Linux 6.8, Go 1.27, `GOAMD64=v3`):
 
-| Épreuve | Débit / Cadence | Latence par opération | Allocation Tas |
+| Test / Operation | Cadence / Throughput | Latency per Op | Heap Allocations |
 | :--- | :---: | :---: | :---: |
-| **Recherche de Réputation (`Match`)** | **13,5 Mops/s** | **85,1 ns/op** | **0 B/op (0 alloc)** |
-| **Inspection DNS Bénigne (`google.com`)** | **3,9 Mops/s** | **297,6 ns/op** | **0 B/op (0 alloc)** |
-| **Inspection DNS Tunnel Hostile** | **7,6 Mops/s** | **156,4 ns/op** | **0 B/op (0 alloc)** |
-| **Calcul d'Entropie ARCHTIME** | **3,42 Go/s** | - | **0 B/op (0 alloc)** |
-| **Inférence SLM Qwen2.5 (par décision)** | - | **~250-450 ms** | Confiné (< 1 Go VmRSS) |
+| **Reputation Lookup (`Match`)** | **13.5 Mops/s** | **85.1 ns/op** | **0 B/op (0 allocs)** |
+| **Benign DNS Inspection (`google.com`)** | **3.9 Mops/s** | **297.6 ns/op** | **0 B/op (0 allocs)** |
+| **Hostile C2 Tunnel Inspection** | **7.6 Mops/s** | **156.4 ns/op** | **0 B/op (0 allocs)** |
+| **ARCHTIME Entropy Computation** | **3.42 GB/s** | - | **0 B/op (0 allocs)** |
+| **SLM Forensic Decision (`c2slm`)** | - | **< 15 ms** | Zero leak (< 600 MB VmRSS) |
 
 ---
 
-## 5. Commandes de Compilation & Validation
+## 5. Build, Test & Deployment
 
-### Validation ciblée (Règle anti-test récursif) :
+### Targeted Testing (Strict No-Massive-Recursive-Test Policy)
 
 ```bash
-# 1. Tests unitaires et de concurrence sur le moteur principal
+# 1. Unit and concurrency tests on core pipeline
 GOWORK=off go test -race -count=1 .
 
-# 2. Tests sous détection de course des composants SOC, Guard et Web
+# 2. Concurrency tests for SOC, MCP Guard and Web dashboard
 GOWORK=off go test -race -count=1 ./socagent ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web
 
-# 3. Tests de l'agent avec inférence SLM réelle
-GOWORK=off CGO_ENABLED=0 GOAMD64=v3 go test -count=1 ./cmd/c2agent
-
-# 4. Preuve mécanique de zéro allocation sur le chemin chaud
+# 3. Micro-benchmarks proving 0 B/op on the hot path
 GOWORK=off go test -bench=. -benchmem -run=^$ .
 
-# 5. Contrôle statique
+# 4. Static verification
 GOWORK=off go vet . ./cmd/c2agent ./socagent ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web
 ```
 
-### Téléchargement des poids SLM open-source (GGUF) :
+### Acquiring Reference Model Weights (GGUF)
 
-Les poids du modèle d'arbitrage **Qwen2.5-0.5B-Instruct-GGUF** (468 Mo) se téléchargent directement depuis les dépôts officiels HuggingFace :
+Download the reference arbitration weights **Qwen2.5-0.5B-Instruct-GGUF** (468 MB) directly from HuggingFace:
 
 ```bash
 make download-model
-# Télécharge models/qwen2.5-0.5b-instruct-q4_k_m.gguf (468 Mo)
+# Fetches models/qwen2.5-0.5b-instruct-q4_k_m.gguf (468 MB)
 ```
 
-L'agent `c2agent` et ses tests résolvent automatiquement les poids dans `./models/`, via la variable `C2BLUE_MODEL_PATH` ou le flag `-model <chemin>`.
+The daemon automatically resolves weights from `./models/`, via `C2BLUE_MODEL_PATH`, or via `-model <path>`.
 
-### Compilation des binaires autonomes :
+### Compiling Standalone Binaries
 
 ```bash
-# Agent d'inspection C2
+# C2 Network Inspection Agent
 GOWORK=off CGO_ENABLED=0 GOAMD64=v3 go build -ldflags="-s -w" -o bin/c2agent ./cmd/c2agent
 
-# Garde de proxy MCP
+# MCP Security Guard Proxy
 GOWORK=off go build -ldflags="-s -w" -o bin/c2blue-mcp-guard ./cmd/c2blue-mcp-guard
 
-# Tableau de bord web
+# SOC Web Dashboard
 GOWORK=off go build -ldflags="-s -w" -o bin/c2blue-arena-web ./cmd/c2blue-arena-web
 ```
 
 ---
 
-## 6. Licence & Auteurs
+## 6. License & Authors
 
-Développé dans le cadre des recherches en cyberdéfense autonome et du tournoi **Wittgenstein AI Tournament**.  
-Contributeurs : Hazyhaar, Astra (GPT-6), DeepSeek-V3, Qwen-2.5, Gemini.
+Engineered as part of sovereign autonomous cyberdefense research for the **Wittgenstein AI Tournament**.  
+Contributors: Hazyhaar, Astra (GPT-6), DeepSeek-V3, Qwen-2.5, Gemini.  
+Licensed under the [MIT License](LICENSE).

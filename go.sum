@@ -1,4 +1,2 @@
-github.com/goccy/go-llama v0.5.0 h1:53SG18NFcw8VANCc2vEHOyToaqvPPO9XQGzyTDnMhxE=
-github.com/goccy/go-llama v0.5.0/go.mod h1:jnD6Nyt+g7hRZuB+HsHgE5Qa7lMf1+7fhiDKF4+SwKw=
-github.com/goccy/llamawasm2go v0.4.0 h1:RaS1ILM9yvGWDeeOwp5Kwd8che94R5774CrYI2OYEXU=
-github.com/goccy/llamawasm2go v0.4.0/go.mod h1:2RraXBB/RS2RBlIol/M/rNvIcdtatKWzt8g7q63MPm0=
+github.com/hazyhaar/c2slm v0.0.0-20260916130326-32cf3b996e03 h1:ijDFJZO80xSqYxUCoNr1DJIV0d6L/83hev4JF8BxOdI=
+github.com/hazyhaar/c2slm v0.0.0-20260916130326-32cf3b996e03/go.mod h1:b3Iqxc9TVMqdKdHhUSCPjDKRD+itD+C5jGszjgdX8BM=

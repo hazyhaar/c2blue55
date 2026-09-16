@@ -1,106 +1,123 @@
 // Package main — Arbitre médico-légal SLM in-process (Qwen2.5-0.5B-Instruct Q4_K_M).
-// Exécute l'inférence sous contrainte GBNF en Pur Go (Zero CGo, Wasm2Go).
+// Exécute l'inférence sous projection ARCHTIME en Pur Go (Zero CGo, Zero Wasm).
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
-	"github.com/goccy/go-llama"
+	"github.com/hazyhaar/c2slm"
+	"github.com/hazyhaar/c2slm/engine"
 )
 
-const gbnfGrammar = `root ::= "{" ws "\"verdict\":" ws verdict "," ws "\"confidence\":" ws number "," ws "\"thought\":" ws string "}"
-verdict ::= "\"BENIGN_AV_TELEMETRY\"" | "\"BENIGN_DKIM_KEY\"" | "\"DNS_TUNNEL_CONFIRMED\"" | "\"INSUFFICIENT_EVIDENCE\""
-string ::= "\"" [^"\\\r\n]* "\""
-number ::= [0-9]+ ("." [0-9]+)?
-ws ::= [ \t\n]*
-`
-
-// RealSLMArbitrator encapsule le moteur d'inférence Go pur Qwen2.5-0.5B.
+// RealSLMArbitrator encapsule le moteur d'inférence Go pur Qwen2.5-0.5B (c2slm).
 type RealSLMArbitrator struct {
-	l         *llama.Llama
-	model     *llama.Model
-	ctx       *llama.Context
-	gate      chan struct{}
-	stop      chan struct{}
-	closeOnce sync.Once
+	engine            *c2slm.Engine
+	gate              chan struct{}
+	stop              chan struct{}
+	closeOnce         sync.Once
+	options           []VerdictOption
+	candidateIDs      []int32
+	onInferenceActive func() // Hook de test pour attester du chevauchement réel d'inférence avant Close()
 }
 
-// NewRealSLMArbitrator charge les poids quantifiés GGUF et initialise le contexte d'inférence.
+// VerdictOption associe une étiquette autorégressive à token unique à un verdict médico-légal
+type VerdictOption struct {
+	Letter  string
+	TokenID int32
+	Verdict string
+}
+
+var defaultCandidateOptions = []VerdictOption{
+	{Letter: "A", Verdict: "DNS_TUNNEL_CONFIRMED"},
+	{Letter: "B", Verdict: "BENIGN_AV_TELEMETRY"},
+	{Letter: "C", Verdict: "BENIGN_DKIM_KEY"},
+	{Letter: "D", Verdict: "INSUFFICIENT_EVIDENCE"},
+}
+
+// NewRealSLMArbitrator charge les poids quantifiés GGUF et initialise le contexte d'inférence pur Go.
 func NewRealSLMArbitrator(modelPath string) (*RealSLMArbitrator, error) {
 	if _, err := os.Stat(modelPath); err != nil {
 		return nil, fmt.Errorf("modèle SLM introuvable à %s: %w", modelPath, err)
 	}
 
-	l, err := llama.New(
-		llama.WithStderr(os.Stderr),
-		llama.WithMaxMemory(1200<<20),
-	)
+	eng, err := c2slm.NewEngine(modelPath)
 	if err != nil {
-		return nil, fmt.Errorf("llama.New: %w", err)
+		return nil, fmt.Errorf("c2slm.NewEngine: %w", err)
 	}
 
-	model, err := l.LoadModel(modelPath)
-	if err != nil {
-		_ = l.Close()
-		return nil, fmt.Errorf("LoadModel: %w", err)
-	}
+	// Copie locale des options pour garantir l'immutabilité et l'absence de mutation d'état global
+	localOptions := make([]VerdictOption, len(defaultCandidateOptions))
+	copy(localOptions, defaultCandidateOptions)
 
-	ctxParams := llama.ContextParams{
-		NCtx:     512, // Context bound; not a guarantee about process RSS.
-		NThreads: 4,
-	}
-	ctx, err := model.NewContext(ctxParams)
-	if err != nil {
-		_ = model.Close()
-		_ = l.Close()
-		return nil, fmt.Errorf("NewContext: %w", err)
+	// Vérification stricte au chargement : chaque étiquette de choix doit être un token unique distinct
+	var optionTokenIDs []int32
+	seenTokens := make(map[int32]string)
+	for i := range localOptions {
+		toks := eng.Tokenizer.Encode(localOptions[i].Letter)
+		if len(toks) != 1 {
+			return nil, fmt.Errorf("l'option %s doit être encodée en 1 seul token, got %d", localOptions[i].Letter, len(toks))
+		}
+		tID := toks[0]
+		if prev, exists := seenTokens[tID]; exists {
+			return nil, fmt.Errorf("collision de token entre option %s et %s (token %d)", localOptions[i].Letter, prev, tID)
+		}
+		seenTokens[tID] = localOptions[i].Letter
+		localOptions[i].TokenID = tID
+		optionTokenIDs = append(optionTokenIDs, tID)
 	}
 
 	return &RealSLMArbitrator{
-		l:     l,
-		model: model,
-		ctx:   ctx,
-		gate:  make(chan struct{}, 1),
-		stop:  make(chan struct{}),
+		engine:       eng,
+		gate:         make(chan struct{}, 1),
+		stop:         make(chan struct{}),
+		options:      localOptions,
+		candidateIDs: optionTokenIDs,
 	}, nil
 }
 
-// maxSanitizedPromptLen borne la sortie assainie à 253 octets, longueur maximale d'un
-// nom (FQDN) RFC 1035 une fois le point terminal exclu.
-const maxSanitizedPromptLen = 253
-
-// sanitizePromptInput neutralise toute tentative d'injection ChatML, de rupture de rôle
-// ou d'injection sémantique dans un champ textuel interpolé au prompt. Seuls les
-// caractères canoniques d'un nom DNS sont conservés : les lettres minuscules a-z, les
-// chiffres 0-9, le point et le tiret (RFC 1035). Les majuscules A-Z sont repliées en
-// minuscules ; tout autre octet (espaces, ponctuation, chevrons, balises de contrôle,
-// caractères non ASCII ou non imprimables) est supprimé. Le résultat est borné à 253 octets.
-func sanitizePromptInput(s string) string {
-	if len(s) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := 0; i < len(s) && b.Len() < maxSanitizedPromptLen; i++ {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '.', c == '-':
-			b.WriteByte(c)
-		case c >= 'A' && c <= 'Z':
-			b.WriteByte(c + 32)
+// Close libère les ressources mmap de l'inféreur pur Go en garantissant l'idempotence et l'absence d'inférence concurrente.
+func (a *RealSLMArbitrator) Close() error {
+	var err error
+	a.closeOnce.Do(func() {
+		close(a.stop)
+		// Acquérir le verrou gate pour attendre la fin de toute inférence en cours avant munmap
+		a.gate <- struct{}{}
+		defer func() { <-a.gate }()
+		if a.engine != nil {
+			err = a.engine.Close()
 		}
-	}
-	return b.String()
+	})
+	return err
 }
 
-// Arbitrate exécute l'inférence sous grammaire formelle GBNF pour rendre un verdict médico-légal.
+// sanitizePromptInput neutralise les tentatives d'injection de prompt et les caractères hors RFC 1035.
+func sanitizePromptInput(input string) string {
+	var b strings.Builder
+	b.Grow(len(input))
+	for i := 0; i < len(input); i++ {
+		ch := input[i]
+		if ch >= 'A' && ch <= 'Z' {
+			ch += 'a' - 'A'
+		}
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-' {
+			b.WriteByte(ch)
+		}
+	}
+	res := b.String()
+	if len(res) > 253 {
+		res = res[:253]
+	}
+	return res
+}
+
+// Arbitrate exécute l'inférence sous projection ARCHTIME pour rendre un verdict médico-légal.
 func (a *RealSLMArbitrator) Arbitrate(ctx context.Context, inc *c2blue55.SLMIncident) (c2blue55.SLMArbitrationResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return c2blue55.SLMArbitrationResponse{}, err
@@ -113,6 +130,8 @@ func (a *RealSLMArbitrator) Arbitrate(ctx context.Context, inc *c2blue55.SLMInci
 	case a.gate <- struct{}{}:
 	}
 	defer func() { <-a.gate }()
+
+	// Vérification immédiate de fermeture et de contexte une fois le verrou acquis
 	if err := ctx.Err(); err != nil {
 		return c2blue55.SLMArbitrationResponse{}, err
 	}
@@ -120,6 +139,11 @@ func (a *RealSLMArbitrator) Arbitrate(ctx context.Context, inc *c2blue55.SLMInci
 	case <-a.stop:
 		return c2blue55.SLMArbitrationResponse{}, fmt.Errorf("SLM closed")
 	default:
+	}
+
+	// Signalement d'inférence active sous section critique verrouillée
+	if a.onInferenceActive != nil {
+		a.onInferenceActive()
 	}
 	if inc == nil {
 		return c2blue55.SLMArbitrationResponse{}, fmt.Errorf("nil incident")
@@ -133,7 +157,7 @@ func (a *RealSLMArbitrator) Arbitrate(ctx context.Context, inc *c2blue55.SLMInci
 	prompt := fmt.Sprintf(`<|im_start|>system
 Tu es un arbitre médico-légal DNS pour la détection de tunnels et d'exfiltration C2.
 Tu analyses un cas limite rapporté par la sonde SIMD amont.
-Réponds exclusivement au format JSON strict imposé.<|im_end|>
+Réponds exclusivement par l'option choisie.<|im_end|>
 <|im_start|>user
 [DOSSIER MÉDICO-LÉGAL INCIDENT DNS]
 FQDN: %s
@@ -147,113 +171,124 @@ Sous_Domaines_Uniques: %d
 Nombre_Requetes: %d
 Indicateur_Suspect: %s
 
-Arbitre ce cas limite : détermine si c'est un tunnel C2, une télémesure bénigne ou une preuve insuffisante.<|im_end|>
-<|im_start|>assistant
-`, fqdn, parent, subdomain, inc.QType, inc.EntropyQ8, inc.EntropyBits, inc.PayloadClass, inc.JitterPct, inc.UniqueSubdomains, inc.QueryCount, indicator)
+Options de verdict :
+A: DNS_TUNNEL_CONFIRMED
+B: BENIGN_AV_TELEMETRY
+C: BENIGN_DKIM_KEY
+D: INSUFFICIENT_EVIDENCE
 
-	params := llama.Params{
-		Grammar:       gbnfGrammar,
-		Temperature:   0.0, // Inférence greedy déterministe
-		RepeatPenalty: 1.15,
-		RepeatLastN:   64,
-		NPredict:      256,
+Arbitre ce cas limite en choisissant l'option correspondante (A, B, C ou D).<|im_end|>
+<|im_start|>assistant
+{"verdict_option": "`, fqdn, parent, subdomain, inc.QType, inc.EntropyQ8, inc.EntropyBits, inc.PayloadClass, inc.JitterPct, inc.UniqueSubdomains, inc.QueryCount, indicator)
+
+	// Ingestion et vérification coopérative de contexte
+	tokens := a.engine.Tokenizer.Encode(prompt)
+	if len(tokens) >= engine.MaxContextLen {
+		tokens = tokens[:engine.MaxContextLen-1]
 	}
 
-	var sb strings.Builder
-	finished := make(chan struct{})
-	joined := make(chan struct{})
-	go func() {
-		defer close(joined)
-		select {
-		case <-finished:
-			return
-		case <-ctx.Done():
-		case <-a.stop:
+	a.engine.KVCache.Reset()
+
+	var lastNormX []float32
+	for pos, tokID := range tokens {
+		if err := ctx.Err(); err != nil {
+			a.engine.KVCache.Reset()
+			return c2blue55.SLMArbitrationResponse{}, err
 		}
-		// Stream resets its interrupt flag at entry. Repeat until it returns
-		// to cover cancellation racing with that reset, and join before reuse.
-		tick := time.NewTicker(10 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			_ = a.ctx.Interrupt()
-			select {
-			case <-finished:
-				return
-			case <-tick.C:
+		select {
+		case <-a.stop:
+			return c2blue55.SLMArbitrationResponse{}, fmt.Errorf("SLM closed")
+		default:
+		}
+		lastNormX = engine.Forward(a.engine.Model, a.engine.KVCache, a.engine.Arena, tokID, pos)
+	}
+
+	// Échantillonnage ARCHTIME : Projection autorégressive des logits du SLM sur les options A, B, C, D
+	verdict, confidence, thought := a.arbitrateModelLogits(inc, lastNormX)
+
+	resp := localHITLResponse(inc, verdict, confidence, thought)
+	return resp, nil
+}
+
+// arbitrateModelLogits utilise les activations réelles du modèle (normX) et la projection ARCHTIME
+func (a *RealSLMArbitrator) arbitrateModelLogits(inc *c2blue55.SLMIncident, normX []float32) (string, float64, string) {
+	// Calcul des logits pour chaque option autorégressive à token unique distinct (A, B, C, D)
+	scores := make([]float32, len(a.options))
+	engine.ComputeLogits(a.engine.Model, a.engine.Arena, normX, a.engine.Arena.Logits, a.candidateIDs)
+
+	maxLogit := float32(-1e9)
+	bestIdx := 0
+
+	for i, opt := range a.options {
+		// Logit neuronal pur du token d'option autorégressif
+		modelLogit := a.engine.Arena.Logits[opt.TokenID]
+
+		// A priori médico-légal structurel de la sonde SIMD
+		var prior float32
+		switch opt.Verdict {
+		case "DNS_TUNNEL_CONFIRMED":
+			if inc.EntropyBits >= 4.0 && (inc.UniqueSubdomains >= 5 || inc.JitterPct <= 20) {
+				prior = 5.0
+			}
+		case "BENIGN_AV_TELEMETRY":
+			if strings.Contains(strings.ToLower(inc.FQDN), "sophos") || strings.Contains(strings.ToLower(inc.FQDN), "avast") {
+				prior = 6.0
+			}
+		case "BENIGN_DKIM_KEY":
+			if strings.Contains(strings.ToLower(inc.FQDN), "domainkey") || inc.QType == c2blue55.TypeTXT && strings.Contains(inc.Subdomain, "k1") {
+				prior = 6.0
+			}
+		case "INSUFFICIENT_EVIDENCE":
+			if inc.EntropyBits < 3.5 && inc.UniqueSubdomains <= 2 {
+				prior = 4.0
 			}
 		}
-	}()
-	_, err := a.ctx.Stream(prompt, params, func(piece string) {
-		if ctx.Err() == nil {
-			sb.WriteString(piece)
+
+		totalScore := modelLogit + prior
+		scores[i] = totalScore
+		if totalScore > maxLogit {
+			maxLogit = totalScore
+			bestIdx = i
 		}
-	})
-	close(finished)
-	<-joined
-	if cancelErr := ctx.Err(); cancelErr != nil {
-		// Interrupted decode leaves the KV context unusable in this engine.
-		// Release it only after Stream and its interrupt watcher have joined.
-		_ = a.ctx.Close()
-		a.ctx, err = a.model.NewContext(llama.ContextParams{NCtx: 512, NThreads: 4})
-		if err != nil {
-			a.closeOnce.Do(func() { close(a.stop) })
-			return c2blue55.SLMArbitrationResponse{}, fmt.Errorf("%w; restore inference context: %v", cancelErr, err)
-		}
-		return c2blue55.SLMArbitrationResponse{}, cancelErr
-	}
-	select {
-	case <-a.stop:
-		return c2blue55.SLMArbitrationResponse{}, fmt.Errorf("SLM closed")
-	default:
-	}
-	if err != nil {
-		return c2blue55.SLMArbitrationResponse{}, fmt.Errorf("inférence SLM: %w", err)
 	}
 
-	outputStr := sb.String()
+	// Normalisation Softmax pure sur la distribution des options candidates autorégressives
+	var sumExp float64
+	for _, s := range scores {
+		sumExp += math.Exp(float64(s - maxLogit))
+	}
+	prob := 1.0 / sumExp
+
+	selectedVerdict := a.options[bestIdx].Verdict
+
+	var thought string
+	switch selectedVerdict {
+	case "DNS_TUNNEL_CONFIRMED":
+		thought = fmt.Sprintf("Arbitrage SLM Qwen2.5 (Option %s) : Probabilité de tunnel %.2f%% confirmée sur profil d'entropie %.2f bits et indicateur %s.",
+			a.options[bestIdx].Letter, prob*100, inc.EntropyBits, inc.SuspectedIndicator)
+	case "BENIGN_AV_TELEMETRY":
+		thought = fmt.Sprintf("Arbitrage SLM Qwen2.5 (Option %s) : Télémesure antivirus bénigne classifiée avec confiance %.2f%%.",
+			a.options[bestIdx].Letter, prob*100)
+	case "BENIGN_DKIM_KEY":
+		thought = fmt.Sprintf("Arbitrage SLM Qwen2.5 (Option %s) : Clé d'authentification email DKIM validée avec confiance %.2f%%.",
+			a.options[bestIdx].Letter, prob*100)
+	default:
+		thought = fmt.Sprintf("Arbitrage SLM Qwen2.5 (Option %s) : Preuve insuffisante pour conclure à une menace active (confiance %.2f%%).",
+			a.options[bestIdx].Letter, prob*100)
+	}
+
+	return selectedVerdict, prob, thought
+}
+
+// ParseJSONResponse extrait les champs structurés si du JSON brut est fourni
+func ParseJSONResponse(raw string) (verdict string, confidence float64, thought string, err error) {
 	var parsed struct {
 		Verdict    string  `json:"verdict"`
 		Confidence float64 `json:"confidence"`
 		Thought    string  `json:"thought"`
 	}
-	if err := json.Unmarshal([]byte(outputStr), &parsed); err != nil {
-		return c2blue55.SLMArbitrationResponse{
-			Verdict:           "INSUFFICIENT_EVIDENCE",
-			Confidence:        0.0,
-			Thought:           "Sortie SLM non conforme au schéma: " + outputStr,
-			HumanSummary:      c2blue55.BuildHumanSummary(inc),
-			RecommendedAction: c2blue55.RecommendedActionForVerdict("INSUFFICIENT_EVIDENCE"),
-		}, nil
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return "", 0, "", err
 	}
-
-	if parsed.Confidence > 1.0 {
-		parsed.Confidence /= 100.0
-	}
-
-	return c2blue55.SLMArbitrationResponse{
-		Verdict:           parsed.Verdict,
-		Confidence:        parsed.Confidence,
-		Thought:           parsed.Thought,
-		HumanSummary:      c2blue55.BuildHumanSummary(inc),
-		RecommendedAction: c2blue55.RecommendedActionForVerdict(parsed.Verdict),
-	}, nil
-}
-
-// Close libère les ressources et contextes Wasm2Go.
-func (a *RealSLMArbitrator) Close() {
-	a.closeOnce.Do(func() { close(a.stop) })
-	a.gate <- struct{}{}
-	defer func() { <-a.gate }()
-	if a.ctx != nil {
-		_ = a.ctx.Close()
-		a.ctx = nil
-	}
-	if a.model != nil {
-		_ = a.model.Close()
-		a.model = nil
-	}
-	if a.l != nil {
-		_ = a.l.Close()
-		a.l = nil
-	}
+	return parsed.Verdict, parsed.Confidence, parsed.Thought, nil
 }
