@@ -86,12 +86,13 @@ The synchronous detection engine unifies three distinct operational subsystems i
 ### A. Memory-Mapped Vector Knowledge Bases (`.c2book` / `C2FLOP1`)
 Knowledge bases are distributed as standalone binary files loaded via read-only memory projection (`syscall.Mmap`, `PROT_READ`, `MAP_SHARED`):
 - **Binary Header (64 bytes):** Magic `C2FLOP1\0`, version, family ID, vector dimension (512), entry count, keyword count, decision classes, prototype count, and calibrated block radius.
-- **Cryptographic Authentication:** The header metadata (bytes 0..32) and the body are sealed with **HMAC-SHA256** and verified with **Castagnoli CRC32C**. Modifying any parameter (such as `BlockRadius`) invalidates the seal and triggers immediate rejection (`ErrFloppySeal`).
+- **Integrity Seal & Cryptographic Authentication:** Knowledge bases carry an **HMAC-SHA256** integrity seal over header and body, checked alongside **Castagnoli CRC32C** to detect accidental corruption or tampering. Modifying any parameter (such as `BlockRadius`) invalidates the seal (`ErrFloppySeal`). In production, operator-supplied secret keys are required (`ErrFloppyUnsealed` if absent). For evaluation reproducibility, packaged test disks use public demonstration keys. Cryptographic attribution of decisions is independently established via **Ed25519** asymmetric signatures.
 - **Atomic Hot-Swapping (`FloppySlot`):** Disks swap in $O(1)$ constant time with zero locks via RCU atomic pointers (`atomic.Pointer[FloppyDisk]`).
-- Three canonical knowledge bases are generated:
+- **Pre-compiled Evaluation Knowledge Bases:** Three canonical `.c2book` files are provided pre-compiled in `testdata/wittgenstein/floppies/` for immediate out-of-the-box reproducibility without requiring private raw training corpora:
   - `floppy_lolbas.c2book` (Subsystem 1: Process & LOLBAS)
   - `floppy_dns_c2.c2book` (Subsystem 2: Network & DNS C2)
   - `floppy_agent_mcp.c2book` (Subsystem 3: AI Agent & Tool Calls)
+  The `c2forge` utility enables full end-to-end retraining when training datasets are provided.
 
 ### B. Atomic Seqlock Payload Arena (`ArenaPool`)
 Extended payloads (up to 4,096 bytes) bypass fixed event structures without heap allocations via an internal ring buffer:
@@ -188,23 +189,30 @@ go test -race -count=1 .
 ```
 pkg/c2blue55/
 ├── cmd/
+│   ├── c2agent/               # Autonomous endpoint agent daemon with optional pure Go SLM
+│   ├── c2blue-arena-web/      # Real-time web visualizer for seqlock arena & telemetry
+│   ├── c2blue-mcp-guard/      # MCP proxy guard: real-time inspection for AI agent tools
 │   └── c2forge/               # CLI utility: floppy forging, pyramid compilation, evaluation
 │       ├── floppy_builder.go  # Empirical training and floppy generation
 │       ├── main.go            # Entrypoint
 │       └── pyramid.go         # Hierarchical delta compilation
 ├── internal/
-│   └── engine/                # Core low-level algorithmic engine
-│       ├── arena_pool.go      # 4KB atomic seqlock ring buffer (zero race)
-│       ├── delta_catalog.go   # LSM catalog and delta indexing
-│       ├── drift_guard.go     # Online statistical drift detector
-│       ├── feature_extractor.go # Zero-alloc 512-dim embedding extraction
-│       ├── floppy_engine.go   # .c2book mmap loader, HMAC-SHA256, RCU slot
-│       ├── forensic_proof.go  # Ed25519 signature and verification chain
-│       ├── inference_cascade.go # Dual-layer cascade orchestrator
-│       ├── pyramid_engine.go  # LSM delta merge and pyramid trees
-│       ├── rabitq512.go       # 512-bit Fast Hadamard Transform & quantization
-│       ├── server_oracle.go   # Server-side consensus and authority
-│       └── wittgenstein_corpus.go # Authentic dataset loaders and splitters
+│   ├── engine/                # Core low-level algorithmic engine
+│   │   ├── arena_pool.go      # 4KB atomic seqlock ring buffer (zero race)
+│   │   ├── delta_catalog.go   # LSM catalog and delta indexing
+│   │   ├── drift_guard.go     # Online statistical drift detector
+│   │   ├── feature_extractor.go # Zero-alloc 512-dim embedding extraction
+│   │   ├── floppy_engine.go   # .c2book mmap loader, HMAC-SHA256, RCU slot
+│   │   ├── forensic_proof.go  # Ed25519 signature and verification chain
+│   │   ├── inference_cascade.go # Dual-layer cascade orchestrator
+│   │   ├── pyramid_engine.go  # LSM delta merge and pyramid trees
+│   │   ├── rabitq512.go       # 512-bit Fast Hadamard Transform adapter & quantization
+│   │   ├── server_oracle.go   # Server-side consensus and authority
+│   │   └── wittgenstein_corpus.go # Authentic dataset loaders and splitters
+│   └── goclassifier/          # Embedded standalone FHT512, RaBitQ conformal probe & MIT license
+├── socagent/                  # Dedicated SOC telemetry ingestion and event dispatcher
+├── testdata/                  # Packaged authentic datasets & pre-compiled floppies (1.3 MB)
+│   └── wittgenstein/          # Held-out LOLBAS, DNS C2 validate.csv, sealed .c2book disks
 ├── c2blue55.go                # Public module API and configuration
 ├── router.go                  # Subsystem multiplexing (SubProc, SubNet, SubMCP)
 ├── lsm_receiver.go            # Continuous telemetry ingestion receiver

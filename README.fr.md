@@ -86,12 +86,13 @@ Le moteur synchrone unifie trois sous-systèmes opérationnels distincts dans un
 ### A. Disquettes de Connaissances Vectorielles (`.c2book` / `C2FLOP1`)
 Les bases de connaissances sont distribuées sous forme de fichiers binaires autonomes projetés en mémoire vive en lecture seule (`syscall.Mmap`, `PROT_READ`, `MAP_SHARED`) :
 - **En-tête Binaire (64 octets) :** Magie `C2FLOP1\0`, version, identifiant de famille, dimension vectorielle (512), nombre d'entrées, nombre de mots-clés, classes de décision, prototypes et rayon de blocage calibré.
-- **Authentification Cryptographique :** Les métadonnées d'en-tête (octets 0..32) et le corps sont scellés par un **HMAC-SHA256** et vérifiés par **CRC32C Castagnoli**. Toute altération (par exemple modification de `BlockRadius`) invalide le sceau et provoque un rejet immédiat (`ErrFloppySeal`).
+- **Sceau d'Intégrité & Authentification :** Les bases de connaissances portent un sceau d'intégrité **HMAC-SHA256** couvrant l'en-tête et le corps, contrôlé avec **CRC32C Castagnoli** pour détecter toute altération ou corruption accidentelle. Toute modification de paramètre (tel que `BlockRadius`) invalide le sceau (`ErrFloppySeal`). En production, une clé secrète fournie par l'opérateur est requise (`ErrFloppyUnsealed` en cas d'absence). Pour la reproductibilité d'évaluation, les disquettes de test utilisent des clés publiques d'épreuve. L'attribution cryptographique des verdicts est assurée de manière indépendante par signature asymétrique **Ed25519**.
 - **Commutation Atomique à Chaud (`FloppySlot`) :** Remplacement des disquettes en temps constant $O(1)$ sans verrou via pointeurs atomiques RCU (`atomic.Pointer[FloppyDisk]`).
-- Trois bases canoniques sont générées :
+- **Disquettes d'Évaluation Pré-compilées :** Trois fichiers `.c2book` canoniques sont fournis pré-compilés dans `testdata/wittgenstein/floppies/` pour une reproductibilité immédiate sans exiger les jeux d'apprentissage bruts privés :
   - `floppy_lolbas.c2book` (Sous-système 1 : Processus & LOLBAS)
   - `floppy_dns_c2.c2book` (Sous-système 2 : Réseau & DNS C2)
   - `floppy_agent_mcp.c2book` (Sous-système 3 : Agents IA & Appels d'Outils)
+  L'outil `c2forge` permet la régénération complète lorsque les jeux d'entraînement sont fournis.
 
 ### B. Arène Atomique Seqlock pour Charges Utiles (`ArenaPool`)
 Les charges utiles volumineuses (jusqu'à 4 096 octets) contournent les structures fixes sans allocation sur le tas via un tampon circulaire :
@@ -188,23 +189,30 @@ go test -race -count=1 .
 ```
 pkg/c2blue55/
 ├── cmd/
+│   ├── c2agent/               # Démon agent de point de terminaison autonome avec SLM pur Go optionnel
+│   ├── c2blue-arena-web/      # Visualiseur web temps réel de l'arène seqlock et de la télémétrie
+│   ├── c2blue-mcp-guard/      # Gardien mandataire MCP : inspection temps réel des outils d'agents IA
 │   └── c2forge/               # Utilitaire CLI : forgerie, compilation pyramide, évaluation
 │       ├── floppy_builder.go  # Apprentissage empirique et génération de disquettes
 │       ├── main.go            # Point d'entrée
 │       └── pyramid.go         # Compilation différentielle hiérarchique
 ├── internal/
-│   └── engine/                # Moteur algorithmique bas niveau
-│       ├── arena_pool.go      # Tampon circulaire atomique seqlock 4 Ko (zéro race)
-│       ├── delta_catalog.go   # Catalogue LSM et indexation différentielle
-│       ├── drift_guard.go     # Détecteur statistique de dérive en ligne
-│       ├── feature_extractor.go # Extraction 512D sans allocation
-│       ├── floppy_engine.go   # Chargeur mmap .c2book, HMAC-SHA256, slot RCU
-│       ├── forensic_proof.go  # Chaîne de signature et vérification Ed25519
-│       ├── inference_cascade.go # Orchestrateur de cascade double couche
-│       ├── pyramid_engine.go  # Arbre pyramidale et fusion LSM
-│       ├── rabitq512.go       # Transformée de Hadamard Rapide 512 bits & quantification
-│       ├── server_oracle.go   # Autorité et consensus serveur
-│       └── wittgenstein_corpus.go # Chargeurs et séparateurs de données réelles
+│   ├── engine/                # Moteur algorithmique bas niveau
+│   │   ├── arena_pool.go      # Tampon circulaire atomique seqlock 4 Ko (zéro race)
+│   │   ├── delta_catalog.go   # Catalogue LSM et indexation différentielle
+│   │   ├── drift_guard.go     # Détecteur statistique de dérive en ligne
+│   │   ├── feature_extractor.go # Extraction 512D sans allocation
+│   │   ├── floppy_engine.go   # Chargeur mmap .c2book, HMAC-SHA256, slot RCU
+│   │   ├── forensic_proof.go  # Chaîne de signature et vérification Ed25519
+│   │   ├── inference_cascade.go # Orchestrateur de cascade double couche
+│   │   ├── pyramid_engine.go  # Arbre pyramidale et fusion LSM
+│   │   ├── rabitq512.go       # Adaptateur de Transformée de Hadamard Rapide 512 bits & quantification
+│   │   ├── server_oracle.go   # Autorité et consensus serveur
+│   │   └── wittgenstein_corpus.go # Chargeurs et séparateurs de données réelles
+│   └── goclassifier/          # Noyau FHT512, sonde conforme RaBitQ embarquée et licence MIT
+├── socagent/                  # Connecteur d'ingestion et dispatch SOC dédié
+├── testdata/                  # Jeux de données réels et disquettes pré-compilées embarqués (1,3 Mo)
+│   └── wittgenstein/          # LOLBAS tenu à l'écart, validate.csv DNS C2, disquettes .c2book scellées
 ├── c2blue55.go                # API publique du module et configuration
 ├── router.go                  # Multiplexage des sous-systèmes (SubProc, SubNet, SubMCP)
 ├── lsm_receiver.go            # Récepteur d'ingestion continue de télémétrie

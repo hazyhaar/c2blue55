@@ -58,7 +58,7 @@ func TestForensicProof_Ed25519_SignVerifyAndReplay(t *testing.T) {
 	gz := NewGrayZoneDecider(DefaultGrayZoneConfig())
 	cascade := NewCascadeEngine(cb, gz)
 
-	floppyPath := filepath.Join("/devhoros/data/wittgenstein/floppies", "floppy_lolbas.c2book")
+	floppyPath := filepath.Join(testWittgensteinDataDir(t), "floppies", "floppy_lolbas.c2book")
 	disk, err := LoadFloppyMmap(floppyPath, WittgensteinFloppyKey(FloppyFamilyLOLBAS))
 	if err != nil {
 		t.Fatalf("Chargement disquette échoué: %v", err)

@@ -29,11 +29,51 @@ func testRepoRoot(t testing.TB) string {
 	}
 }
 
-// testExternalDir rend l'emplacement d'une ressource que l'arbre suivi ne
-// contient pas (dépôt imbriqué ou zone ignorée par git) : la valeur de la
-// variable d'environnement env si elle est posée, sinon rel sous la racine du
-// dépôt. Elle ne vérifie pas l'existence : l'appelant garde sa propre règle
-// d'absence.
+// testModuleRoot remonte depuis le répertoire du test jusqu'au premier go.mod ou .git.
+func testModuleRoot(t testing.TB) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("répertoire courant du test illisible : %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "."
+}
+
+// testWittgensteinDataDir résout l'emplacement des données et disquettes d'évaluation.
+// Il consulte en priorité C2BLUE_DATA_DIR, puis les répertoires testdata/wittgenstein
+// relatifs, puis le chemin historique /devhoros/data/wittgenstein.
+func testWittgensteinDataDir(t testing.TB) string {
+	t.Helper()
+	if env := os.Getenv("C2BLUE_DATA_DIR"); env != "" {
+		return env
+	}
+	root := testModuleRoot(t)
+	candidates := []string{
+		filepath.Join(root, "testdata", "wittgenstein"),
+		filepath.Join(root, "pkg", "c2blue55", "testdata", "wittgenstein"),
+	}
+	for _, cand := range candidates {
+		if _, err := os.Stat(filepath.Join(cand, "floppies", "floppy_lolbas.c2book")); err == nil {
+			return cand
+		}
+	}
+	return filepath.Join(root, "testdata", "wittgenstein")
+}
+
+// testExternalDir rend l'emplacement d'une ressource externe ou repli sous la racine du dépôt.
 func testExternalDir(t testing.TB, env, rel string) string {
 	t.Helper()
 	if v := os.Getenv(env); v != "" {

@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"code.hazyhaar.fr/goclassifier"
+	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/goclassifier"
 )
 
 const (

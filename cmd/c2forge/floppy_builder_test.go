@@ -3,20 +3,51 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
 )
 
-func TestWittgenstein_Floppies_BuildAndLoad(t *testing.T) {
-	dataDir := "/devhoros/data/wittgenstein"
-	outDir := "/devhoros/data/wittgenstein/floppies"
+func resolveWittgensteinDataDir(t testing.TB) string {
+	t.Helper()
+	if env := os.Getenv("C2BLUE_DATA_DIR"); env != "" {
+		return env
+	}
+	candidates := []string{
+		"../../testdata/wittgenstein",
+		"testdata/wittgenstein",
+		"pkg/c2blue55/testdata/wittgenstein",
+		"../../../pkg/c2blue55/testdata/wittgenstein",
+	}
+	for _, cand := range candidates {
+		if _, err := os.Stat(filepath.Join(cand, "floppies", "floppy_lolbas.c2book")); err == nil {
+			return cand
+		}
+	}
+	return "../../testdata/wittgenstein"
+}
 
-	// 1. Forgerie des 3 disquettes réelles
-	if err := BuildWittgensteinFloppies(dataDir, outDir); err != nil {
+// TestWittgenstein_Floppies_Rebuild éprouve la forgerie complète à partir des données brutes
+// lorsqu'elles sont présentes, et consigne un SKIP explicite si elles manquent.
+func TestWittgenstein_Floppies_Rebuild(t *testing.T) {
+	dataDir := resolveWittgensteinDataDir(t)
+	if _, err := os.Stat(filepath.Join(dataDir, "netrack_dns", "train.csv")); err != nil {
+		t.Skip("sources d'apprentissage brutes absentes (netrack_dns/train.csv) : forgerie omise, disquettes pré-compilées testées dans TestWittgenstein_Floppies_BuildAndLoad")
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "lakera_agent_attacks.csv")); err != nil {
+		t.Skip("sources d'apprentissage brutes absentes (lakera_agent_attacks.csv) : forgerie omise, disquettes pré-compilées testées dans TestWittgenstein_Floppies_BuildAndLoad")
+	}
+	tmpOut := t.TempDir()
+	if err := BuildWittgensteinFloppies(dataDir, tmpOut); err != nil {
 		t.Fatalf("BuildWittgensteinFloppies a échoué: %v", err)
 	}
+}
+
+func TestWittgenstein_Floppies_BuildAndLoad(t *testing.T) {
+	dataDir := resolveWittgensteinDataDir(t)
+	outDir := filepath.Join(dataDir, "floppies")
 
 	floppyTests := []struct {
 		filename string

@@ -8,15 +8,6 @@ import (
 )
 
 func TestThematicCorporarRealDatasets(t *testing.T) {
-	// Les jeux de données téléchargés vivent sous .llmcall, zone ignorée par
-	// git : HOROS_LLMCALL_DIR s'il est posé, sinon .llmcall sous la racine du
-	// dépôt. Le corpus des menaces sans fichier est versionné dans le paquet
-	// voisin probes. Une section dont la source manque est omise, comme avant,
-	// et l'omission est consignée.
-	// Les noms reprennent, relativement à .llmcall, ceux des constantes
-	// DefaultCVEExploitationSignalsPath, DefaultCVE5YearsPath,
-	// DefaultKernelVulnCSVPath et DefaultCyberNativeDPOPath de
-	// thematic_corpora.go.
 	llm := testExternalDir(t, "HOROS_LLMCALL_DIR", ".llmcall")
 	cvePath := filepath.Join(llm, "call-2492922534", "000-threatcluster__cve-exploitation-signals__data.jsonl")
 	cve5Path := filepath.Join(llm, "call-2492922534", "001-sk75__2021_2026_CVE_Exploit_Dataset__cve_dataset_5years.jsonl")
@@ -25,9 +16,10 @@ func TestThematicCorporarRealDatasets(t *testing.T) {
 	filelessDir := filepath.Join("..", "probes", "testdata")
 
 	// 1. CVE Corpus
-	if _, err := os.Stat(cvePath); err != nil {
-		t.Logf("corpus CVE absent (%v) : section omise ; poser HOROS_LLMCALL_DIR depuis un worktree lié", err)
-	} else {
+	t.Run("CVE", func(t *testing.T) {
+		if _, err := os.Stat(cvePath); err != nil {
+			t.Skipf("corpus CVE absent (%v) : poser HOROS_LLMCALL_DIR pour charger les signaux CVE", err)
+		}
 		cbCVE, err := BuildThematicCVECorpus(cvePath, cve5Path)
 		if err != nil {
 			t.Fatalf("BuildThematicCVECorpus: %v", err)
@@ -36,12 +28,13 @@ func TestThematicCorporarRealDatasets(t *testing.T) {
 			t.Fatalf("cbCVE.Len() == 0, attendu > 0")
 		}
 		t.Logf("CVE Corpus: %d entrees vectorisees", cbCVE.Len())
-	}
+	})
 
 	// 2. Kernel Vuln Corpus
-	if _, err := os.Stat(kernelPath); err != nil {
-		t.Logf("corpus des vulnérabilités du noyau absent (%v) : section omise ; poser HOROS_LLMCALL_DIR depuis un worktree lié", err)
-	} else {
+	t.Run("Kernel", func(t *testing.T) {
+		if _, err := os.Stat(kernelPath); err != nil {
+			t.Skipf("corpus des vulnérabilités du noyau absent (%v) : poser HOROS_LLMCALL_DIR", err)
+		}
 		cbKernel, err := BuildThematicKernelCorpus(kernelPath)
 		if err != nil {
 			t.Fatalf("BuildThematicKernelCorpus: %v", err)
@@ -50,12 +43,13 @@ func TestThematicCorporarRealDatasets(t *testing.T) {
 			t.Fatalf("cbKernel.Len() == 0, attendu > 0")
 		}
 		t.Logf("Kernel Vuln Corpus: %d entrees vectorisees", cbKernel.Len())
-	}
+	})
 
 	// 3. CyberNative DPO Corpus
-	if _, err := os.Stat(dpoPath); err != nil {
-		t.Logf("corpus DPO CyberNative absent (%v) : section omise ; poser HOROS_LLMCALL_DIR depuis un worktree lié", err)
-	} else {
+	t.Run("CyberNativeDPO", func(t *testing.T) {
+		if _, err := os.Stat(dpoPath); err != nil {
+			t.Skipf("corpus DPO CyberNative absent (%v) : poser HOROS_LLMCALL_DIR", err)
+		}
 		cbDPO, err := BuildThematicDPOCorpus(dpoPath)
 		if err != nil {
 			t.Fatalf("BuildThematicDPOCorpus: %v", err)
@@ -64,12 +58,13 @@ func TestThematicCorporarRealDatasets(t *testing.T) {
 			t.Fatalf("cbDPO.Len() == 0, attendu > 0")
 		}
 		t.Logf("CyberNative DPO Corpus: %d entrees vectorisees", cbDPO.Len())
-	}
+	})
 
 	// 4. Fileless Memory Threats Corpus
-	if _, err := os.Stat(filelessDir); err != nil {
-		t.Logf("corpus des menaces sans fichier absent (%v) : section omise", err)
-	} else {
+	t.Run("FilelessMemory", func(t *testing.T) {
+		if _, err := os.Stat(filelessDir); err != nil {
+			t.Skipf("corpus des menaces sans fichier absent (%v) : répertoire ../probes/testdata non inclus", err)
+		}
 		cbMem, err := BuildThematicFilelessCorpus(filelessDir)
 		if err != nil {
 			t.Fatalf("BuildThematicFilelessCorpus: %v", err)
@@ -78,17 +73,19 @@ func TestThematicCorporarRealDatasets(t *testing.T) {
 			t.Fatalf("cbMem.Len() == 0, attendu > 0")
 		}
 		t.Logf("Fileless Memory Corpus: %d entrees vectorisees", cbMem.Len())
-	}
+	})
 
 	// 5. Persistence FIM Corpus
-	cbFIM, err := BuildThematicFIMCorpus()
-	if err != nil {
-		t.Fatalf("BuildThematicFIMCorpus: %v", err)
-	}
-	if cbFIM.Len() == 0 {
-		t.Fatalf("cbFIM.Len() == 0, attendu > 0")
-	}
-	t.Logf("Persistence FIM Corpus: %d entrees vectorisees", cbFIM.Len())
+	t.Run("PersistenceFIM", func(t *testing.T) {
+		cbFIM, err := BuildThematicFIMCorpus()
+		if err != nil {
+			t.Fatalf("BuildThematicFIMCorpus: %v", err)
+		}
+		if cbFIM.Len() == 0 {
+			t.Fatalf("cbFIM.Len() == 0, attendu > 0")
+		}
+		t.Logf("Persistence FIM Corpus: %d entrees vectorisees", cbFIM.Len())
+	})
 }
 
 func TestBuildThematicAllCodebooksTmp(t *testing.T) {

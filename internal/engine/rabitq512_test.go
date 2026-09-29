@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"math/bits"
 	"math/rand/v2"
 	"testing"
 )
@@ -264,6 +265,75 @@ func BenchmarkEncode512(b *testing.B) {
 	_ = sink
 }
 
+// sylvesterHadamardOracle calcule la transformée de Walsh-Hadamard orthonormée par
+// produit matriciel direct O(N^2) H[i,j] = (-1)^popcount(i & j) / sqrt(512),
+// sans transformée rapide papillon, servant d'oracle mathématique indépendant.
+func sylvesterHadamardOracle(vec []float32) ([codebookWords]uint64, float64, float64) {
+	const N = 512
+	const invSqrtN = float32(0.04419417382415922) // 1 / sqrt(512)
+	const seed uint64 = 0x9E3779B97F4A7C15
+
+	// Signes déterministes de Rademacher (splitmix64)
+	var signs [N]float32
+	z := seed
+	for i := range signs {
+		z += seed
+		v := z
+		v = (v ^ (v >> 30)) * 0xBF58476D1CE4E5B9
+		v = (v ^ (v >> 27)) * 0x94D049BB133111EB
+		v ^= v >> 31
+		if v&1 == 0 {
+			signs[i] = 1
+		} else {
+			signs[i] = -1
+		}
+	}
+
+	// Entrée pondérée et complétée par des zéros
+	var signedInput [N]float32
+	for i := 0; i < N && i < len(vec); i++ {
+		signedInput[i] = vec[i] * signs[i]
+	}
+
+	// Produit matriciel direct de Sylvester H_512
+	var proj [N]float32
+	for i := 0; i < N; i++ {
+		var sum float32
+		for j := 0; j < N; j++ {
+			if bits.OnesCount(uint(i&j))%2 == 0 {
+				sum += signedInput[j]
+			} else {
+				sum -= signedInput[j]
+			}
+		}
+		proj[i] = sum * invSqrtN
+	}
+
+	// Quantification par centrage sur la moyenne arithmétique
+	var mean float32
+	for i := 0; i < N; i++ {
+		mean += proj[i]
+	}
+	mean /= float32(N)
+
+	var code [codebookWords]uint64
+	var l1, l2 float32
+	for w := 0; w < codebookWords; w++ {
+		base := w * 64
+		for b := 0; b < 64; b++ {
+			c := proj[base+b] - mean
+			if c >= 0 {
+				code[w] |= uint64(1) << uint(b)
+				l1 += c
+			} else {
+				l1 -= c
+			}
+			l2 += c * c
+		}
+	}
+	return code, float64(l2), float64(l1)
+}
+
 func TestQuantizeFHT512_Harmonization(t *testing.T) {
 	vec := make([]float32, rabitqDim512)
 	for i := range vec {
@@ -276,10 +346,37 @@ func TestQuantizeFHT512_Harmonization(t *testing.T) {
 		t.Fatalf("QuantizeFHT512 a renvoyé des normes non positives: sq=%g, l1=%g", sq, l1)
 	}
 
-	// Vérifier la conformité directe avec goclassifier.QuantizeRabitq
-	var proj [512]float32
-	// goclassifier.ProjectRabitq
-	copy(proj[:], vec)
+	// Vérification bit-à-bit contre l'oracle mathématique indépendant (Sylvester O(N^2))
+	oracleCode, oracleSq, oracleL1 := sylvesterHadamardOracle(vec)
+	for w := 0; w < codebookWords; w++ {
+		if codeFHT[w] != oracleCode[w] {
+			t.Fatalf("mot %d discordant avec l'oracle Sylvester: codeFHT=%016x oracle=%016x", w, codeFHT[w], oracleCode[w])
+		}
+	}
+	if math.Abs(sq-oracleSq) > 1e-3 {
+		t.Fatalf("norme sq discordante: codeFHT=%g oracle=%g", sq, oracleSq)
+	}
+	if math.Abs(l1-oracleL1) > 1e-3 {
+		t.Fatalf("norme l1 discordante: codeFHT=%g oracle=%g", l1, oracleL1)
+	}
+
+	// Vecteur d'or scellé (golden vector) pour garantir l'absence de régression temporelle
+	goldenWords := [codebookWords]uint64{
+		0xd6d3d07689d6891f,
+		0x49a315fe7364811b,
+		0x3974ecdcc5998f9c,
+		0xff1de80f2c529b16,
+		0x15c5ce5d5102fe52,
+		0x4538249decb40abb,
+		0x86505cea0351f978,
+		0x5860fd24209ea3eb,
+	}
+	for w := 0; w < codebookWords; w++ {
+		if codeFHT[w] != goldenWords[w] {
+			t.Fatalf("mot %d discordant avec le vecteur d'or: codeFHT=%016x golden=%016x", w, codeFHT[w], goldenWords[w])
+		}
+	}
+
 	// Le code doit avoir des bits non triviaux
 	hasOnes := false
 	hasZeros := false

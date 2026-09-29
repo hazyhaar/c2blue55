@@ -10,12 +10,14 @@ package engine
 import (
 	"encoding/csv"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestInferenceCascade_ProbeNeverMasksL1bVeto(t *testing.T) {
-	f, err := os.Open("/devhoros/data/wittgenstein/netrack_dns/validate.csv")
+	dataDir := testWittgensteinDataDir(t)
+	f, err := os.Open(filepath.Join(dataDir, "netrack_dns", "validate.csv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +29,7 @@ func TestInferenceCascade_ProbeNeverMasksL1bVeto(t *testing.T) {
 
 	evaluate := func(withProbe bool) []CascadeVerdict {
 		ce := NewCascadeEngine(NewCodebook(nil), NewGrayZoneDecider(DefaultGrayZoneConfig()))
-		d, err := LoadFloppyMmap("/devhoros/data/wittgenstein/floppies/floppy_dns_c2.c2book", WittgensteinFloppyKey(FloppyFamilyDNSC2))
+		d, err := LoadFloppyMmap(filepath.Join(dataDir, "floppies", "floppy_dns_c2.c2book"), WittgensteinFloppyKey(FloppyFamilyDNSC2))
 		if err != nil {
 			t.Fatal(err)
 		}

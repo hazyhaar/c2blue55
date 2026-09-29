@@ -1,0 +1,13 @@
+# github.com/hazyhaar/c2pkg v0.0.0 => ../c2pkg
+## explicit; go 1.27
+github.com/hazyhaar/c2pkg/c2archtsim
+# github.com/hazyhaar/c2slm v0.0.0-20260916130326-32cf3b996e03 => ../c2slm
+## explicit; go 1.27
+github.com/hazyhaar/c2slm
+github.com/hazyhaar/c2slm/engine
+github.com/hazyhaar/c2slm/gguf
+github.com/hazyhaar/c2slm/internal/simd
+github.com/hazyhaar/c2slm/tensor
+github.com/hazyhaar/c2slm/tokenizer
+# github.com/hazyhaar/c2slm => ../c2slm
+# github.com/hazyhaar/c2pkg => ../c2pkg

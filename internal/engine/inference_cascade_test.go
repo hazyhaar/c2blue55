@@ -14,7 +14,7 @@ func TestInferenceCascade_PipelineAndMonotonicity(t *testing.T) {
 	cascade := NewCascadeEngine(cb, gz)
 
 	// Charger la disquette LOLBAS forgée
-	floppyPath := filepath.Join("/devhoros/data/wittgenstein/floppies", "floppy_lolbas.c2book")
+	floppyPath := filepath.Join(testWittgensteinDataDir(t), "floppies", "floppy_lolbas.c2book")
 	disk, err := LoadFloppyMmap(floppyPath, WittgensteinFloppyKey(FloppyFamilyLOLBAS))
 	if err != nil {
 		t.Fatalf("Impossible de charger floppy_lolbas: %v", err)
@@ -60,7 +60,7 @@ func TestInferenceCascade_ZeroAlloc(t *testing.T) {
 	gz := NewGrayZoneDecider(DefaultGrayZoneConfig())
 	cascade := NewCascadeEngine(cb, gz)
 
-	floppyPath := filepath.Join("/devhoros/data/wittgenstein/floppies", "floppy_lolbas.c2book")
+	floppyPath := filepath.Join(testWittgensteinDataDir(t), "floppies", "floppy_lolbas.c2book")
 	disk, err := LoadFloppyMmap(floppyPath, WittgensteinFloppyKey(FloppyFamilyLOLBAS))
 	if err != nil {
 		t.Fatalf("Impossible de charger floppy_lolbas: %v", err)
@@ -84,7 +84,7 @@ func TestInferenceCascade_ZeroAlloc(t *testing.T) {
 func mountLOLBAS(t *testing.T) (*CascadeEngine, *FloppyDisk) {
 	t.Helper()
 	cascade := NewCascadeEngine(NewCodebook(nil), NewGrayZoneDecider(DefaultGrayZoneConfig()))
-	disk, err := LoadFloppyMmap(filepath.Join("/devhoros/data/wittgenstein/floppies", "floppy_lolbas.c2book"), WittgensteinFloppyKey(FloppyFamilyLOLBAS))
+	disk, err := LoadFloppyMmap(filepath.Join(testWittgensteinDataDir(t), "floppies", "floppy_lolbas.c2book"), WittgensteinFloppyKey(FloppyFamilyLOLBAS))
 	if err != nil {
 		t.Fatalf("Impossible de charger floppy_lolbas: %v", err)
 	}

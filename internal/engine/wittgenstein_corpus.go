@@ -18,20 +18,36 @@ import (
 // forgerie des centroïdes ; le reste n'est vu que par le banc.
 const ReverseShellTrainPercent = 70
 
-// Clés HMAC-SHA256 de démonstration des disquettes du tournoi Wittgenstein.
-// Elles figurent dans le source et ne protègent donc que contre une altération
-// accidentelle ou un fichier substitué par un tiers qui n'a pas lu ce dépôt ;
-// un déploiement réel fournit sa propre clé à SaveFloppyFile et LoadFloppyMmap.
-var wittgensteinFloppyKeys = map[uint16]string{
+// Clés HMAC-SHA256 d'épreuve de testabilité pour les disquettes d'évaluation.
+// Les valeurs ci-dessous sont des clés de démonstration publiques destinées
+// à garantir la reproductibilité des bancs de test chez tout évaluateur.
+// En déploiement de production, elles doivent impérativement être surchargées
+// via les variables d'environnement (C2BLUE_HMAC_KEY_LOLBAS, C2BLUE_HMAC_KEY_DNS,
+// C2BLUE_HMAC_KEY_MCP) ou passées explicitement à SaveFloppyFile / LoadFloppyMmap.
+var defaultWittgensteinFloppyKeys = map[uint16]string{
 	FloppyFamilyLOLBAS:   "c2blue-hmac-key-lolbas-wittgenstein",
 	FloppyFamilyDNSC2:    "c2blue-hmac-key-dns-wittgenstein",
 	FloppyFamilyAgentMCP: "c2blue-hmac-key-mcp-wittgenstein",
 }
 
-// WittgensteinFloppyKey retourne la clé de sceau de démonstration d'une famille,
-// ou nil pour une famille inconnue.
+// WittgensteinFloppyKey retourne la clé de sceau HMAC d'une famille,
+// en résolvant d'abord l'environnement (C2BLUE_HMAC_KEY_*), puis les clés de test.
 func WittgensteinFloppyKey(family uint16) []byte {
-	k, ok := wittgensteinFloppyKeys[family]
+	var envVar string
+	switch family {
+	case FloppyFamilyLOLBAS:
+		envVar = "C2BLUE_HMAC_KEY_LOLBAS"
+	case FloppyFamilyDNSC2:
+		envVar = "C2BLUE_HMAC_KEY_DNS"
+	case FloppyFamilyAgentMCP:
+		envVar = "C2BLUE_HMAC_KEY_MCP"
+	}
+	if envVar != "" {
+		if k := os.Getenv(envVar); k != "" {
+			return []byte(k)
+		}
+	}
+	k, ok := defaultWittgensteinFloppyKeys[family]
 	if !ok {
 		return nil
 	}

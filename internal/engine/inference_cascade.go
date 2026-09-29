@@ -9,7 +9,7 @@ package engine
 import (
 	"time"
 
-	"code.hazyhaar.fr/goclassifier"
+	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/goclassifier"
 )
 
 // Étages de décision de la cascade.

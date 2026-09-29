@@ -11,7 +11,7 @@ import (
 	"math"
 	"math/bits"
 
-	"code.hazyhaar.fr/goclassifier"
+	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/goclassifier"
 )
 
 const (

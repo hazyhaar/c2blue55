@@ -29,10 +29,29 @@ import (
 	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
 )
 
-const wittgensteinDataDir = "/devhoros/data/wittgenstein"
+// resolveWittgensteinDataDir résout l'emplacement des données et disquettes d'évaluation.
+func resolveWittgensteinDataDir(t testing.TB) string {
+	t.Helper()
+	if env := os.Getenv("C2BLUE_DATA_DIR"); env != "" {
+		return env
+	}
+	candidates := []string{
+		"testdata/wittgenstein",
+		"pkg/c2blue55/testdata/wittgenstein",
+		"../../testdata/wittgenstein",
+		"../../../pkg/c2blue55/testdata/wittgenstein",
+	}
+	for _, cand := range candidates {
+		if _, err := os.Stat(filepath.Join(cand, "floppies", "floppy_lolbas.c2book")); err == nil {
+			return cand
+		}
+	}
+	return "testdata/wittgenstein"
+}
 
 func setupWittgensteinEngine(t testing.TB) (*engine.CascadeEngine, ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()
+	dataDir := resolveWittgensteinDataDir(t)
 	cb := engine.NewCodebook(nil)
 	gz := engine.NewGrayZoneDecider(engine.DefaultGrayZoneConfig())
 	cascade := engine.NewCascadeEngine(cb, gz)
@@ -46,7 +65,7 @@ func setupWittgensteinEngine(t testing.TB) (*engine.CascadeEngine, ed25519.Publi
 		{engine.FloppyFamilyAgentMCP, "floppy_agent_mcp.c2book"},
 	}
 	for _, f := range files {
-		disk, err := engine.LoadFloppyMmap(filepath.Join(wittgensteinDataDir, "floppies", f.filename), engine.WittgensteinFloppyKey(f.family))
+		disk, err := engine.LoadFloppyMmap(filepath.Join(dataDir, "floppies", f.filename), engine.WittgensteinFloppyKey(f.family))
 		if err != nil {
 			t.Fatalf("Impossible de monter la disquette %s: %v", f.filename, err)
 		}
@@ -114,6 +133,7 @@ func ipPortVariant(payload, ip, port string) string {
 }
 
 func TestWittgenstein_Evaluation_RealData(t *testing.T) {
+	dataDir := resolveWittgensteinDataDir(t)
 	cascade, pubKey, privKey := setupWittgensteinEngine(t)
 	arena := engine.DefaultArenaPool()
 	seq := uint64(1)
@@ -131,7 +151,7 @@ func TestWittgenstein_Evaluation_RealData(t *testing.T) {
 	// =========================================================================
 	// 1. LOLBAS : reverse shells distincts tenus à l'écart (hors apprentissage)
 	// =========================================================================
-	shells, err := engine.LoadReverseShellPayloads(filepath.Join(wittgensteinDataDir, "reverse_shells.jsonl"))
+	shells, err := engine.LoadReverseShellPayloads(filepath.Join(dataDir, "reverse_shells.jsonl"))
 	if err != nil {
 		t.Fatalf("reverse_shells.jsonl: %v", err)
 	}
@@ -211,7 +231,7 @@ func TestWittgenstein_Evaluation_RealData(t *testing.T) {
 	// =========================================================================
 	// 3. DNS : validate.csv intégral, par famille
 	// =========================================================================
-	dnsFile, err := os.Open(filepath.Join(wittgensteinDataDir, "netrack_dns", "validate.csv"))
+	dnsFile, err := os.Open(filepath.Join(dataDir, "netrack_dns", "validate.csv"))
 	if err != nil {
 		t.Fatalf("validate.csv: %v", err)
 	}
