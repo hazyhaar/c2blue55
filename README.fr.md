@@ -149,6 +149,15 @@ Mesuré sur processeur physique (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0
 | **Cascade Complète (Requête DNS)** | **10.46 µs/op** | $\approx 95\,600\text{ ops/s}$ | **0 B/op (0 alloc)** |
 | **Cascade Complète (Quarantaine Charge Longue)** | **14.40 µs/op** | $\approx 69\,400\text{ ops/s}$ | **0 B/op (0 alloc)** |
 
+### D. Analyse Opérationnelle, Limites & Compromis
+1. **Friction de la Quarantaine Administrative (21.43 %) :**
+   L'évaluation du texte brut de la ligne de commande en isolation dirige 21.43 % (9/42) des commandes d'administration bénignes tenues à l'écart vers la quarantaine. Si aucune commande bénigne n'est bloquée net (0.00 % de faux positifs de blocage), mettre en quarantaine plus d'une commande légitime sur cinq représente une charge opérationnelle bien réelle en production (alertes SOC, retards d'exécution, fatigue des analystes). Ce phénomène s'explique par le fait que des commandes courantes (ex. `sudo apt-get`, `find / -name "*.conf"`, `systemctl`) partagent des jetons structurels et des privilèges avec des schémas d'évasion LOLBAS. Pour résorber cette friction, l'opérateur doit activer la **provenance de processus** (`DeriveCascadeContext`), qui intègre la présence d'un TTY interactif, l'UID de session et l'ascendance du processus parent pour valider les sessions interactives légitimes.
+   *Note sur le corpus :* Les 42 commandes bénignes sont des lignes de commande unitaires représentatives rédigées d'après la documentation des outils, et non une capture de télémétrie d'un parc en production.
+2. **Taux de Faux Positifs DNS de Blocage (0.80 %) :**
+   Un taux de blocage injustifié de 0.80 % (8/1 000 domaines bénins) perturberait lourdement un environnement d'entreprise résolvant des millions de requêtes DNS par jour (80 000 requêtes bloquées pour 10 M de flux). Ce résidu provient de sous-domaines à forte entropie (CDN, traceurs, identifiants cloud) qui imitent la signature textuelle des tunnels dans l'espace de projection 512D. L'exploitation du classifieur CPU à la vitesse de la ligne exige donc impérativement une liste blanche d'entreprise et un cache DNS local résolvant les domaines connus avant projection.
+3. **Dégradation face aux Mutations (5.41 % vers la Quarantaine) :**
+   La modification des adresses IP et des ports entraîne le glissement de 5.41 % (6/111) des reverse shells connus hors du rayon de blocage direct vers l'enveloppe de quarantaine (0.00 % de passage). Si le principe fail-closed interdit toute intrusion, ces mutations syntaxiques transfèrent la charge de décision du veto réflexe vers la file de triage humain.
+
 ---
 
 ## 4. Compilation & Utilisation

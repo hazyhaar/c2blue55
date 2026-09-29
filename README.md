@@ -149,6 +149,15 @@ Measured on physical hardware (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0, 
 | **Complete Cascade (DNS Query)** | **10.46 µs/op** | $\approx 95,600\text{ ops/s}$ | **0 B/op (0 allocs)** |
 | **Complete Cascade (Extended Payload Quarantine)** | **14.40 µs/op** | $\approx 69,400\text{ ops/s}$ | **0 B/op (0 allocs)** |
 
+### D. Operational Trade-Offs & Real-World Limitations
+1. **Administrative Quarantine Friction (21.43%):**
+   Evaluating raw command-line text in isolation routes 21.43% (9/42) of held-out benign administrative commands to quarantine. While zero benign commands were hard-blocked (0.00% FP block), quarantining over 20% of routine sysadmin operations creates a substantial operational burden in production (SOC alerts, execution delays, review fatigue). This occurs because legitimate commands (e.g. `sudo apt-get`, `find / -name "*.conf"`, `systemctl`) share structural tokens and privilege patterns with LOLBAS vectors. To eliminate this friction, operators must enable **process provenance context** (`DeriveCascadeContext`), which incorporates interactive TTY presence, login UID, and parent process ancestry to safely clear interactive admin sessions.
+   *Corpus Note:* The 42 benign commands are curated representative single-line administrative commands from documentation, not live fleet telemetry captures.
+2. **DNS False Positive Block Rate (0.80%):**
+   An 0.80% false positive block rate (8/1,000 benign domains) would disrupt production environments processing millions of DNS queries daily (80,000 dropped requests per 10M queries). This tail is caused by high-entropy subdomains (CDNs, tracking, cloud assets) overlapping with tunneling vectors in 512D projection space. Deploying the CPU vector classifier at line rate therefore strictly requires an authoritative corporate allowlist and local caching layer.
+3. **Mutation Degradation (5.41% Quarantine Shift):**
+   Mutating IP addresses and port numbers causes 5.41% (6/111) of known reverse shells to drift from direct L0/L1b blocking centroids into the secondary quarantine envelope (0.00% pass). While fail-closed integrity prevents evasion, syntactic evasion tactics shift the defensive burden from automatic veto to manual triage.
+
 ---
 
 ## 4. Building & Running
