@@ -1,0 +1,158 @@
+# Corpus bénin de commandes d'administration Linux et Windows.
+# Provenance : lignes de commande d'exploitation courantes, rédigées une à une
+# le 2026-09-29 d'après les usages documentés des outils (pages de manuel de
+# coreutils, systemd, iproute2, apt, dnf, git, docker, kubectl ; documentation
+# PowerShell et cmd.exe). Aucune ligne n'est générée par programme ni par
+# gabarit. Limite assumée : ce n'est pas une capture de télémétrie d'un parc
+# réel ; /devhoros/data/wittgenstein/ ne contient aucun corpus de commandes
+# shell bénignes (command_injection.csv label 0 ne porte que des adresses
+# postales). Une ligne = une commande ; les lignes vides et celles qui
+# commencent par « # » sont ignorées.
+# L'ordre alterne volontairement familles et longueurs : la partition
+# apprentissage / évaluation prend l'index i modulo 10 (0..6 apprentissage,
+# 7..9 évaluation tenue à l'écart).
+git status
+ls -la /var/log
+Get-Service | Where-Object {$_.Status -eq 'Running'} | Sort-Object DisplayName
+df -h
+systemctl status sshd
+ipconfig /all
+sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove --dry-run
+journalctl -u nginx --since "1 hour ago" --no-pager
+tasklist /FI "IMAGENAME eq svchost.exe"
+uptime
+ps aux --sort=-%mem | head -n 15
+Get-EventLog -LogName System -Newest 50 -EntryType Error
+cat /etc/os-release
+netstat -ano | findstr LISTENING
+tar -czf /backup/etc-$(date +%F).tar.gz /etc && ls -lh /backup
+free -m
+ip addr show dev eth0
+Get-ChildItem -Path C:\Windows\Temp -Recurse | Measure-Object -Property Length -Sum
+uname -a
+sc query wuauserv
+find /var/log -name "*.gz" -mtime +30 -print
+Get-Process | Sort-Object CPU -Descending | Select-Object -First 10
+du -sh /home/* 2>/dev/null | sort -h
+systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+rsync -avz --delete /srv/www/ backup@nas.local:/volume1/www/
+chkdsk C: /scan
+kubectl get pods -n kube-system -o wide
+id -u
+Get-NetIPAddress -AddressFamily IPv4 | Format-Table InterfaceAlias,IPAddress
+go test -race ./...
+wmic logicaldisk get name,freespace,size
+lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT
+cd /opt/app && git pull --rebase && make build && sudo systemctl restart app.service
+Test-NetConnection -ComputerName intranet.local -Port 443
+whoami
+echo $PATH
+robocopy C:\Data D:\Backup\Data /MIR /R:2 /W:5 /LOG:C:\Logs\robocopy.log
+ss -tulpn
+Get-WindowsUpdate -MicrosoftUpdate
+make clean
+hostnamectl
+schtasks /query /fo LIST /v
+grep -rn "ERROR" /var/log/syslog | tail -n 20
+Get-LocalUser | Select-Object Name,Enabled,LastLogon
+crontab -l
+nslookup intranet.local
+cargo build --release
+dism /online /cleanup-image /restorehealth
+openssl x509 -in /etc/ssl/certs/server.crt -noout -dates
+Restart-Service -Name Spooler -Force
+mount | column -t
+sfc /scannow
+sudo ufw status verbose
+Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Select-Object DisplayName,DisplayVersion
+top -b -n 1 | head -n 20
+gpupdate /force
+dnf check-update
+Get-Content C:\Logs\app.log -Tail 100
+curl -I https://www.debian.org
+net user administrator
+chmod 640 /etc/app/config.yml && chown root:app /etc/app/config.yml
+Get-Volume
+lsof -i :443
+ping -n 4 8.8.8.8
+git log --oneline -n 20
+Get-ScheduledTask | Where-Object {$_.State -eq 'Ready'}
+vmstat 1 5
+certutil -hashfile C:\Downloads\installer.msi SHA256
+systemctl list-units --type=service --state=failed
+Get-Acl C:\Shares\Finance | Format-List
+iostat -xz 1 3
+wevtutil qe System /c:20 /rd:true /f:text
+find . -type f -name "*.go" | xargs wc -l | tail -n 1
+Get-ADUser -Filter * -SearchBase "OU=Staff,DC=corp,DC=local" | Select-Object SamAccountName
+sudo journalctl --vacuum-time=7d
+tracert intranet.local
+docker compose -f /srv/stack/docker-compose.yml up -d --remove-orphans
+Get-Disk | Get-Partition | Format-Table DiskNumber,PartitionNumber,DriveLetter,Size
+sudo nginx -t && sudo systemctl reload nginx
+ipconfig /flushdns
+awk -F: '$3 >= 1000 {print $1}' /etc/passwd
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+dig +short example.com MX
+net localgroup administrators
+pg_dump -U postgres -F c -f /backup/app-$(date +%F).dump appdb
+Get-CimInstance -ClassName Win32_OperatingSystem | Select-Object Caption,Version,LastBootUpTime
+sudo apt install -y htop
+bcdedit /enum
+git diff --stat HEAD~1
+Get-SmbShare
+ls -lh /var/lib/docker/volumes
+powershell -NoProfile -Command "Get-PSDrive -PSProvider FileSystem"
+sudo usermod -aG docker deploy
+Import-Module ActiveDirectory; Get-ADComputer -Filter * | Measure-Object
+systemctl daemon-reload && systemctl enable --now node_exporter.service
+w32tm /query /status
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 5
+python3 -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.txt
+vssadmin list shadows
+sudo lvextend -L +10G /dev/vg0/data && sudo resize2fs /dev/vg0/data
+Get-WinEvent -LogName Security -MaxEvents 20
+tail -f /var/log/auth.log
+net share
+sudo certbot renew --dry-run
+New-Item -ItemType Directory -Path C:\Deploy\Releases -Force
+zcat /var/log/nginx/access.log.2.gz | awk '{print $1}' | sort | uniq -c | sort -rn | head
+diskpart /s C:\Scripts\list-volumes.txt
+kubectl rollout status deployment/web -n prod --timeout=120s
+Get-Service -Name W32Time | Restart-Service
+getent group sudo
+bitsadmin /list /allusers
+ln -sfn /opt/app/releases/2026-09-29 /opt/app/current
+Compress-Archive -Path C:\Logs\*.log -DestinationPath C:\Archive\logs.zip
+sudo sysctl -w vm.swappiness=10
+whoami /groups
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack -n monitoring -f values.yaml
+Get-NetFirewallRule -Enabled True | Select-Object DisplayName,Direction,Action
+mysqldump --single-transaction -u root -p appdb | gzip > /backup/appdb.sql.gz
+reg query HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+sha256sum /srv/releases/app-1.4.2.tar.gz
+Get-Printer | Format-Table Name,DriverName,PortName
+sudo iptables -L -n -v --line-numbers
+shutdown /r /t 300 /c "Maintenance planifiée"
+git fetch --all --prune && git checkout main && git merge --ff-only origin/main
+Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5
+sudo smartctl -a /dev/sda
+net stop wuauserv && net start wuauserv
+nmcli device status
+Get-ChildItem Cert:\LocalMachine\My | Where-Object {$_.NotAfter -lt (Get-Date).AddDays(30)}
+sudo -u postgres psql -c "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database;"
+powershell -ExecutionPolicy Bypass -File C:\Scripts\Inventory.ps1
+virsh list --all
+icacls C:\Shares\Projects /grant "CORP\Developers:(OI)(CI)M"
+ansible-playbook -i inventory/prod site.yml --limit web --check --diff
+Get-DnsClientServerAddress -AddressFamily IPv4
+sudo fail2ban-client status sshd
+where python
+openssl s_client -connect mail.example.com:993 -servername mail.example.com </dev/null
+Get-Module -ListAvailable | Sort-Object Name | Select-Object Name,Version
+sudo systemctl edit --full backup.timer
+net time \\dc01 /set /y
+mkdir -p /srv/data/{incoming,processed,archive} && chmod 2775 /srv/data/*
+Invoke-WebRequest -Uri https://intranet.local/health -UseBasicParsing | Select-Object StatusCode

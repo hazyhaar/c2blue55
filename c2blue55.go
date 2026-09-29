@@ -9,16 +9,7 @@ import (
 	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
 )
 
-// Constantes de sous-systèmes de capture
-const (
-	SubProc    uint16 = 1 // Processus (fork, exec, LOLBAS)
-	SubFile    uint16 = 2 // Système de fichiers (fanotify, altération doctrine)
-	SubNet     uint16 = 3 // Réseau (sockets, balises beaconing, exfiltration)
-	SubMCP     uint16 = 4 // Proxy JSON-RPC 2.0 des outils MCP d'agents
-	SubHarness uint16 = 5 // Intégrité doctrinale (AGENTS.md, guards)
-	SubEntropy uint16 = 6 // Entropie de Shannon et classification de payload
-	SubGPU     uint16 = 7 // Tenseurs et mémoire VRAM GPU
-)
+// Constantes de sous-systèmes de capture : définies canoniquement dans subsystems.go.
 
 // Actions captées
 const (
@@ -29,6 +20,15 @@ const (
 	ActRead     uint16 = 5
 	ActWrite    uint16 = 6
 	ActMmapExec uint16 = 7
+)
+
+// Actions de filiation de processus transcrites par la sonde cn_proc.
+// Elles prolongent le vocabulaire d'actions sans collision avec les valeurs
+// 1..7 déjà attribuées ci-dessus.
+const (
+	ActFork    uint16 = 8
+	ActPrivEsc uint16 = 9
+	ActExit    uint16 = 10
 )
 
 // Drapeaux de verdicts et classification de menaces (Flags)
@@ -46,6 +46,7 @@ const (
 	FlagCorrelatedThreat uint32 = 0x0200
 	FlagSuspiciousMCP    uint32 = 0x0400
 	FlagBurstCollapsed   uint32 = 0x0800
+	FlagLongPayload      uint32 = 0x1000
 )
 
 // Classes de charge utile (PayloadClass)
@@ -193,7 +194,16 @@ func (c *Context) InjectObservation(ev *Event) int {
 	if c == nil || c.raw.Running == 0 || ev == nil || ev.Subsystem < SubProc || ev.Subsystem > SubGPU {
 		return -1
 	}
-	return engine.C2bt_channel_write(&c.raw.Chan_proc, ev)
+	switch ev.Subsystem {
+	case SubFile:
+		return engine.C2bt_channel_write(&c.raw.Chan_file, ev)
+	case SubNet:
+		return engine.C2bt_channel_write(&c.raw.Chan_net, ev)
+	case SubMCP:
+		return engine.C2bt_channel_write(&c.raw.Chan_mcp, ev)
+	default:
+		return engine.C2bt_channel_write(&c.raw.Chan_proc, ev)
+	}
 }
 
 // PollBatch evaluates injected observations. Flags are detection/veto advice,

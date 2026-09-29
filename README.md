@@ -1,180 +1,222 @@
-# c2blue55 — DNS C2 Detection, AI Agent Oversight & Entropy Forensics Engine
+# c2blue55 — CPU-Native Threat Detection & AI Agent Oversight Engine
 
 [![Go Version](https://img.shields.io/badge/go-1.27+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Zero CGo](https://img.shields.io/badge/CGo-0%25-brightgreen.svg)](#)
-[![Zero Wasm](https://img.shields.io/badge/Wasm-0%25-brightgreen.svg)](#)
+[![Zero GPU](https://img.shields.io/badge/GPU-0%25%20(Pure%20CPU)-brightgreen.svg)](#)
 [![Zero Alloc](https://img.shields.io/badge/Hotpath%20Alloc-0%20B%2Fop-orange.svg)](#)
-[![Parity](https://img.shields.io/badge/SLM%20Arbitration-<15ms%20ARCHTIME-purple.svg)](#)
+[![Deterministic Replay](https://img.shields.io/badge/Forensics-Ed25519%20Signed-blueviolet.svg)](#)
 
-[🇫🇷 Documentation en français disponible ici](README.fr.md)
+[Documentation en français disponible ici](README.fr.md)
 
-**c2blue55** is an autonomous cyberdefense agent and DNS C2 exfiltration/tunneling detection engine engineered for high-throughput SOC networks and the **Wittgenstein AI Tournament**.
+**c2blue55** is an autonomous, CPU-native dual-layer threat detection and AI agent oversight engine engineered for the **Wittgenstein AI Tournament** (Hackers-Arise).
 
-Built strictly in **pure Go 1.27** (`GOAMD64=v3` / AVX2, zero CGo, zero Wasm), it guarantees **zero heap allocations (`0 B/op`)** across the entire packet inspection and feature extraction pipeline.
+Built strictly in **pure Go 1.27** (`GOAMD64=v3` / AVX2, zero CGo, zero Wasm, zero GPU dependencies), it provides microsecond-scale threat mitigation, zero heap allocation (`0 B/op`) on inspection hotpaths, memory-mapped vector knowledge bases (`.c2book`), an atomic seqlock payload arena, and cryptographically verifiable Ed25519 forensic causality chains.
 
 ---
 
-## 1. Architecture & Defense-in-Depth
+## 1. Architecture & Cascading Detection Pipeline
 
-The detection pipeline enforces a deterministic cascading filter prior to escalating ambiguous edge cases to local machine intelligence:
+The synchronous detection engine unifies three distinct operational subsystems into a shared 512-dimensional metric space and a cascading decision pipeline:
+
+1. **SubProc (Process Execution):** Living-off-the-land binaries (LOLBAS), obfuscated PowerShell commands, reverse shell invocations, and privilege escalation attempts.
+2. **SubNet (Network Telemetry):** DNS tunneling, periodic C2 beaconing, DGA queries, and stealth data exfiltration channels.
+3. **SubMCP (AI Agent Oversight):** Prompt injection vectors, model system instruction overrides, context escapes, and unauthorized tool calls.
 
 ```
-              DNS UDP Stream (Port 53 / PCAP Capture)
-                            │
-                            ▼
-      ┌───────────────────────────────────────────┐
-      │ Stage 0: RFC 1035 Zero-Copy DNS Decoder   │
-      │ - Zero heap allocation (unsafe.String)    │
-      │ - Bounded to 1 compression hop max        │
-      │ - Normalized FQDN / Parent / Subdomain    │
-      └─────────────────────┬─────────────────────┘
-                            │
-                            ▼
-      ┌───────────────────────────────────────────┐
-      │ Stage 1: Compact Binary Reputation Table  │
-      │ - Ordered 64-bit FNV-1a in RAM (< 45 ns)  │
-      │ - Binary search O(log N) at 0 B/op        │
-      │ - Strict precedence: Block > Allow list   │
-      │ - Multi-tenant cloud guard (AWS / CF)     │
-      └─────────────────────┬─────────────────────┘
-                            │
-                            ▼
-      ┌───────────────────────────────────────────┐
-      │ Stage 2: In-RAM Temporal Tracker (8k sl.) │
-      │ - mix64 dispersion and jitter resolution  │
-      │ - Periodic C2 beaconing anomaly detector  │
-      │ - 256-bit saturating Bloom filter / sub   │
-      └─────────────────────┬─────────────────────┘
-                            │
-                            ▼
-      ┌───────────────────────────────────────────┐
-      │ Stage 3: Entropy Forensics & Metrology    │
-      │ - ARCHTIME Q8.8 fixed-point entropy       │
-      │ - Consonant/vowel drought analysis (<10%) │
-      │ - Exotic DNS record trap (NULL, long TXT) │
-      └─────────────────────┬─────────────────────┘
-                            │
-                  [Suspicion Confirmed]
-                            │
-                            ▼
-      ┌───────────────────────────────────────────┐
-      │ Stage 4: In-Process Confined SLM Arbitrator
-      │ - Qwen2.5-0.5B-Instruct Q4_K_M (c2slm)    │
-      │ - ARCHTIME Logit Projection in < 15 ms    │
-      │ - Cooperative ctx.Done() & Gate Locking   │
-      │ - Hard Go Veto against hallucinations     │
-      │ - Structured HITL Forensic Incident Card  │
-      └───────────────────────────────────────────┘
+       Telemetry Event (Process Exec / DNS Query / Agent Tool Call)
+                                    │
+                                    ▼
+       ┌────────────────────────────────────────────────────────┐
+       │   4MB Atomic Seqlock Payload Arena (ArenaPool)         │
+       │   - 1,024 circular slots (4KB max per payload)         │
+       │   - Reader-writer seqlock (atomic.Uint64 epoch counter)│
+       │   - Fail-closed quarantine on concurrent buffer wrap   │
+       └────────────────────────────┬───────────────────────────┘
+                                    │
+                                    ▼
+       ┌────────────────────────────────────────────────────────┐
+       │ Layer 0 (L0): Zero-Alloc Reflex & Exact Pattern Filter │
+       │ - O(K·n) keyword and malicious phrase substring scan   │
+       │ - Instant drop for obvious malicious signatures        │
+       │ - RFC 1035 zero-copy DNS parser & consonant drought    │
+       └──────────────┬───────────────────────────┬─────────────┘
+                      │ Malicious                 │ Ambiguous
+                      ▼                           ▼
+                 [BLOCK L0]       ┌───────────────────────────────────┐
+                                  │ 512-Dim Feature Extractor (FE)    │
+                                  │ - Normalized n-gram frequency     │
+                                  │ - Entropy, lengths, structural tag│
+                                  │ - QuantizeFHT512 (Fast Hadamard)  │
+                                  └───────────────┬───────────────────┘
+                                                  │
+                                                  ▼
+       ┌────────────────────────────────────────────────────────┐
+       │ Layer 1 (L1): Dual-Layer Metric & Hyperplane Inference │
+       │                                                        │
+       │ 1. L1a: Conformal RaBitQ Nearest Prototype Probe       │
+       │    - Calibrated non-parametric coverage (α = 0.05)     │
+       │    - Subordination guard: nearThreat check prevents    │
+       │      masking of exploits close to hostile centroids    │
+       │                                                        │
+       │ 2. L1b: INT8 Hyperplane Dot-Product & Centroid Veto    │
+       │    - Calibrated Hamming block radius (R_block)         │
+       │    - Zero-allocation (0 B/op) saturated dot product    │
+       │    - Hard metric veto against malicious centroids      │
+       └──────────────┬─────────────────────────────────────────┘
+                      │
+                      ▼
+            [BLOCK / PASS / QUARANTINE]
+                      │
+                      ▼
+       ┌────────────────────────────────────────────────────────┐
+       │ Ed25519 Attested Forensic Proof (ForensicProof)        │
+       │ - Event timestamp, subsystem, action, verdict, distance│
+       │ - SHA-256 payload binding & signature verification     │
+       │ - Bit-exact deterministic replay validation            │
+       └────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 2. Detailed Technical Capabilities
-
-### A. Zero-Allocation RFC 1035 DNS Decoder
-- Operates directly into pre-allocated event descriptors (`DNSEvent`).
-- Strict single-hop limit on compression pointers (`0xC0`), completely mitigating compression bomb vulnerabilities and pointer loops.
-- Instant drop of non-`IN` classes and multi-question payloads.
-
-### B. Compact Binary Reputation Table (`CompactReputation`)
-- Aligned 16-byte contiguous binary entries, memory-mappable (`.rodata`).
-- Full FNV-1a collision resolution with strict string verification.
-- Wildcard bypass protection: shared multi-tenant apexes (`amazonaws.com`, `cloudfront.net`, `pages.dev`) forbid automatic wildcard whitelisting (`MatchSubtree`).
-
-### C. Deterministic In-RAM Temporal Tracker (`TemporalTracker`)
-- 8,192 slots indexed via `mix64(h) | 1` to eliminate primary clustering.
-- Sliding ring buffer of 16 timestamps to measure beaconing intervals and jitter variance.
-- 256-bit saturating Bloom filter measuring unique subdomain proliferation with synchronized cardinality reset.
-
-### D. Elite Blue Team Feature Extraction
-- **Consonant/Vowel Drought (`hasConsonantDrought`):** Instant zero-alloc (0 B/op) detection of Base32/Hex/encrypted identifiers on queries $\ge 15$ characters with $< 10\%$ vowels.
-- **Exotic Record Surveillance:** Immediate isolation of stealth channels abusing large `NULL` records ($\ge 25$ bytes) or suspicious `CNAME` responses ($\ge 45$ bytes).
-
-### E. In-Process Confined SLM Arbitrator (`RealSLMArbitrator`)
-- Executes **Qwen2.5-0.5B-Instruct** (GGUF Q4_K_M, 468 MB) directly in-process through the sovereign **c2slm** engine (100% pure Go, zero CGo, zero Wasm).
-- **Sub-15ms ARCHTIME Logit Projection:** Direct evaluation of output logits restricted strictly to the 4 autoregressive forensic decision tokens:
-  - `Option A`: `DNS_TUNNEL_CONFIRMED`
-  - `Option B`: `BENIGN_AV_TELEMETRY`
-  - `Option C`: `BENIGN_DKIM_KEY`
-  - `Option D`: `INSUFFICIENT_EVIDENCE`
-  Bypasses multi-token sequential autoregressive loops and fragile JSON parsing.
-- **Hermetic Concurrency & Memory Safety:** Protected by an arena gate lock preventing concurrent memory teardowns, full cooperation with `ctx.Done()`, and safe idempotent resource cleanup via `Close()`.
-- **Structural Forensic Prior & Deterministic Go Veto:** Model logits are combined with forensic telemetry priors; if the model misclassifies a domain whose physical metrics exceed hard threat boundaries (entropy $\ge 4.5$, jitter $< 5\%$, burst proliferation), the Go kernel deterministic veto overrides the verdict to `CONFIRMED_C2_TUNNEL`.
+> **Note on Optional Layer 2 (L2):** In production daemon deployments (`cmd/c2agent`), events routed to `Quarantine` by the synchronous cascade can be escalated to an optional local Small Language Model (SLM) running in pure Go (`c2slm`, executing Qwen2.5-0.5B-Instruct in GGUF Q4_K_M). The core engine evaluation reported below operates entirely on CPU within the synchronous L0/L1 cascade without invoking L2.
 
 ---
 
-## 3. Included Binaries & Components
+## 2. Core System Components
 
-| Binary / Component | Role | Highlights |
-| :--- | :--- | :--- |
-| **`cmd/c2agent`** | Primary network inspection and listening daemon | Passive UDP interception, reputation sync, in-process SLM arbitration. |
-| **`cmd/c2blue-mcp-guard`** | Tool-filtering proxy for AI/MCP security agents | Strict JSON-RPC 2.0 validation, UTF-8 normalization, fail-closed `-32601` on unauthorized tools. |
-| **`cmd/c2blue-arena-web`** | Real-time SOC supervision dashboard | Native Server-Sent Events (SSE), loopback HTTP Basic authentication, real-time metrics without phantom state. |
-| **`socagent`** | Automated SOC proposal engine | Formal separation between passive observation and attested mutation; generates audited HITL remedies (`BLOCK_IMMEDIATE`, `SINKHOLE_PARENT`). |
+### A. Memory-Mapped Vector Knowledge Bases (`.c2book` / `C2FLOP1`)
+Knowledge bases are distributed as standalone binary files loaded via read-only memory projection (`syscall.Mmap`, `PROT_READ`, `MAP_SHARED`):
+- **Binary Header (64 bytes):** Magic `C2FLOP1\0`, version, family ID, vector dimension (512), entry count, keyword count, decision classes, prototype count, and calibrated block radius.
+- **Cryptographic Authentication:** The header metadata (bytes 0..32) and the body are sealed with **HMAC-SHA256** and verified with **Castagnoli CRC32C**. Modifying any parameter (such as `BlockRadius`) invalidates the seal and triggers immediate rejection (`ErrFloppySeal`).
+- **Atomic Hot-Swapping (`FloppySlot`):** Disks swap in $O(1)$ constant time with zero locks via RCU atomic pointers (`atomic.Pointer[FloppyDisk]`).
+- Three canonical knowledge bases are generated:
+  - `floppy_lolbas.c2book` (Subsystem 1: Process & LOLBAS)
+  - `floppy_dns_c2.c2book` (Subsystem 2: Network & DNS C2)
+  - `floppy_agent_mcp.c2book` (Subsystem 3: AI Agent & Tool Calls)
+
+### B. Atomic Seqlock Payload Arena (`ArenaPool`)
+Extended payloads (up to 4,096 bytes) bypass fixed event structures without heap allocations via an internal ring buffer:
+- **Lock-Free Concurrency:** Uses an atomic 64-bit seqlock per slot across 1,024 pages (4 MB total). Readers verify pre- and post-epoch sequences to detect concurrent overwrites.
+- **Fail-Closed Quarantine:** If a fast writer recycles a slot during read, `ResolvePayload` returns `nil` with a typed error (`ErrArenaStale`, `ErrArenaTorn`), causing the cascade to mark the event with `FlagArenaInvalid` and route it to `VerdictQuarantine`.
+
+### C. Conformal Subordination Guard
+To prevent adversarial evasion where an attacker crafts a payload that satisfies L1a conformal calibration while resembling an active exploit, L1a is **strictly subordinated**:
+- If any known hostile centroid lies within the knowledge base's calibrated Hamming block radius (`nearThreat`), L1a's benign confirmation is bypassed, falling through to the full L1b hyperplane and centroid veto evaluation.
+
+### D. Ed25519 Forensic Causality Proofs
+Every mitigation verdict emits a cryptographically attested forensic ticket:
+- Requires a non-nil 32-byte trusted root public key (strictly rejects empty or malformed keys).
+- Binds the event parameters and SHA-256 digest of the payload directly in the proof.
+- Validates bit-exact deterministic offline replay even after live arena slots have cycled.
 
 ---
 
-## 4. Physical Silicon Benchmarks
+## 3. Empirical Evaluation & Real Data Benchmark
 
-Measured on physical hardware (**Intel Core i9-14900K**, 24 cores / 32 threads, Linux 6.8, Go 1.27, `GOAMD64=v3`):
+All metrics are measured on **authentic execution traces and held-out test sets** without synthetic or pseudo-random data:
 
-| Test / Operation | Cadence / Throughput | Latency per Op | Heap Allocations |
+### A. LOLBAS & Reverse Shell Held-Out Evaluation
+- **Dataset:** 136 unique real-world command lines deduplicated from production attack logs (`reverse_shells.jsonl`).
+- **Partitioning:** 95 samples used for training centroids; **41 samples completely held out** (zero template overlap with training data).
+- **Detection Results (41 held-out shells):**
+  - **Block Rate:** **97.56%** (40/41)
+  - **Quarantine Rate:** **2.44%** (1/41)
+  - **Pass Rate:** **0.00%** (0/41)
+  - **Generalization Breakdown:** 18 blocked by L0 keywords, **22 blocked by L1b learned INT8 heads** (53.7% learned generalization beyond keyword matching).
+- **Mutation Robustness:** Evaluated on real IP and port mutated variants: **94.59% Block** (105/111), **5.41% Quarantine** (6/111), **0.00% Pass**.
+- **Benign Admin Commands:** Evaluated on 42 held-out benign system administration commands:
+  - **False Positive Block Rate:** **0.00%** (0/42 blocked)
+  - **Pass Rate:** **78.57%** (33/42 passed)
+  - **Quarantine Rate:** **21.43%** (9/42 quarantined for secondary inspection)
+
+### B. Netrack DNS C2 Benchmark
+- **Dataset:** 4,000 authentic DNS C2 tunnel queries (`validate.csv`) vs 1,000 real benign domains.
+- **Malicious C2 Detection (4,000 domains):**
+  - **Block Rate:** **99.97%** (3,999/4,000)
+  - **Pass Rate:** **0.03%** (1/4,000)
+  - **Breakdown:** 2,000 blocked by L0 suffix (`.hidemyself.org`), **1,999 blocked by L1b learned centroids** on `tuns.org` / `example.org` (99.95% learned).
+- **Benign Specificity (1,000 domains):**
+  - **Pass Rate:** **99.20%** (992/1,000)
+  - **False Positive Block Rate:** **0.80%** (8/1,000)
+
+### C. Hardware Latency & Throughput (Pure CPU)
+Measured on physical hardware (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0, `GOAMD64=v3`):
+
+| Operation | Latency per Op | Throughput per Core | Heap Allocations |
 | :--- | :---: | :---: | :---: |
-| **Reputation Lookup (`Match`)** | **13.5 Mops/s** | **85.1 ns/op** | **0 B/op (0 allocs)** |
-| **Benign DNS Inspection (`google.com`)** | **3.9 Mops/s** | **297.6 ns/op** | **0 B/op (0 allocs)** |
-| **Hostile C2 Tunnel Inspection** | **7.6 Mops/s** | **156.4 ns/op** | **0 B/op (0 allocs)** |
-| **ARCHTIME Entropy Computation** | **3.42 GB/s** | - | **0 B/op (0 allocs)** |
-| **SLM Forensic Decision (`c2slm`)** | - | **< 15 ms** | Zero leak (< 600 MB VmRSS) |
+| **L0 Reflex Substring Filter** | **1.07 µs/op** | $\approx 934,000\text{ ops/s}$ | **0 B/op (0 allocs)** |
+| **Complete Cascade (Benign Command)** | **8.06 µs/op** | $\approx 124,000\text{ ops/s}$ | **0 B/op (0 allocs)** |
+| **Complete Cascade (DNS Query)** | **10.46 µs/op** | $\approx 95,600\text{ ops/s}$ | **0 B/op (0 allocs)** |
+| **Complete Cascade (Extended Payload Quarantine)** | **14.40 µs/op** | $\approx 69,400\text{ ops/s}$ | **0 B/op (0 allocs)** |
 
 ---
 
-## 5. Build, Test & Deployment
+## 4. Building & Running
 
-### Targeted Testing (Strict No-Massive-Recursive-Test Policy)
+### Prerequisites
+- Go 1.27.0 or higher.
+- Linux x86_64 (`GOAMD64=v3` recommended).
 
+### Compiling the Forge Tool
 ```bash
-# 1. Unit and concurrency tests on core pipeline
-GOWORK=off go test -race -count=1 .
-
-# 2. Concurrency tests for SOC, MCP Guard and Web dashboard
-GOWORK=off go test -race -count=1 ./socagent ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web
-
-# 3. Micro-benchmarks proving 0 B/op on the hot path
-GOWORK=off go test -bench=. -benchmem -run=^$ .
-
-# 4. Static verification
-GOWORK=off go vet . ./cmd/c2agent ./socagent ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web
+go build -ldflags="-s -w" -o bin/c2forge ./cmd/c2forge
 ```
 
-### Acquiring Reference Model Weights (GGUF)
-
-Download the reference arbitration weights **Qwen2.5-0.5B-Instruct-GGUF** (468 MB) directly from HuggingFace:
-
+### Forging Knowledge Bases
+To generate the three `.c2book` files from training data:
 ```bash
-make download-model
-# Fetches models/qwen2.5-0.5b-instruct-q4_k_m.gguf (468 MB)
+./bin/c2forge -wittgenstein-floppies \
+  -wittgenstein-data /path/to/data/wittgenstein \
+  -out-dir /path/to/output/floppies
 ```
 
-The daemon automatically resolves weights from `./models/`, via `C2BLUE_MODEL_PATH`, or via `-model <path>`.
-
-### Compiling Standalone Binaries
-
+### Running Targeted Tests
 ```bash
-# C2 Network Inspection Agent
-GOWORK=off CGO_ENABLED=0 GOAMD64=v3 go build -ldflags="-s -w" -o bin/c2agent ./cmd/c2agent
+# 1. Internal Engine unit and race tests
+go test -race -count=1 ./internal/engine/...
 
-# MCP Security Guard Proxy
-GOWORK=off go build -ldflags="-s -w" -o bin/c2blue-mcp-guard ./cmd/c2blue-mcp-guard
+# 2. Floppy builder integration tests
+go test -race -count=1 ./cmd/c2forge/...
 
-# SOC Web Dashboard
-GOWORK=off go build -ldflags="-s -w" -o bin/c2blue-arena-web ./cmd/c2blue-arena-web
+# 3. Root package integration tests & benchmarks
+go test -race -count=1 .
 ```
 
 ---
 
-## 6. License & Authors
+## 5. Repository Structure
 
-Engineered as part of sovereign autonomous cyberdefense research for the **Wittgenstein AI Tournament**.  
-Contributors: Hazyhaar, Astra (GPT-6), DeepSeek-V3, Qwen-2.5, Gemini.  
-Licensed under the [MIT License](LICENSE).
+```
+pkg/c2blue55/
+├── cmd/
+│   └── c2forge/               # CLI utility: floppy forging, pyramid compilation, evaluation
+│       ├── floppy_builder.go  # Empirical training and floppy generation
+│       ├── main.go            # Entrypoint
+│       └── pyramid.go         # Hierarchical delta compilation
+├── internal/
+│   └── engine/                # Core low-level algorithmic engine
+│       ├── arena_pool.go      # 4KB atomic seqlock ring buffer (zero race)
+│       ├── delta_catalog.go   # LSM catalog and delta indexing
+│       ├── drift_guard.go     # Online statistical drift detector
+│       ├── feature_extractor.go # Zero-alloc 512-dim embedding extraction
+│       ├── floppy_engine.go   # .c2book mmap loader, HMAC-SHA256, RCU slot
+│       ├── forensic_proof.go  # Ed25519 signature and verification chain
+│       ├── inference_cascade.go # Dual-layer cascade orchestrator
+│       ├── pyramid_engine.go  # LSM delta merge and pyramid trees
+│       ├── rabitq512.go       # 512-bit Fast Hadamard Transform & quantization
+│       ├── server_oracle.go   # Server-side consensus and authority
+│       └── wittgenstein_corpus.go # Authentic dataset loaders and splitters
+├── c2blue55.go                # Public module API and configuration
+├── router.go                  # Subsystem multiplexing (SubProc, SubNet, SubMCP)
+├── lsm_receiver.go            # Continuous telemetry ingestion receiver
+├── subsystems.go              # Subsystem protocol definitions
+├── wittgenstein_bench_test.go # Comprehensive benchmark on real held-out data
+├── LICENSE                    # MIT License
+├── README.md                  # Canonical English documentation
+└── README.fr.md               # Canonical French documentation
+```
+
+---
+
+## 6. License
+
+This project is licensed under the [MIT License](LICENSE).
