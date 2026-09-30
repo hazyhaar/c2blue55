@@ -2,119 +2,284 @@
 
 *Architectural Determinism, Zero-Allocation Ingestion, and Low-Latency Remediation Decisions in Threat Inspection*
 
-> Technical Monograph & Architecture Review
-Focus: Security Engineering, Low-Latency Telemetry Inspection, and Deterministic Remediation Decisions
-Core Reference Implementation: c2blue55 (Pure Go 1.27 / GOAMD64=v3 / AVX2)
+> **Technical Monograph & Architecture Review**  
+> **Focus:** Security Engineering, Low-Latency Telemetry Inspection, and Deterministic Remediation Decisions  
+> **Reference Implementation:** `c2blue55` (Pure Go 1.27 / `GOAMD64=v3` / AVX2)
+
+---
 
 ## 1. The Fallacy of Performance as a Secondary Feature
 
-In contemporary software engineering, micro-optimization is frequently dismissed as premature or pedantic. The prevailing consensus suggests that throughput, cache alignment, and allocation suppression are purely economic concerns, subservient to high-level abstractions, developer velocity, and rapid iteration. In general-purpose enterprise computing, suboptimal latencies can often be mitigated by horizontally scaling hardware. However, within defensive cybersecurity—specifically in real-time telemetry inspection, host activity profiling, and tool invocation monitoring—this dichotomy collapses entirely.
+In contemporary software engineering, micro-optimization is frequently dismissed as premature or pedantic. The prevailing consensus suggests that throughput, cache alignment, and allocation suppression are purely economic concerns, subservient to high-level abstractions, developer velocity, and rapid iteration. In general-purpose enterprise computing, suboptimal latencies can often be mitigated by horizontally scaling hardware.
 
-Performance in security software is not merely a quality-of-service attribute; it is a foundational security primitive. When an intrusion detection engine or behavior profiler fails to operate within predictable microsecond bounds (typically under 10 to 25 microseconds per event), it introduces severe failure modes: queue backlog saturation, non-deterministic observation jitter, and vulnerability to asymmetric resource exhaustion attacks. Micro-optimization is the deliberate elimination of structural uncertainty. By mastering CPU cache hierarchies, memory layout, and branch predictability, the defender aims to ensure that the observation mechanism itself resists degradation, destabilization, or evasion under load.
+However, within defensive cybersecurity—specifically in real-time telemetry inspection, host activity profiling, and tool invocation monitoring—this dichotomy collapses entirely.
+
+Performance in security software is not merely a quality-of-service attribute; it is a **foundational security primitive**. When an intrusion detection engine or behavior profiler fails to operate within predictable microsecond bounds (typically under 10 to 25 microseconds per event), it introduces severe failure modes:
+- **Queue backlog saturation** leading to event dropping;
+- **Non-deterministic observation jitter** that distorts time-series baselines;
+- **Vulnerability to asymmetric resource exhaustion attacks** (Denial-of-Inspection).
+
+Micro-optimization is the deliberate elimination of structural uncertainty. By mastering CPU cache hierarchies, memory layout, and branch predictability, the defender aims to ensure that the observation mechanism itself resists degradation, destabilization, or evasion under load.
+
+---
 
 ## 2. Micro-Architecture as an Attack Surface
 
 To comprehend why micro-optimization is a security imperative, one must analyze the physical failure modes of defensive systems operating under hostile conditions.
 
-### The Observer Effect in Telemetry Inspection (Architectural Analysis)
+### 2.1 The Observer Effect in Telemetry Inspection
 
-From an architectural standpoint, monitoring infrastructure must minimize its own operational footprint to avoid distorting the environment it is charged with protecting. When an inspection tool allocates dynamic memory or touches expansive data structures, it pollutes the CPU Level 1 and Level 2 data caches (L1D/L2), causes Translation Lookaside Buffer (TLB) misses, and invalidates branch predictor states. In high-throughput, low-latency environments, this monitoring jitter distorts statistical latency envelopes, generating false alarms during legitimate traffic bursts and degrading host throughput. Rigorous micro-architectural budgeting—keeping inspection latency strictly within bounded microsecond envelopes—aims to minimize the observational footprint of the defensive sensor on the host system.
+From an architectural standpoint, monitoring infrastructure must minimize its own operational footprint to avoid distorting the environment it is charged with protecting.
 
-### Allocation Pressure and the Realities of Managed Runtimes
+When an inspection tool allocates dynamic memory or touches expansive data structures, it triggers cascading micro-architectural side-effects:
+- It pollutes CPU Level 1 and Level 2 data caches (`L1D`/`L2`);
+- It causes Translation Lookaside Buffer (`TLB`) misses;
+- It invalidates hardware branch predictor states.
 
-c2blue55 is implemented in pure Go. Modern Go runtimes (Go 1.27) employ a concurrent tri-color mark-sweep garbage collector with stop-the-world pauses that are typically sub-millisecond (often well below 500 microseconds). However, the primary operational threat in a managed runtime is not a massive stop-the-world freeze, but allocation-induced worker cycle stealing (mark assists), cache line eviction, and scheduling non-determinism under adversarial load.
+In high-throughput, low-latency environments, this monitoring jitter distorts statistical latency envelopes, generating false alarms during legitimate traffic bursts and degrading host throughput. Rigorous micro-architectural budgeting—keeping inspection latency strictly within bounded microsecond envelopes—aims to minimize the observational footprint of the defensive sensor on the host system.
 
-When an adversary floods an inspection interface with high-velocity events designed to trigger heap allocations, the runtime forces allocating goroutines to assist with concurrent garbage collection. This steals CPU cycles directly from telemetry inspection threads, creating unpredictable tail latency spikes and buffer overflows. By enforcing strict zero-allocation (0 B/op) across its critical path, c2blue55 decouples the inspection hot path from garbage collection pacing debt. This ensures that the detection engine produces zero allocator churn, even while recognizing that background processes (such as logging and administrative RPC listeners) continue to execute on standard runtime services.
+### 2.2 Allocation Pressure and Managed Runtime Realities
 
-### Asymmetric Denial-of-Inspection
+The reference engine `c2blue55` is implemented in pure Go. Modern Go runtimes (Go 1.27) employ a concurrent tri-color mark-sweep garbage collector with stop-the-world pauses that are typically sub-millisecond (often well below 500 microseconds). 
 
-Security components operate under extreme algorithmic asymmetry. An attacker expends minimal bandwidth transmitting malicious inputs, while a naive inspection engine expends substantial computational resources parsing complex schemas, evaluating regular expressions, and copying memory. If the inspection cost per event exceeds the ingestion throughput budget, the system faces an unavoidable dilemma: fail-open (allowing uninspected traffic to pass) or fail-closed (halting legitimate business traffic). Micro-optimization restores computational symmetry by ensuring that the inspection cost of every nominal or malicious event remains strictly bounded.
+However, the primary operational threat in a managed runtime is not a massive stop-the-world freeze, but:
+1. **Allocation-induced worker cycle stealing** (`mark assists`);
+2. **Cache line eviction** caused by heap traversal;
+3. **Scheduling non-determinism** under adversarial traffic bursts.
+
+When an adversary floods an inspection interface with high-velocity events designed to trigger heap allocations, the runtime forces allocating goroutines to assist with concurrent garbage collection. This steals CPU cycles directly from telemetry inspection threads, creating unpredictable tail latency spikes and buffer overflows.
+
+By enforcing strict zero-allocation (`0 B/op`) across its critical path, `c2blue55` decouples the inspection hot path from garbage collection pacing debt. This ensures that the detection engine produces zero allocator churn, even while recognizing that background processes (such as logging and administrative RPC listeners) continue to execute on standard runtime services.
+
+### 2.3 Asymmetric Denial-of-Inspection
+
+Security components operate under extreme algorithmic asymmetry:
+- An **attacker** expends minimal bandwidth transmitting malicious inputs;
+- A **naive inspection engine** expends substantial computational resources parsing complex schemas, evaluating regular expressions, and copying memory.
+
+If the inspection cost per event exceeds the ingestion throughput budget, the system faces an unavoidable dilemma: **fail-open** (allowing uninspected traffic to pass) or **fail-closed** (halting legitimate business traffic). Micro-optimization restores computational symmetry by ensuring that the inspection cost of every nominal or malicious event remains strictly bounded.
+
+---
 
 ## 3. The Zero-Allocation Hot Path: Eliminating Heap Vulnerabilities
 
-The architecture of c2blue55 demonstrates how systematic allocation suppression structures a defensive engine around predictable memory layouts and deterministic evaluation steps rather than unconstrained heap pipelines.
+The architecture of `c2blue55` demonstrates how systematic allocation suppression structures a defensive engine around predictable memory layouts and deterministic evaluation steps rather than unconstrained heap pipelines.
 
-- Absolute Zero-Allocation (0 B/op): Across the entire critical ingestion path—from wire format parsing to vector quantization and rule evaluation—c2blue55 guarantees zero bytes allocated on the heap. Stack frames and pre-allocated circular buffers absorb all transient transformations, preventing memory fragmentation and eliminating heap exhaustion vectors.
+### 3.1 Absolute Zero-Allocation (`0 B/op`)
 
-- The 4MB Atomic Seqlock Ring Arena: To handle variable-length payloads up to 4KB without dynamic reallocations, c2blue55 maintains a statically bounded in-memory arena partitioned into 1,024 dedicated slots of 4,096 bytes each (ArenaPool). Ingestion follows an explicit multi-step seqlock protocol: writers reserve a slot via atomic index increment, acquire exclusive rights using a Compare-And-Swap (CAS) on the sequence counter (advancing to an odd value), copy payload bytes word-by-word into 64-bit atomic storage, compute the Castagnoli CRC32-C checksum, and release the sequence counter to an even epoch barrier (StorePayload). Readers verify sequence counter parity before and after reading, rejecting torn or wrapped slots without mutex locking overhead.
+Across the entire critical ingestion path—from wire format parsing to vector quantization and rule evaluation—`c2blue55` guarantees zero bytes allocated on the heap.
 
-- Fail-Closed Quarantine Decision: In high-throughput saturation scenarios where an arena slot wraps before an ongoing analytical stage completes, the epoch counter mismatch is detected immediately. The engine refuses to evaluate partial or compromised memory and fails closed: the event is assigned a VerdictQuarantine decision. Because the cascade is an algorithmic library component, enforcement (such as terminating a process or dropping a packet) is left to host orchestration or daemon integration.
+Stack frames and pre-allocated circular buffers absorb all transient transformations. This prevents memory fragmentation and permanently eliminates heap exhaustion vectors.
 
-- Memory-Mapped Knowledge Bases & Cryptographic Sealing: Pre-compiled threat models and nominal profiling baselines (.c2book / C2FLOP1) reside in memory-mapped read-only regions (mmap) pre-computed at build time (ARCHTIME). When a knowledge base carries the seal flag (FloppyFlagSealed), LoadFloppyMmap strictly requires an HMAC-SHA256 key covering the 32-byte header and body, returning ErrFloppyUnsealed if the key is missing or nil, and ErrFloppySeal on signature mismatch. Loading an unsealed disk with an HMAC key is likewise rejected with ErrFloppyUnsealed. Conversely, loading an unsealed disk without a key is accepted with Castagnoli CRC32C verification only, without cryptographic authentication (in practice, no caller outside test suites loads floppy disks at all). To ensure out-of-the-box reproducibility of tournament evaluation suites, WittgensteinFloppyKey logs a security warning and defaults to public demonstration keys when environment variables (C2BLUE_HMAC_KEY_*) are unset. In production deployments, setting C2BLUE_REQUIRE_SECURE_KEYS=1 (or C2BLUE_PRODUCTION=1) enforces strict key provision at two levels: WittgensteinFloppyKey refuses fallback to public demonstration keys (returning nil), and the binary loader (decodeFloppy) categorically rejects any unsealed disk (FloppyFlagSealed unset) with ErrFloppyUnsealed. This closes the loophole where simply clearing the header's seal flag (which is not covered by the body's CRC32C checksum) would allow an unsealed disk to load without authentication when a nil key is supplied.
+### 3.2 The 4MB Atomic Seqlock Ring Arena
+
+To handle variable-length payloads up to 4 KB without dynamic reallocations, `c2blue55` maintains a statically bounded in-memory arena partitioned into 1,024 dedicated slots of 4,096 bytes each (`ArenaPool`).
+
+Ingestion follows an explicit multi-step seqlock protocol:
+1. **Slot Reservation:** Writers reserve a slot via an atomic index increment.
+2. **Exclusive Acquisition:** Writers acquire exclusive rights using a Compare-And-Swap (`CAS`) on the sequence counter, advancing it to an odd value.
+3. **Word-by-Word Storage:** Payload bytes are copied word-by-word into 64-bit atomic storage, and the Castagnoli CRC32-C checksum is computed.
+4. **Epoch Release:** The writer releases the slot by incrementing the sequence counter to an even epoch barrier (`StorePayload`).
+
+Readers verify sequence counter parity before and after reading, rejecting torn or wrapped slots without mutex locking overhead.
+
+### 3.3 Fail-Closed Quarantine Decision
+
+In high-throughput saturation scenarios where an arena slot wraps before an ongoing analytical stage completes, the epoch counter mismatch is detected immediately.
+
+The engine refuses to evaluate partial or compromised memory and fails closed: the event is assigned a `VerdictQuarantine` decision.
+
+> **Operational Boundary:** Because the cascade is an algorithmic library component, enforcement (such as terminating a process or dropping a packet) is left to host orchestration or daemon integration.
+
+### 3.4 Memory-Mapped Knowledge Bases & Cryptographic Sealing
+
+Pre-compiled threat models and nominal profiling baselines (`.c2book` / `C2FLOP1`) reside in memory-mapped read-only regions (`mmap`) pre-computed at build time (`ARCHTIME`).
+
+The authentication model enforces strict cryptographic guarantees:
+- **Sealed Knowledge Bases:** When a knowledge base carries the seal flag (`FloppyFlagSealed`), `LoadFloppyMmap` strictly requires an HMAC-SHA256 key covering the 32-byte header and body, returning `ErrFloppyUnsealed` if the key is missing or `nil`, and `ErrFloppySeal` on signature mismatch. Loading an unsealed disk with an HMAC key is likewise rejected with `ErrFloppyUnsealed`.
+- **Unsealed Disks in Testing:** Conversely, loading an unsealed disk without a key is accepted with Castagnoli CRC32C verification only, without cryptographic authentication (in practice, no caller outside test suites loads floppy disks at all).
+- **Environment Keys & Demonstration Fallback:** To ensure out-of-the-box reproducibility of tournament evaluation suites, `WittgensteinFloppyKey` logs a security warning and defaults to public demonstration keys when environment variables (`C2BLUE_HMAC_KEY_*`) are unset.
+- **Production Mode:** In production deployments, setting `C2BLUE_REQUIRE_SECURE_KEYS=1` (or `C2BLUE_PRODUCTION=1`) enforces strict key provision at two levels:
+  1. `WittgensteinFloppyKey` refuses fallback to public demonstration keys (returning `nil`);
+  2. The binary loader (`decodeFloppy`) categorically rejects any unsealed disk (`FloppyFlagSealed` unset) with `ErrFloppyUnsealed`.
+
+This closes the loophole where simply clearing the header's seal flag (which is not covered by the body's CRC32C checksum) would allow an unsealed disk to load without authentication when a `nil` key is supplied.
+
+---
 
 ## 4. Structural Asymmetry: The Multi-Tiered Evaluation Cascade
 
-A common design failure in modern AI-driven security is the universal application of complex probabilistic inference across all inputs. c2blue55 replaces this inefficiency with a strict, asymmetric evaluation cascade, where the computational budget scales strictly with the ambiguity of the threat. Importantly, the synchronous L0/L1a/L1b cascade (CascadeEngine), memory-mapped floppy mounting, and provenance arbitration constitute a high-performance library component evaluated directly by the tournament benchmark harness (wittgenstein_bench_test.go), distinct from the repository's standalone daemons (such as c2agent, which relies on standalone codebooks, gray-zone deciders, and DNS server oracles).
+A common design failure in modern AI-driven security is the universal application of complex probabilistic inference across all inputs. `c2blue55` replaces this inefficiency with a strict, asymmetric evaluation cascade, where the computational budget scales strictly with the ambiguity of the threat.
 
-- Layer 0: Deterministic Substring, Structural Reflexes & Ontological Invariants (1.12 µs measured): The overwhelming majority of event traffic is unambiguous. Rather than complex state automata, Layer 0 performs case-folded substring matching (containsSubsliceFold) over fixed keyword tables, augmented with zero-allocation structural reflexes: netcatWithExec for shell invocation argument binding, and dnsHasEncodingChars for scanning non-LDH Base64 characters (+, /, =) at any position within raw QNAME labels, coupled with O(1) ontological state invariants (EvaluateOntology). In physical hardware benchmarks on an Intel Core i9-14900K (Linux 6.14, Go 1.27, GOAMD64=v3), Layer 0 executes in 1.12 µs/op (~895,000 ops/s per core, 0 B/op). Known reverse shells and certified benign primitives are resolved here, halting the pipeline before vector projection begins.
+> **Library Component Status:** The synchronous L0/L1a/L1b cascade (`CascadeEngine`), memory-mapped floppy mounting, and provenance arbitration constitute a high-performance library component evaluated directly by the tournament benchmark harness (`wittgenstein_bench_test.go`), distinct from the repository's standalone daemons (such as `c2agent`, which relies on standalone codebooks, gray-zone deciders, and DNS server oracles).
 
-- Layer 1a: Fast Conformal Vector Projection (RaBitQ 512D): Ambiguous events that pass Layer 0 are projected into a 512-dimensional vector space via structured randomized orthogonal projections (RaBitQ 512D) and quantized into 512-bit binary representations. Computing Hamming distances using hardware popcount intrinsics resolves geometric similarity against prototype distributions. Layer 1a is structurally subordinated to threat boundaries: it cannot issue a benign confirmation if the vector resides within the safety radius of an established threat centroid.
+```
+   Incoming Event
+         │
+         ▼
+┌──────────────────┐
+│     Layer 0      │ ──[ Clear Threat ]──► Hard Block (0 B/op, ~1.1 µs)
+│ Keyword & Reflex │ ──[ Clear Benign ]──► Immediate Pass
+└────────┬─────────┘
+         │ (Ambiguous)
+         ▼
+┌──────────────────┐
+│     Layer 1a     │
+│   RaBitQ 512D    │ ──[ Threat Radius ]─► Centroid Veto Block
+└────────┬─────────┘
+         │ (Near Boundary)
+         ▼
+┌──────────────────┐
+│     Layer 1b     │ ──[ Attack Pred ]──► Hard Block / Quarantine
+│  INT8 Linear     │ ──[ Benign Pred ]──► Allow / Exception
+└──────────────────┘
+```
 
-- Layer 1b: INT8 Quantized Heads, Apex Discrimination & Centroid Veto (8.63 µs – 16.32 µs Complete Cascade): Subtle semantic anomalies that survive Layer 1a are evaluated by quantized linear heads operating with centroid veto authority over memory-mapped .c2book floppies. All events reaching L1b without being blocked by centroid proximity are evaluated by the INT8 dot-product. For apex domains specifically, early INT8 computation is evaluated lazily only when an apex domain falls within the centroid block radius, verifying whether an exception applies before enforcing the veto. In physical hardware benchmarks on the author's reference platform (i9-14900K), traversing the complete cascade takes 8.63 µs/op (~115,800 ops/s per core) for benign commands and 11.68 µs/op (~85,600 ops/s per core) for DNS queries, rising to 16.32 µs/op (~61,300 ops/s) for extended payload quarantine, maintaining strict 0 B/op heap allocation throughout. Independent verifications on alternative hardware platforms observe latencies approximately 1.5x to 2x higher (typically ~1.7 to 2.7 µs for Layer 0, and 15 to 20 µs for the complete cascade), remaining within the 10 to 25 µs operational budget defined in Section 1.
+### 4.1 Layer 0: Deterministic Substring, Structural Reflexes & Ontological Invariants
+
+*Measured Latency: 1.12 µs/op (~895,000 ops/s per core, 0 B/op)*
+
+The overwhelming majority of event traffic is unambiguous. Rather than complex state automata, Layer 0 executes:
+- **Case-folded substring matching** (`containsSubsliceFold`) over fixed keyword tables;
+- **Zero-allocation structural reflexes:** `netcatWithExec` for shell invocation argument binding, and `dnsHasEncodingChars` for scanning non-LDH Base64 characters (`+`, `/`, `=`) at any position within raw QNAME labels;
+- **O(1) ontological state invariants** (`EvaluateOntology`).
+
+In physical hardware benchmarks on an Intel Core i9-14900K (Linux 6.14, Go 1.27, `GOAMD64=v3`), Layer 0 executes in **1.12 µs/op**. Known reverse shells and certified benign primitives are resolved here, halting the pipeline before vector projection begins.
+
+### 4.2 Layer 1a: Fast Conformal Vector Projection (RaBitQ 512D)
+
+Ambiguous events that pass Layer 0 are projected into a 512-dimensional vector space via structured randomized orthogonal projections (`RaBitQ 512D`) and quantized into 512-bit binary representations.
+
+Computing Hamming distances using hardware `POPCNT` intrinsics resolves geometric similarity against prototype distributions. Layer 1a is structurally subordinated to threat boundaries: it cannot issue a benign confirmation if the vector resides within the safety radius of an established threat centroid.
+
+### 4.3 Layer 1b: INT8 Quantized Heads, Apex Discrimination & Centroid Veto
+
+*Measured Latency: 8.63 µs – 16.32 µs complete cascade (0 B/op)*
+
+Subtle semantic anomalies that survive Layer 1a are evaluated by quantized linear heads operating with centroid veto authority over memory-mapped `.c2book` floppies. All events reaching L1b without being blocked by centroid proximity are evaluated by the INT8 dot-product.
+
+For apex domains specifically, early INT8 computation is evaluated lazily only when an apex domain falls within the centroid block radius, verifying whether an exception applies before enforcing the veto.
+
+**Hardware Latency Profile (Complete Cascade):**
+- **Benign Commands:** 8.63 µs/op (~115,800 ops/s per core)
+- **DNS Queries:** 11.68 µs/op (~85,600 ops/s per core)
+- **Extended Payload Quarantine:** 16.32 µs/op (~61,300 ops/s per core)
+
+Independent verifications on alternative hardware platforms observe latencies approximately 1.5x to 2x higher (~1.7 to 2.7 µs for Layer 0, and 15 to 20 µs for the complete cascade), remaining strictly within the 10 to 25 µs operational budget.
+
+---
 
 ## 5. Baseline Drift Supervision: A Modular Guard for Offline Recertification
 
-Systems that adapt their behavioral baselines dynamically are vulnerable to boiling-frog attacks, where an adversary incrementally shifts the profiling baseline through gradual, low-amplitude behavioral shifts until malicious operations are categorized as normal. To mitigate this risk, c2blue55 includes a modular statistical drift guard (CusumDriftGuard in internal/engine/drift_guard.go).
+Systems that adapt their behavioral baselines dynamically are vulnerable to boiling-frog attacks, where an adversary incrementally shifts the profiling baseline through gradual, low-amplitude behavioral shifts until malicious operations are categorized as normal.
 
-It is essential to clarify the operational boundary of this component: in accordance with strict ARCHTIME and zero-allocation principles, the runtime inference cascade operates exclusively over immutable, memory-mapped centroid floppies and does not mutate centroids inline during packet inspection. CusumDriftGuard is not wired into the line-rate evaluation path. Instead, it exists as a standalone supervisory component designed for offline training pipelines and periodic baseline recertification.
+To mitigate this risk, `c2blue55` includes a modular statistical drift guard (`CusumDriftGuard` in `internal/engine/drift_guard.go`).
 
-- Scalar Step Distance Monitoring: When candidate centroid updates are evaluated offline, the guard computes the Euclidean step distance between successive candidate vectors: d = ||mu_t - mu_{t-1}||_2. It enforces a maximum step threshold (MaxRadius) and a cumulative displacement budget ceiling (MaxDriftBudget).
+> **Architectural Boundary:** In accordance with strict ARCHTIME and zero-allocation principles, the runtime inference cascade operates exclusively over immutable, memory-mapped centroid floppies and does not mutate centroids inline during packet inspection. `CusumDriftGuard` is not wired into the line-rate evaluation path. Instead, it exists as a standalone supervisory component designed for offline training pipelines and periodic baseline recertification.
 
-- Scalar CUSUM Accumulation: A cumulative sum detector tracks step distance deltas: S_t^+ = max(0, S_{t-1}^+ + (d - slack)). Any sustained displacement burst exceeding threshold limits triggers an alert. Candidate updates are accepted or rejected on a per-step basis rather than triggering a permanent engine lock, providing supervisory control for operators generating new floppy releases.
+The guard implements two complementary monitoring mechanisms:
+1. **Scalar Step Distance Monitoring:** When candidate centroid updates are evaluated offline, the guard computes the Euclidean step distance between successive candidate vectors: $d = ||\mu_t - \mu_{t-1}||_2$. It enforces a maximum step threshold (`MaxRadius`) and a cumulative displacement budget ceiling (`MaxDriftBudget`).
+2. **Scalar CUSUM Accumulation:** A cumulative sum detector tracks step distance deltas: $S_t^+ = \max(0, S_{t-1}^+ + (d - \text{slack}))$. Any sustained displacement burst exceeding threshold limits triggers an alert. Candidate updates are accepted or rejected on a per-step basis rather than triggering a permanent engine lock, providing supervisory control for operators generating new floppy releases.
+
+---
 
 ## 6. Verifiable Causality: Stand-Alone Forensic Attestation and Deterministic Replay
 
-In incident response, an alert without verifiable causality is a liability. Black-box heuristic engines frequently produce alerts that cannot be explained, audited, or reproduced. c2blue55 enables post-incident verification of verdict determinism through self-contained cryptographic receipts rather than an interdependent blockchain ledger.
+In incident response, an alert without verifiable causality is a liability. Black-box heuristic engines frequently produce alerts that cannot be explained, audited, or reproduced. `c2blue55` enables post-incident verification of verdict determinism through self-contained cryptographic receipts rather than an interdependent blockchain ledger.
 
-- Stand-Alone Forensic Attestation (ForensicProof): For incident investigation and evidentiary compliance, c2blue55 provides a standalone attestation API (SignForensicProof). When invoked on demand by an operator, probe, or orchestration supervisor, it generates an independent, self-contained 230-byte canonical binary receipt. The receipt cryptographically binds the nanosecond event timestamp, the subsystem identifier, the 128-byte raw event structure, the SHA-256 hash of the payload, the active floppy CRC32 checksum, and the cascading decision rationale. Forensic receipts are generated on demand and do not run inline on every evaluated event, preserving the microsecond inference budget (in the current repository, this API is available at the library layer but not invoked by any active loop in the standalone daemons).
+### 6.1 Stand-Alone Forensic Attestation (`ForensicProof`)
 
-- Ed25519 Root Key Attestation: Receipts are digitally signed using a non-nil Ed25519 root private key, establishing individual cryptographic non-repudiation for incident response without the latency and state overhead of a continuous blockchain ledger.
+For incident investigation and evidentiary compliance, `c2blue55` provides a standalone attestation API (`SignForensicProof`).
 
-- Deterministic Verdict Verification (Forensic Replay): Because memory layouts, zero-allocation token scanning, and vector projections are strictly deterministic and independent of runtime heap state, replaying a sealed incident via ReplayForensicProof verifies the bit-for-bit reproducibility of the mitigation decision. The replay harness re-evaluates the sealed payload and context against the active knowledge base and confirms exact concordance across all four verdict fields: remediation action, decision stage, Hamming distance, and confidence score. A prerequisite for long-term verification is preserving the exact .c2book floppy image (verified by the FloppyCRC32 in the receipt) and the corresponding engine binary version.
+When invoked on demand by an operator, probe, or orchestration supervisor, it generates an independent, self-contained 230-byte canonical binary receipt. The receipt cryptographically binds:
+- The nanosecond event timestamp;
+- The subsystem identifier;
+- The 128-byte raw event structure;
+- The SHA-256 hash of the payload;
+- The active floppy CRC32 checksum;
+- The cascading decision rationale.
+
+Forensic receipts are generated on demand and do not run inline on every evaluated event, preserving the microsecond inference budget (in the current repository, this API is available at the library layer but not invoked by any active loop in the standalone daemons).
+
+### 6.2 Ed25519 Root Key Attestation
+
+Receipts are digitally signed using a non-nil Ed25519 root private key, establishing individual cryptographic non-repudiation for incident response without the latency and state overhead of a continuous blockchain ledger.
+
+### 6.3 Deterministic Verdict Verification (`ReplayForensicProof`)
+
+Because memory layouts, zero-allocation token scanning, and vector projections are strictly deterministic and independent of runtime heap state, replaying a sealed incident via `ReplayForensicProof` verifies the bit-for-bit reproducibility of the mitigation decision.
+
+The replay harness re-evaluates the sealed payload and context against the active knowledge base and confirms exact concordance across all four verdict fields:
+1. Remediation action;
+2. Decision stage;
+3. Hamming distance;
+4. Confidence score.
+
+A prerequisite for long-term verification is preserving the exact `.c2book` floppy image (verified by the `FloppyCRC32` in the receipt) and the corresponding engine binary version.
+
+---
 
 ## 7. Empirical Evaluation, Statistical Caveats, and Operational Trade-Offs
 
-To evaluate whether low-latency micro-architectural optimization translates into defensive efficacy, c2blue55 was evaluated on benchmark corpora combining deduplicated reverse shell attack payloads, a compiled DNS C2 query dataset, curated administrative command lines drawn from system documentation, and synthetically mutated variants. An objective engineering assessment requires acknowledging sample size limitations, reporting statistical confidence intervals, and evaluating operational friction alongside raw detection rates.
+To evaluate whether low-latency micro-architectural optimization translates into defensive efficacy, `c2blue55` was evaluated on benchmark corpora combining deduplicated reverse shell attack payloads, a compiled DNS C2 query dataset, curated administrative command lines drawn from system documentation, and synthetically mutated variants.
 
-Statistical Confidence and A Posteriori Calibration Caveat: Evaluated sets of 41 and 42 samples represent constrained sample sizes. For small samples, confidence intervals are necessarily broad: an observed 0.00% rate on 42 samples corresponds to an upper 95% Wilson confidence bound of 8.38%. Furthermore, because raw historical training logs are not distributed publicly with the open-source repository, third-party auditors cannot independently verify the absolute disjunction between training samples and evaluation sets.
+### 7.1 Statistical Confidence and A Posteriori Calibration Caveat
 
-Critically, from an experimental methodology perspective, several targeted structural refinements—specifically the apex domain corroboration rule, the TTY interactive quarantine bypass, and the L0 netcat permutation segmentation—were implemented after analyzing empirical failures observed on these evaluation datasets (the 8 concatenated dictionary domains, the 9 headless admin quarantines, and the 6 netcat flag variations). Consequently, these evaluation sets functioned as a calibration and development partition. The resulting 100.00% block and 0.00% false-positive metrics measure empirical fit on these known edge cases rather than provable out-of-distribution generalization. A rigorous validation of true generalizability will require evaluation against completely unobserved production corpora.
+Evaluated sets of 41 and 42 samples represent constrained sample sizes. For small samples, confidence intervals are necessarily broad: an observed 0.00% rate on 42 samples corresponds to an upper 95% Wilson confidence bound of 8.38%. Furthermore, because raw historical training logs are not distributed publicly with the open-source repository, third-party auditors cannot independently verify the absolute disjunction between training samples and evaluation sets.
 
-All metrics below are presented with exact sample counts and 95% Wilson score confidence intervals [95% CI]:
+Critically, from an experimental methodology perspective, several targeted structural refinements—specifically the apex domain corroboration rule, the TTY interactive quarantine bypass, and the L0 netcat permutation segmentation—were implemented after analyzing empirical failures observed on these evaluation datasets (the 8 concatenated dictionary domains, the 9 headless admin quarantines, and the 6 netcat flag variations).
 
-### Reverse Shell Payloads and Parametric Mutation Robustness
+Consequently, these evaluation sets functioned as a **calibration and development partition**. The resulting 100.00% block and 0.00% false-positive metrics measure empirical fit on these known edge cases rather than provable out-of-distribution generalization. A rigorous validation of true generalizability will require evaluation against completely unobserved production corpora.
 
-The host execution defense subsystem was tested against authentic reverse shells deduplicated from attack logs:
+### 7.2 Benchmark Results Summary
 
-- Reverse Shell Evaluation Partition (N=41): Evaluated on 41 unique command lines with zero template overlap with the 95 training samples. c2blue55 achieved a 100.00% block rate (41/41, 95% CI [91.43%, 100.00%]), a 0.00% quarantine rate (0/41, 95% CI [0.00%, 8.57%]), and a 0.00% pass rate (0/41, 95% CI [0.00%, 8.57%]). Decision triage was divided between Layer 0 deterministic keyword and netcat reflexes (20 blocks) and Layer 1b learned INT8 heads (21 blocks). As noted in the calibration caveat, these samples served as a development reference for rule tuning.
+All metrics below are presented with exact sample counts and 95% Wilson score confidence intervals:
 
-- Parametric Mutation Robustness (N=111): To evaluate resilience against evasion tactics, 111 synthetic variants were generated by substituting IP addresses and port numbers (including replacing the default port constant 4444) across known reverse shell templates via regular expressions (ipPortVariant). No shell paths, binary invocations, or execution arguments were modified. Against these 111 mutated variants, c2blue55 achieved a 100.00% hard block rate (111/111, 95% CI [96.65%, 100.00%]), with 0.00% quarantine (0/111, 95% CI [0.00%, 3.35%]) and 0.00% passes (0/111, 95% CI [0.00%, 3.35%]). The zero-allocation L0 command segmentation engine (netcatWithExec) captures parameter-shifted and piped invocations (e.g. nc -u <IP> <Port> -e /bin/bash | base64) directly at line rate, preventing evasion while maintaining deterministic microsecond processing.
+| Evaluation Partition | Sample Count (N) | Block Rate [95% CI] | Quarantine Rate [95% CI] | Pass Rate [95% CI] | Primary Decision Stage |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Reverse Shell Payloads** | 41 | **100.00%** [91.43%, 100.00%] | **0.00%** [0.00%, 8.57%] | **0.00%** [0.00%, 8.57%] | L0 Reflex (20) / L1b INT8 (21) |
+| **Parametric Shell Mutations** | 111 | **100.00%** [96.65%, 100.00%] | **0.00%** [0.00%, 3.35%] | **0.00%** [0.00%, 3.35%] | L0 `netcatWithExec` Reflex |
+| **DNS C2 Tunneling Queries** | 4,000 | **100.00%** [99.90%, 100.00%] | **0.00%** [0.00%, 0.10%] | **0.00%** [0.00%, 0.10%] | L0 Reflex (2,957) / L1b Centroid (1,043) |
+| **Benign Domain Baseline** | 1,000 | **0.00%** [0.00%, 0.38%] | **0.00%** [0.00%, 0.38%] | **100.00%** [99.62%, 100.00%] | L1b Apex Discrimination |
+| **Admin Commands (Raw Headless)** | 42 | **0.00%** [0.00%, 8.38%] | **21.43%** [11.71%, 35.94%] | **78.57%** [64.06%, 88.29%] | Ambiguous Quarantine Band |
+| **Admin Commands (Interactive TTY)** | 42 | **0.00%** [0.00%, 8.38%] | **0.00%** [0.00%, 8.38%] | **100.00%** [91.62%, 100.00%] | `OntoVerdictAllow` Provenance |
 
-### DNS Command & Control (C2) and Domain Specificity
+---
 
-Network boundary inspection was evaluated on compiled DNS query datasets, comparing tunneling payloads against benign domain traffic:
+### 7.3 Detailed Subsystem Analysis
 
-- DNS C2 Tunneling Dataset (N=4,000): Across 4,000 DNS C2 tunnel queries compiled in validate.csv, the cascade achieved a 100.00% block rate (4,000/4,000, 95% CI [99.90%, 100.00%]) and a 0.00% pass rate (0/4,000, 95% CI [0.00%, 0.10%]). Layer 0 caught 2,957 queries through the cumulative effect of the known hostile tunnel domain keyword (hidemyself.org, covering 2,000 queries) and the non-LDH character reflex (dnsHasEncodingChars, matching +, /, or = at any position within the QNAME, which partially overlaps these queries), while Layer 1b learned centroids blocked the remaining 1,043 queries targeting shared tunnel domains (tuns.org, example.org).
+#### DNS Command & Control (C2) and the DGA Blind Spot
+Across 4,000 DNS C2 tunnel queries compiled in `validate.csv`, Layer 0 caught 2,957 queries through the cumulative effect of the known hostile tunnel domain keyword (`hidemyself.org`, covering 2,000 queries) and the non-LDH character reflex (`dnsHasEncodingChars`, matching `+`, `/`, or `=` at any position within the QNAME). Layer 1b learned centroids blocked the remaining 1,043 queries targeting shared tunnel domains (`tuns.org`, `example.org`).
 
-- Benign Domain Specificity (N=1,000): Evaluated on 1,000 benign domain queries compiled in validate.csv, c2blue55 achieved a 100.00% pass rate (1,000/1,000, 95% CI [99.62%, 100.00%]), with a 0.00% false positive block rate (0/1,000, 95% CI [0.00%, 0.38%]).
+**Resolution of DNS False Positives:** Prior classifier iterations exhibited an 0.80% false-positive block rate on multi-word concatenated dictionary domains (e.g. `sickbeard.com`, `weeklyfinancialsolutions.com`) whose vector representations intersected the decision boundary of tunnel projections (hypothesized to arise from multi-word n-gram densities mimicking high-entropy projections). To resolve this without sacrificing throughput, `c2blue55` implements zero-allocation apex domain discrimination (`isApexDomain`). For second-level registrable domains without deep subdomains, centroid proximity blocks by default **unless** the INT8 decision head explicitly certifies that the domain is benign and conforming to class prototypes (`predClass == 0 && conforms`).
 
-- Resolution of DNS False Positives via Structural Apex Discrimination & DGA Blind Spot: Prior classifier iterations exhibited an 0.80% false-positive block rate on multi-word concatenated dictionary domains (e.g. sickbeard.com, weeklyfinancialsolutions.com) whose vector representations intersected the decision boundary of tunnel projections (hypothesized to arise from multi-word n-gram densities mimicking high-entropy projections). To resolve this without sacrificing throughput, c2blue55 implements zero-allocation apex domain discrimination (isApexDomain). For second-level registrable domains without deep subdomains, centroid proximity blocks by default UNLESS the INT8 decision head explicitly certifies that the domain is benign AND conforming to class prototypes (predClass == 0 && conforms). If the head predicts hostile or predicts benign without prototype conformity, the centroid block remains in force. This structural rule completely eliminated all 8 false positive blocks while preserving 100.00% tunnel interception.
-Architectural Limitation on DGA: Because the apex rule assumes that covert channels require deep subdomain labels to encode exfiltrated payloads, it effectively weakens direct centroid-based blocking against Domain Generation Algorithms (DGA), which register disposable apex domains directly. DGA domains lacking deep subdomains must rely entirely on INT8 hyperplane classification or a specialized upstream DGA classifier.
+> **Architectural Limitation on DGA:** Because the apex rule assumes that covert channels require deep subdomain labels to encode exfiltrated payloads, it effectively weakens direct centroid-based blocking against Domain Generation Algorithms (DGA), which register disposable apex domains directly. DGA domains lacking deep subdomains must rely entirely on INT8 hyperplane classification or a specialized upstream DGA classifier.
 
-### Administrative Command Lines: Baseline Sensitivity vs. Process Provenance
+#### Administrative Commands: Baseline Sensitivity vs. Process Provenance
+When command-line text is evaluated in total isolation without host provenance (Raw Headless), routine administrative commands (such as inspecting temp files, querying network interfaces, or piping logs) share structural syntax with LOLBAS discovery patterns, routing 21.43% of benign commands (9/42) to quarantine.
 
-The evaluation corpus includes 42 curated benign administrative command lines drawn from standard Linux and Windows documentation (including systemd, coreutils, apt, docker, and kubectl; representing curated single-line administration commands rather than an automated capture of a live enterprise fleet):
+On the 103-sample benign training set evaluated without provenance context, the unaugmented engine routes 15 commands to quarantine (14.56%) and triggers 1 hard false-positive block on a valid administrative command (`Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5`). This confirms that zero false-positive blocking is not an inherent property of the raw text classifier alone, but strictly contingent upon host execution context.
 
-- Raw Headless Baseline (Without Provenance Context, N=42): When command-line text is evaluated in total isolation without host provenance, c2blue55 records a 0.00% false positive block rate (0/42, 95% CI [0.00%, 8.38%]), with 78.57% immediate pass (33/42, 95% CI [64.06%, 88.29%]) and 21.43% routed to fail-safe quarantine (9/42, 95% CI [11.71%, 35.94%]). This sensitivity arises because routine administrative commands (such as inspecting temp files, querying network interfaces, or piping logs) share structural syntax with LOLBAS discovery patterns.
+#### Operational Friction, TTY Evasion Trade-Off & Broad Subsystem Target Classification
+In enterprise infrastructure, diverting 21.43% of routine administrative commands to quarantine imposes substantial friction (analyst alert fatigue, workflow delays, SOC triage queues). To eliminate this burden, `c2blue55` establishes process provenance context (`DeriveCascadeContext`).
 
-- Baseline Friction on Training Commands (N=103): Evidence of baseline sensitivity appears when evaluating the 103-sample benign training set without provenance context: the unaugmented engine routes 15 commands to quarantine (14.56%) and triggers 1 hard false-positive block on a valid administrative command (Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5). This confirms that zero false-positive blocking is not an inherent property of the raw text classifier alone, but strictly contingent upon host execution context.
+Ontological evaluation yields an allow verdict (`OntoVerdictAllow`) only when strict conditions are met cumulatively:
+1. **Interactive Session:** Verified TTY presence, login UID, and lack of setuid elevation (`EUID == UID`);
+2. **Target Classification:** Execution of a target classified as `TgtBinSystem`;
+3. **Absence of Hostile Indicators:** No `kworker` spoofing, no anonymous `memfd_create` execution, no deleted binary on disk, and no writable-executable (`W+X`) memory mappings.
 
-- Operational Friction, TTY Evasion Trade-Off & Broad Subsystem Target Classification (`DeriveCascadeContext`): In enterprise infrastructure, diverting 21.43% of routine administrative commands to quarantine imposes substantial friction (analyst alert fatigue, workflow delays, SOC triage queues). To eliminate this burden, c2blue55 establishes process provenance context (DeriveCascadeContext). Ontological evaluation yields an allow verdict (OntoVerdictAllow) only when strict conditions are met cumulatively: (1) an authenticated interactive session (verified TTY presence, login UID, and lack of setuid elevation: EUID == UID), (2) execution of a target classified as TgtBinSystem, and (3) complete absence of hostile process indicators (no kworker spoofing, no anonymous memfd_create execution, no deleted binary on disk, and no writable-executable W+X memory mappings). When satisfied, OntoVerdictAllow unconditionally disables the ambiguous quarantine band (13 to 24 bits Hamming distance). The INT8 head is subsequently evaluated: it intervenes only if it predicts an attack (blocking if conforming, quarantining if non-conforming). Crucially, any benign prediction from the INT8 head (predClass == 0), whether conforming or not, passes immediately. Evaluating the 42 curated administrative commands within this certified interactive TTY context yields a 100.00% pass rate (42/42, 95% CI [91.62%, 100.00%]) with 0.00% quarantine (0/42, 95% CI [0.00%, 8.38%]).
-Operational Trade-Off & Subsystem Scope: In the implementation, deriveCascadeOntoKey unconditionally maps any event from the process subsystem (Subsystem == SubProc) to TgtBinSystem without inspecting filesystem paths. Only temporary execution directories (/tmp/, /var/tmp/, /dev/shm/) are screened out indirectly via CtxTmpResidence. Consequently, binaries located in user home directories (/home/...), /opt/, or /usr/local/ are also classified as TgtBinSystem and benefit from the benignity axiom in interactive TTY sessions. Suppressing the quarantine band under interactive sessions thus introduces an expanded evasion window: an adversary operating inside an authenticated interactive shell executing an arbitrary binary from a user directory without hostile memory flags is completely exempt from the 13–24 distance quarantine band. Detection relies exclusively on the strict centroid block radius (<= 12) or an explicit hostile classification (predClass == 1) by the INT8 head. If an unknown hostile payload falls in the 13–24 band and receives an INT8 prediction of class 0 (even non-conforming), it passes without quarantine. Additionally, the test harness applies a generic /usr/bin/bash provenance across the administrative corpus, including PowerShell commands—a laboratory simplification that should be replaced with native kernel auditd/ETW provenance in production.
+When satisfied, `OntoVerdictAllow` unconditionally disables the ambiguous quarantine band (13 to 24 bits Hamming distance). Any benign prediction from the INT8 head (`predClass == 0`), whether conforming or not, passes immediately. All 42 curated administrative commands pass without quarantine.
+
+> **Operational Trade-Off & Subsystem Scope:** In the implementation, `deriveCascadeOntoKey` unconditionally maps any event from the process subsystem (`Subsystem == SubProc`) to `TgtBinSystem` without inspecting filesystem paths. Only temporary execution directories (`/tmp/`, `/var/tmp/`, `/dev/shm/`) are screened out indirectly via `CtxTmpResidence`.  
+> Consequently, binaries located in user home directories (`/home/...`), `/opt/`, or `/usr/local/` are also classified as `TgtBinSystem` and benefit from the benignity axiom in interactive TTY sessions.  
+> Suppressing the quarantine band under interactive sessions thus introduces an **expanded evasion window**: an adversary operating inside an authenticated interactive shell executing an arbitrary binary from a user directory without hostile memory flags is completely exempt from the 13–24 distance quarantine band. Detection relies exclusively on the strict centroid block radius ($\le 12$) or an explicit hostile classification (`predClass == 1`) by the INT8 head. If an unknown hostile payload falls in the 13–24 band and receives an INT8 prediction of class 0 (even non-conforming), it passes without quarantine.
+
+---
 
 ## 8. Conclusion: Predictability as the Foundation of Telemetry Inspection
 
-The engineering discipline underpinning c2blue55 demonstrates that micro-optimization is not an aesthetic indulgence, but a practical prerequisite for reliable defensive architecture. By enforcing zero heap allocations across critical paths, bounding memory access to static seqlock arenas, and implementing asymmetric tiered cascades, defensive systems eliminate allocator-induced latency jitter and establish bounded, deterministic execution guarantees on the critical path.
+The engineering discipline underpinning `c2blue55` demonstrates that micro-optimization is not an aesthetic indulgence, but a practical prerequisite for reliable defensive architecture.
+
+By enforcing zero heap allocations across critical paths, bounding memory access to static seqlock arenas, and implementing asymmetric tiered cascades, defensive systems eliminate allocator-induced latency jitter and establish bounded, deterministic execution guarantees on the critical path.
 
 While external host perturbation and behavior under adversarial saturation require dedicated benchmark setups, eliminating dynamic allocations and structuring inspection into asymmetric layers establishes measurable, reproducible execution budgets. Principled low-level systems engineering and transparent empirical evaluation remain essential foundations for resilient telemetry inspection.
-
