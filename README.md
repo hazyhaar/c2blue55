@@ -73,7 +73,7 @@ The synchronous detection engine unifies three distinct operational subsystems i
        │ Ed25519 Attested Forensic Proof (ForensicProof)        │
        │ - Event timestamp, subsystem, action, verdict, distance│
        │ - SHA-256 payload binding & signature verification     │
-       │ - Bit-exact deterministic replay validation            │
+       │ - Deterministic verdict replay validation              │
        └────────────────────────────────────────────────────────┘
 ```
 
@@ -235,12 +235,12 @@ pkg/c2blue55/
 │   └── goclassifier/          # Embedded standalone FHT512, RaBitQ conformal probe & MIT license
 ├── socagent/                  # Dedicated SOC telemetry ingestion and event dispatcher
 ├── testdata/                  # Packaged authentic datasets & pre-compiled floppies (1.3 MB)
-│   └── wittgenstein/          # Held-out LOLBAS, DNS C2 validate.csv, sealed .c2book disks
+│   └── wittgenstein/          # Evaluation corpora (LOLBAS, DNS C2 validate.csv, sealed .c2book disks)
 ├── c2blue55.go                # Public module API and configuration
 ├── router.go                  # Subsystem multiplexing (SubProc, SubNet, SubMCP)
 ├── lsm_receiver.go            # Continuous telemetry ingestion receiver
 ├── subsystems.go              # Subsystem protocol definitions
-├── wittgenstein_bench_test.go # Comprehensive benchmark on real held-out data
+├── wittgenstein_bench_test.go # Comprehensive benchmark on evaluation corpora
 ├── LICENSE                    # MIT License
 ├── README.md                  # Canonical English documentation
 └── README.fr.md               # Canonical French documentation

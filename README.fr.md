@@ -73,7 +73,7 @@ Le moteur synchrone unifie trois sous-systèmes opérationnels distincts dans un
        │ Preuve Forensique Attestée Ed25519 (ForensicProof)     │
        │ - Horodatage, sous-système, action, verdict, distance  │
        │ - Empreinte SHA-256 de la charge & signature racine    │
-       │ - Validation par rejeu déterministe bit-à-bit          │
+       │ - Validation par rejeu déterministe du verdict         │
        └────────────────────────────────────────────────────────┘
 ```
 
@@ -235,12 +235,12 @@ pkg/c2blue55/
 │   └── goclassifier/          # Noyau FHT512, sonde conforme RaBitQ embarquée et licence MIT
 ├── socagent/                  # Connecteur d'ingestion et dispatch SOC dédié
 ├── testdata/                  # Jeux de données réels et disquettes pré-compilées embarqués (1,3 Mo)
-│   └── wittgenstein/          # LOLBAS tenu à l'écart, validate.csv DNS C2, disquettes .c2book scellées
+│   └── wittgenstein/          # Jeux d'évaluation (LOLBAS, validate.csv DNS C2, disquettes .c2book scellées)
 ├── c2blue55.go                # API publique du module et configuration
 ├── router.go                  # Multiplexage des sous-systèmes (SubProc, SubNet, SubMCP)
 ├── lsm_receiver.go            # Récepteur d'ingestion continue de télémétrie
 ├── subsystems.go              # Définitions du protocole des sous-systèmes
-├── wittgenstein_bench_test.go # Banc de mesure complet sur données réelles
+├── wittgenstein_bench_test.go # Banc de mesure complet sur les jeux d'évaluation
 ├── LICENSE                    # Licence MIT
 ├── README.md                  # Documentation canonique en anglais
 └── README.fr.md               # Documentation canonique en français
