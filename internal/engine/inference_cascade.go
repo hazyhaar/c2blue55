@@ -332,19 +332,21 @@ func (ce *CascadeEngine) evaluateResolved(ev *Probe_event_t, payload []byte, cct
 	v.Stage = StageL1b
 
 	if disk != nil {
-		// Inférence linéaire entière DecisionHead (Zero-Alloc, INT8), calculée
-		// d'abord : elle arbitre le veto centroïde des noms de domaine apex.
-		predClass, _, conforms := disk.PredictINT8(features[:])
-
-		// 1. Recherche du centroïde RaBitQ le plus proche dans la disquette
+		// 1. Recherche du centroïde RaBitQ le plus proche dans la disquette (popcount L1D rapide)
 		match, dist, found := disk.SearchCentroid(&bitcode, 128)
 		if found {
 			v.HammingDist = dist
 			v.ThreatID = match.ThreatID
+
 			// Un nom enregistrable sans sous-domaine ne porte aucun canal
 			// d'encodage : la proximité d'un centroïde de tunnel n'y vaut veto
-			// que si la tête ne le certifie pas bénin et conforme.
-			apexCertified := ev.Subsystem == 3 && predClass == 0 && conforms && isApexDomain(payload)
+			// que si la tête ne le certifie pas bénin et conforme (évaluation paresseuse).
+			apexCertified := false
+			if dist <= disk.BlockRadius() && ev.Subsystem == 3 && isApexDomain(payload) {
+				predClass, _, conforms := disk.PredictINT8(features[:])
+				apexCertified = predClass == 0 && conforms
+			}
+
 			if dist <= disk.BlockRadius() && !apexCertified { // Proximité stricte avec un centroïde d'attaque réel
 				v.Action = ce.applyNonSoftening(v.Action, VerdictBlock)
 				v.Flags |= 0x0002 // FlagBlocked
@@ -361,6 +363,7 @@ func (ce *CascadeEngine) evaluateResolved(ev *Probe_event_t, payload []byte, cct
 		}
 
 		// 2. Décision de la tête INT8
+		predClass, _, conforms := disk.PredictINT8(features[:])
 		if predClass == 1 && conforms {
 			// Classe hostile certifiée conforme
 			v.Action = ce.applyNonSoftening(v.Action, VerdictBlock)
