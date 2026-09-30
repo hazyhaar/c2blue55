@@ -233,6 +233,9 @@ pkg/c2blue55/
 │   │   ├── server_oracle.go   # Server-side consensus and authority
 │   │   └── wittgenstein_corpus.go # Authentic dataset loaders and splitters
 │   └── goclassifier/          # Embedded standalone FHT512, RaBitQ conformal probe & MIT license
+├── docs/                      # Architectural monographs & tournament articles
+│   ├── c2blue55_wittgenstein_article.md # Formal submission article for Wittgenstein Tournament
+│   └── why_micro_optimization_is_a_security_choice.md # Technical monograph on zero-alloc security
 ├── socagent/                  # Dedicated SOC telemetry ingestion and event dispatcher
 ├── testdata/                  # Packaged authentic datasets & pre-compiled floppies (1.3 MB)
 │   └── wittgenstein/          # Evaluation corpora (LOLBAS, DNS C2 validate.csv, sealed .c2book disks)
@@ -248,6 +251,13 @@ pkg/c2blue55/
 
 ---
 
-## 6. License
+## 6. Publications & Monographs
+
+- [**Wittgenstein AI Tournament Article**](docs/c2blue55_wittgenstein_article.md): Architecture, formal evaluation on authentic datasets, and operational trade-offs.
+- [**Why Micro-Optimization is a Fundamental Security Choice**](docs/why_micro_optimization_is_a_security_choice.md): Technical monograph on architectural determinism, zero-allocation ingestion, and low-latency remediation decisions.
+
+---
+
+## 7. License
 
 This project is licensed under the [MIT License](LICENSE).

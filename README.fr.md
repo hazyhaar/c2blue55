@@ -233,6 +233,9 @@ pkg/c2blue55/
 │   │   ├── server_oracle.go   # Autorité et consensus serveur
 │   │   └── wittgenstein_corpus.go # Chargeurs et séparateurs de données réelles
 │   └── goclassifier/          # Noyau FHT512, sonde conforme RaBitQ embarquée et licence MIT
+├── docs/                      # Monographies d'architecture et articles de compétition
+│   ├── c2blue55_wittgenstein_article.md # Article formel de soumission au tournoi Wittgenstein
+│   └── why_micro_optimization_is_a_security_choice.md # Monographie technique sur la sécurité sans allocation
 ├── socagent/                  # Connecteur d'ingestion et dispatch SOC dédié
 ├── testdata/                  # Jeux de données réels et disquettes pré-compilées embarqués (1,3 Mo)
 │   └── wittgenstein/          # Jeux d'évaluation (LOLBAS, validate.csv DNS C2, disquettes .c2book scellées)
@@ -248,6 +251,13 @@ pkg/c2blue55/
 
 ---
 
-## 6. Licence
+## 6. Publications & Monographies
+
+- [**Article du tournoi AI Wittgenstein**](docs/c2blue55_wittgenstein_article.md) : Architecture, évaluation formelle sur données authentiques et compromis opérationnels.
+- [**Pourquoi la micro-optimisation est un choix fondamental de sécurité**](docs/why_micro_optimization_is_a_security_choice.md) : Monographie technique sur le déterminisme architectural, l'ingestion sans allocation et les décisions de remédiation à faible latence.
+
+---
+
+## 7. Licence
 
 Ce projet est distribué sous [Licence MIT](LICENSE).
