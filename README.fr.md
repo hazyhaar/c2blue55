@@ -103,27 +103,29 @@ Les charges utiles volumineuses (jusqu'à 4 096 octets) contournent les structur
 Pour parer aux évasions adverses où une charge hostile passerait l'étalonnage L1a tout en conservant une signature d'attaque, L1a est **strictement subordonné** :
 - Si un centroïde hostile connu se situe dans le rayon de blocage calibré (`nearThreat`), la confirmation bénigne de L1a est révoquée, escaladant vers l'évaluation complète de l'hyperplan et du veto par centroïde de L1b.
 
-### D. Chaîne de Preuve Forensique Ed25519
-Chaque décision de remédiation émet un ticket forensique vérifiable :
-- Exige une clé publique racine de confiance de 32 octets (rejette strictement toute clé nulle ou de taille invalide).
-- Liaison cryptographique des paramètres d'événement et du condensat SHA-256 de la charge dans la preuve.
-- Rejeu déterministe bit-à-bit validé après recyclage complet de l'arène.
+### D. Attestation Forensique Autonome Ed25519 (`SignForensicProof`)
+Pour l'auditabilité post-incident et la non-répudiation des preuves, le moteur offre une API d'attestation autonome :
+- Déclenchée à la demande par un opérateur, une sonde ou un superviseur d'orchestration, elle génère un reçu binaire canonique indépendant de 230 octets.
+- Signée numériquement avec une clé racine de confiance Ed25519 non nulle (rejette strictement toute clé vide ou de taille invalide).
+- Lie directement dans la preuve les paramètres de l'événement, le condensat SHA-256 de la charge utile et le CRC32 de la disquette active.
+- S'exécute hors du chemin chaud afin de préserver le budget d'inférence en microsecondes sans pénalité de signature par paquet.
+- Valide le rejeu déterministe bit-à-bit après recyclage complet des fentes de l'arène.
 
 ---
 
 ## 3. Évaluation Empirique & Calibrage du Banc
 
-Les métriques d'évaluation combinent des traces réelles de production (attaques LOLBAS, tunnels DNS Netrack, domaines Alexa/Tranco), des lignes de commande d'administration représentatives rédigées d'après la documentation technique, et des variantes d'attaques générées synthétiquement par substitution paramétrique. Comme documenté dans la réserve D, plusieurs règles structurelles ciblées ont été calibrées sur ces jeux lors du développement du moteur :
+Les métriques d'évaluation combinent des lignes de commande de reverse shells réels dédupliquées (`reverse_shells.jsonl`), un jeu compilé de requêtes DNS de 4 000 tunnels et 1 000 domaines bénins (`validate.csv`), des commandes d'administration système rédigées d'après la documentation technique, et des variantes d'attaques générées synthétiquement par substitution paramétrique. Comme documenté dans la réserve D, plusieurs règles structurelles ciblées ont été calibrées sur ces jeux lors du développement du moteur :
 
 ### A. Évaluation LOLBAS & Reverse Shells
-- **Jeu de données :** 136 lignes de commande réelles dédupliquées issues de traces de production (`reverse_shells.jsonl`).
-- **Partitionnement :** 95 échantillons pour l'apprentissage des centroïdes ; **41 échantillons évalués** (aucun chevauchement de gabarit avec l'apprentissage).
+- **Jeu de données :** 136 lignes de commande réelles dédupliquées issues de traces de capture (`reverse_shells.jsonl`).
+- **Partitionnement :** 95 échantillons d'apprentissage ; **41 échantillons d'évaluation** (partitionnés sans aucun chevauchement de gabarit avec l'apprentissage).
 - **Résultats de Détection (41 shells d'évaluation, N=41) :**
   - **Taux de Blocage :** **100.00 %** (41/41, IC Wilson 95 % [91.43 %, 100.00 %])
   - **Taux de Quarantaine :** **0.00 %** (0/41, IC Wilson 95 % [0.00 %, 8.57 %])
   - **Taux de Passage :** **0.00 %** (0/41, IC Wilson 95 % [0.00 %, 8.57 %])
-  - **Décomposition de la Généralisation :** 20 menaces bloquées par mots-clés/réflexes L0, **21 menaces bloquées par la tête INT8 apprise L1b** (51.2 % de généralisation au-delà du mot-clé).
-- **Robustesse aux Mutations Paramétriques (N=111) :** Évalué sur 111 variantes générées synthétiquement par substitution d'adresses IP et de ports (incluant le remplacement de la constante 4444) sur les gabarits de charges utiles via l'expression régulière `ipPortVariant`. Aucun chemin de shell, commande ou argument d'exécution n'est modifié : **100.00 % de Blocage** (111/111, IC 95 % [96.66 %, 100.00 %]), **0.00 % de Quarantaine** (0/111, IC 95 % [0.00 %, 3.34 %]), **0.00 % de Passage**.
+  - **Décomposition de la Décision :** 20 menaces bloquées par mots-clés/réflexes L0, **21 menaces bloquées par la tête INT8 apprise L1b** (51.2 % de détection au-delà du simple mot-clé).
+- **Robustesse aux Mutations Paramétriques (N=111) :** Évalué sur 111 variantes générées synthétiquement par substitution d'adresses IP et de ports (incluant le remplacement de la constante 4444) sur les gabarits de charges utiles via l'expression régulière `ipPortVariant`. Aucun chemin de shell, commande ou argument d'exécution n'est modifié : **100.00 % de Blocage** (111/111, IC 95 % [96.65 %, 100.00 %]), **0.00 % de Quarantaine** (0/111, IC 95 % [0.00 %, 3.35 %]), **0.00 % de Passage**.
 - **Commandes d'Administration Système (N=42) :** Évalué sur 42 lignes de commande d'administration rédigées d'après la documentation des outils (coreutils, systemd, docker, kubectl, apt ; ne constitue pas une capture d'un parc en production) :
   - **En Session Interactive Authentifiée (`DeriveCascadeContext` / TTY) :**
     - **Taux de Passage :** **100.00 %** (42/42 acceptées, IC Wilson 95 % [91.62 %, 100.00 %])
@@ -134,7 +136,7 @@ Les métriques d'évaluation combinent des traces réelles de production (attaqu
     - **Taux de Quarantaine :** **21.43 %** (9/42 quarantaine de sécurité fail-safe, IC Wilson 95 % [11.71 %, 35.94 %])
     - **Taux de Faux Positif de Blocage :** **0.00 %** (0/42, IC Wilson 95 % [0.00 %, 8.38 %])
 
-### B. Banc Netrack DNS C2 sur Données Réelles
+### B. Banc Netrack DNS C2
 - **Jeu de données :** 4 000 requêtes de tunnels C2 réels (`validate.csv`) contre 1 000 domaines bénins réels.
 - **Détection C2 Malveillant (N=4 000 domaines) :**
   - **Taux de Blocage :** **100.00 %** (4 000/4 000, IC Wilson 95 % [99.90 %, 100.00 %])
@@ -157,13 +159,13 @@ Mesuré sur processeur physique (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0
 ### D. Réserves Méthodologiques, Analyse Opérationnelle & Limites Réelles
 
 1. **Réglage a Posteriori & Réserve sur les Jeux d'Évaluation :**
-   Les règles structurelles introduites (l'exception de domaine apex corroborée par la tête INT8, le contournement de quarantaine en session TTY interactive et le découpage L0 des permutations netcat) ont été conçues après l'examen direct des échecs observés sur les bancs de test (les 8 domaines dictionnaires concaténés bloqués, les 9 commandes d'administration headless en quarantaine et les 6 variantes d'options netcat). Ces jeux ont ainsi fonctionné comme des partitions de calibration/développement résiduelles. Les scores parfaits de 100 % et 0 % mesurent l'ajustement empirique à ces cas limites identifiés et non une généralisation stricte hors-distribution, qui nécessitera une évaluation sur des données de production complètement inédites.
+   Les règles structurelles ciblées — précisément la règle de domaine apex (où la proximité d'un centroïde bloque par défaut sauf si la tête INT8 certifie expressément la bénignité et la conformité), la désactivation de la quarantaine sous session TTY (où l'autorisation ontologique désactive inconditionnellement la bande suspecte 13–24, ne laissant que les prédictions hostiles INT8 pour bloquer ou isoler) et le découpage L0 des permutations netcat — ont été conçues après l'examen direct des échecs observés sur les bancs de test (les 8 domaines dictionnaires concaténés bloqués, les 9 commandes d'administration headless en quarantaine et les 6 variantes d'options netcat). Ces jeux ont ainsi fonctionné comme des partitions de calibration/développement résiduelles. Les scores parfaits de 100 % et 0 % mesurent l'ajustement empirique à ces cas limites identifiés et non une généralisation stricte hors-distribution, qui nécessitera une évaluation sur des données de production complètement inédites.
 2. **Faux Positifs Résiduels sur les Commandes d'Administration Brutes :**
    L'évaluation de lignes de commande en isolation textuelle sans contexte de provenance présente une friction réelle. Sur la partition d'apprentissage bénigne de 103 commandes évaluée sans provenance, le moteur sans contexte enregistre 15 quarantaines (14.56 %) et **1 faux positif de blocage net** sur une commande d'administration légitime (`Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5`). Le taux de 0 % de faux positif de blocage n'est donc pas une propriété inconditionnelle du classifieur de texte brut ; il dépend strictement du contexte de provenance de l'hôte.
 3. **Angle Mort DGA dans la Discrimination des Domaines Apex :**
    L'exception de domaine apex neutralise le blocage par centroïde en l'absence de sous-domaine profond, en s'appuyant sur l'axiome qu'un tunnel d'exfiltration DNS exploite un canal d'encodage logé dans les étiquettes de sous-domaines. Si ce filtrage élimine efficacement les faux positifs sur les domaines dictionnaires (ex. `sickbeard.com`), il affaiblit la détection directe par centroïde des domaines C2 générés algorithmiquement (**DGA**), qui sont précisément des domaines de second niveau (apex) sans sous-domaine profond. Les menaces DGA dépourvues de sous-domaines reposent ainsi intégralement sur la tête de décision INT8 ou nécessitent un étage DGA dédié en amont.
 4. **Surface d'Évasion en Contexte TTY & Simplification du Banc :**
-   La neutralisation de la bande suspecte (distance de Hamming de 13 à 24) en session interactive TTY élimine la friction opérationnelle pour les administrateurs légitimes. Néanmoins, cela ouvre une surface d'évasion : un attaquant disposant d'une session interactive authentifiée (ex. identifiants SSH dérobés) opérant dans cette bande suspecte ne sera pas mis en quarantaine tant que sa charge ne franchit pas le rayon de blocage strict ($\le 12$) ou n'est pas classée hostile par la tête INT8. Par ailleurs, le banc d'essai applique une provenance `/usr/bin/bash` générique à l'ensemble du corpus d'administration, qui contient des commandes PowerShell, ce qui constitue une simplification de laboratoire devant être remplacée en production par la télémétrie native du noyau (auditd / ETW).
+   La neutralisation de la bande suspecte (distance de Hamming de 13 à 24) en session interactive TTY élimine la friction opérationnelle pour les administrateurs légitimes. Néanmoins, cela ouvre une surface d'évasion claire : un attaquant disposant d'une session interactive authentifiée (ex. identifiants SSH dérobés) est totalement exempté de la mise en quarantaine dans cette bande de distance 13–24. La détection repose alors exclusivement sur le franchissement du rayon de blocage strict ($\le 12$) ou sur une classification hostile explicite (`predClass == 1`) par la tête INT8. Si une charge inconnue hostile se situe dans la bande 13–24 et reçoit une prédiction de classe 0 (bénigne, même non conforme), elle passe sans quarantaine. Par ailleurs, le banc d'essai applique une provenance `/usr/bin/bash` générique à l'ensemble du corpus d'administration, qui contient des commandes PowerShell, ce qui constitue une simplification de laboratoire devant être remplacée en production par la télémétrie native du noyau (auditd / ETW).
 5. **Caractère Paramétrique des Variantes de Mutation :**
    Les 111 variantes de mutation sont issues de substitutions synthétiques d'adresses IP et de numéros de port (incluant le remplacement de la constante 4444) sur les gabarits de reverse shells du corpus via l'expression régulière `ipPortVariant`. Aucun chemin de shell, commande ou argument d'exécution n'est modifié. Elles ne constituent pas 111 familles d'attaques sauvages distinctes.
 
