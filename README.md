@@ -19,9 +19,9 @@ Built strictly in **pure Go 1.27** (`GOAMD64=v3` / AVX2, zero CGo, zero Wasm, ze
 
 The synchronous detection engine unifies three distinct operational subsystems into a shared 512-dimensional metric space and a cascading decision pipeline:
 
-1. **SubProc (Process Execution):** Living-off-the-land binaries (LOLBAS), obfuscated PowerShell commands, reverse shell invocations, and privilege escalation attempts.
-2. **SubNet (Network Telemetry):** DNS tunneling, periodic C2 beaconing, DGA queries, and stealth data exfiltration channels.
-3. **SubMCP (AI Agent Oversight):** Prompt injection vectors, model system instruction overrides, context escapes, and unauthorized tool calls.
+1. **SubProc (Process Execution):** Living-off-the-land binaries (LOLBAS), obfuscated PowerShell commands, reverse shell invocations, and privilege escalation attempts (evaluating process command lines without process tree or PPID ancestry tracking).
+2. **SubNet (Network Telemetry):** DNS tunneling, non-LDH character reflexes, and DGA queries (periodic beaconing interval tracking is handled separately by the daemon telemetry pipeline rather than the inline cascade).
+3. **SubMCP (AI Agent Oversight):** Architectural interface for AI agent tool calls, prompt injection vectors, context escapes, and unauthorized tool calls (unevaluated in the reported benchmark suite).
 
 ```
        Telemetry Event (Process Exec / DNS Query / Agent Tool Call)
@@ -223,7 +223,7 @@ pkg/c2blue55/
 │   ├── engine/                # Core low-level algorithmic engine
 │   │   ├── arena_pool.go      # 4KB atomic seqlock ring buffer (zero race)
 │   │   ├── delta_catalog.go   # LSM catalog and delta indexing
-│   │   ├── drift_guard.go     # Online statistical drift detector
+│   │   ├── drift_guard.go     # Standalone statistical drift detector for offline recertification
 │   │   ├── feature_extractor.go # Zero-alloc 512-dim embedding extraction
 │   │   ├── floppy_engine.go   # .c2book mmap loader, HMAC-SHA256, RCU slot
 │   │   ├── forensic_proof.go  # Ed25519 signature and verification chain

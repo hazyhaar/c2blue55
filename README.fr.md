@@ -19,9 +19,9 @@ Développé strictement en **Go 1.27 pur** (`GOAMD64=v3` / AVX2, zéro CGo, zér
 
 Le moteur synchrone unifie trois sous-systèmes opérationnels distincts dans un espace métrique partagé à 512 dimensions et un pipeline de décision en cascade :
 
-1. **SubProc (Exécution de Processus) :** Binaires légitimes détournés (LOLBAS), commandes PowerShell obfusquées, reverse shells et tentatives d'élévation de privilèges.
-2. **SubNet (Télémétrie Réseau) :** Tunnels DNS, balisages C2 périodiques, requêtes DGA et canaux dissimulés d'exfiltration.
-3. **SubMCP (Surveillance d'Agents IA) :** Injections de prompts, usurpations d'instructions système, évasions de contexte et détournements d'appels d'outils.
+1. **SubProc (Exécution de Processus) :** Binaires légitimes détournés (LOLBAS), commandes PowerShell obfusquées, reverse shells et tentatives d'élévation de privilèges (analyse des lignes de commande sans suivi d'arbre de processus ni ascendance PPID).
+2. **SubNet (Télémétrie Réseau) :** Tunnels DNS, détection de motifs non-LDH et requêtes DGA (le suivi des intervalles temporels de balisage/beaconing relève du pipeline télémétrique des démons et non de la cascade synchrone).
+3. **SubMCP (Surveillance d'Agents IA) :** Interface architecturale pour les appels d'outils d'agents IA, les injections de prompts et les évasions de contexte (non évaluée dans le banc de mesure rapporté).
 
 ```
        Événement de Télémétrie (Processus / Requête DNS / Appel d'Outil Agent)
@@ -223,7 +223,7 @@ pkg/c2blue55/
 │   ├── engine/                # Moteur algorithmique bas niveau
 │   │   ├── arena_pool.go      # Tampon circulaire atomique seqlock 4 Ko (zéro race)
 │   │   ├── delta_catalog.go   # Catalogue LSM et indexation différentielle
-│   │   ├── drift_guard.go     # Détecteur statistique de dérive en ligne
+│   │   ├── drift_guard.go     # Détecteur statistique autonome de dérive pour la recertification hors-ligne
 │   │   ├── feature_extractor.go # Extraction 512D sans allocation
 │   │   ├── floppy_engine.go   # Chargeur mmap .c2book, HMAC-SHA256, slot RCU
 │   │   ├── forensic_proof.go  # Chaîne de signature et vérification Ed25519
