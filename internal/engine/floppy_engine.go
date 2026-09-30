@@ -213,6 +213,9 @@ func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
 	body := data[FloppyHeaderSize:]
 
 	// Contrôle d'intégrité HMAC-SHA256 :
+	// - En mode strict (C2BLUE_REQUIRE_SECURE_KEYS=1 ou C2BLUE_PRODUCTION=1), toute disquette
+	//   non scellée est catégoriquement refusée avec ErrFloppyUnsealed, interdisant
+	//   l'acceptation d'une image dont le drapeau de sceau aurait été effacé.
 	// - Si la disquette est scellée (FloppyFlagSealed), la fourniture d'une clé HMAC
 	//   est strictement obligatoire ; un chargement sans clé est refusé avec ErrFloppyUnsealed.
 	// - Si une clé est fournie alors que la disquette n'est pas scellée, elle est refusée avec ErrFloppyUnsealed.
@@ -220,6 +223,10 @@ func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
 	//   FamilyID, VectorDim, Flags, BlockRadius, EntryCount, KwCount, CRC32C,
 	//   HeadClasses, ProtoCount) ainsi que l'intégralité du corps, interdisant
 	//   toute altération non détectée des paramètres de décision ou de veto.
+	isStrict := os.Getenv("C2BLUE_REQUIRE_SECURE_KEYS") == "1" || os.Getenv("C2BLUE_PRODUCTION") == "1"
+	if isStrict && (hdr.Flags&FloppyFlagSealed == 0) {
+		return nil, ErrFloppyUnsealed
+	}
 	if hdr.Flags&FloppyFlagSealed != 0 {
 		if len(hmacKey) == 0 {
 			return nil, ErrFloppyUnsealed
