@@ -86,7 +86,7 @@ The synchronous detection engine unifies three distinct operational subsystems i
 ### A. Memory-Mapped Vector Knowledge Bases (`.c2book` / `C2FLOP1`)
 Knowledge bases are distributed as standalone binary files loaded via read-only memory projection (`syscall.Mmap`, `PROT_READ`, `MAP_SHARED`):
 - **Binary Header (64 bytes):** Magic `C2FLOP1\0`, version, family ID, vector dimension (512), entry count, keyword count, decision classes, prototype count, and calibrated block radius.
-- **Integrity Seal & Cryptographic Authentication:** Knowledge bases carry an **HMAC-SHA256** integrity seal covering the 32-byte header and the entire body, verified alongside **Castagnoli CRC32C** to detect accidental corruption or tampering. Modifying any parameter (such as `BlockRadius`) invalidates the seal (`ErrFloppySeal`). When a disk is marked sealed (`FloppyFlagSealed`), `LoadFloppyMmap` strictly requires an HMAC key; loading a sealed disk with a nil or empty key is immediately rejected (`ErrFloppyUnsealed`). For out-of-the-box reproducibility of the tournament evaluation, pre-compiled evaluation disks in `testdata/wittgenstein/floppies/` are sealed using public demonstration keys resolved by `WittgensteinFloppyKey(family)`. In production deployments, operators must supply private secret keys via environment variables (`C2BLUE_HMAC_KEY_LOLBAS`, `C2BLUE_HMAC_KEY_DNS`, `C2BLUE_HMAC_KEY_MCP`) or explicitly pass them to `SaveFloppyFile` and `LoadFloppyMmap`. Cryptographic attribution of individual decisions is independently established via **Ed25519** asymmetric signatures.
+- **Integrity Seal & Cryptographic Authentication:** Knowledge bases carry an **HMAC-SHA256** integrity seal covering the 32-byte header and the entire body, verified alongside **Castagnoli CRC32C** to detect accidental corruption or tampering. Modifying any parameter (such as `BlockRadius`) invalidates the seal (`ErrFloppySeal`). When a disk is marked sealed (`FloppyFlagSealed`), `LoadFloppyMmap` strictly requires an HMAC key; loading a sealed disk with a nil or empty key is immediately rejected (`ErrFloppyUnsealed`). Conversely, loading an unsealed disk with an HMAC key is rejected with `ErrFloppyUnsealed`, while loading an unsealed disk without a key is accepted with Castagnoli CRC32C verification only, without cryptographic authentication (though no repository caller produces or loads unsealed floppies in practice). For out-of-the-box reproducibility of tournament evaluation suites, `WittgensteinFloppyKey(family)` logs a security warning and defaults to public demonstration keys when environment variables (`C2BLUE_HMAC_KEY_*`) are unset. In production deployments, setting `C2BLUE_REQUIRE_SECURE_KEYS=1` (or `C2BLUE_PRODUCTION=1`) enforces strict key provision by refusing fallback to public demonstration keys.
 - **Atomic Hot-Swapping (`FloppySlot`):** Disks swap in $O(1)$ constant time with zero locks via RCU atomic pointers (`atomic.Pointer[FloppyDisk]`).
 - **Pre-compiled Evaluation Knowledge Bases:** Three canonical `.c2book` files are provided pre-compiled in `testdata/wittgenstein/floppies/` for immediate out-of-the-box reproducibility without requiring private raw training corpora:
   - `floppy_lolbas.c2book` (Subsystem 1: Process & LOLBAS)
@@ -109,7 +109,7 @@ For post-incident auditability and evidentiary non-repudiation, the engine provi
 - Digitally signed with a non-nil Ed25519 trusted root key (strictly rejecting empty or malformed keys).
 - Binds event parameters, the SHA-256 digest of the payload, and active floppy CRC32 directly in the proof.
 - Operates out-of-band to preserve the line-rate microsecond evaluation budget without per-event signing overhead.
-- Validates bit-exact deterministic offline replay even after live arena slots have cycled.
+- Validates deterministic verdict replay (`ReplayForensicProof` confirms exact bit-level concordance across remediation action, decision stage, Hamming distance, and confidence score against signed proof fields) even after live arena slots have cycled.
 
 ---
 
@@ -146,15 +146,17 @@ Evaluation metrics combine deduplicated reverse shell command lines from attack 
   - **Pass Rate:** **100.00%** (1,000/1,000, 95% Wilson CI [99.62%, 100.00%])
   - **False Positive Block Rate:** **0.00%** (0/1,000, 95% Wilson CI [0.00%, 0.38%])
 
-### C. Hardware Latency & Throughput (Pure CPU)
+### C. Hardware Latency & Platform Variability (Pure CPU)
 Measured on physical hardware (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0, `GOAMD64=v3`):
 
-| Operation | Latency per Op | Throughput per Core | Heap Allocations |
+| Operation | Latency per Op (Reference i9-14900K) | Throughput per Core | Heap Allocations |
 | :--- | :---: | :---: | :---: |
 | **L0 Reflex Substring Filter** | **1.12 µs/op** | $\approx 895,000\text{ ops/s}$ | **0 B/op (0 allocs)** |
 | **Complete Cascade (Benign Command)** | **8.63 µs/op** | $\approx 115,800\text{ ops/s}$ | **0 B/op (0 allocs)** |
 | **Complete Cascade (DNS Query)** | **11.68 µs/op** | $\approx 85,600\text{ ops/s}$ | **0 B/op (0 allocs)** |
 | **Complete Cascade (Extended Payload Quarantine)** | **16.32 µs/op** | $\approx 61,300\text{ ops/s}$ | **0 B/op (0 allocs)** |
+
+*Platform Variability Note:* Independent verifications on alternative server hardware and test platforms observe latencies approximately 1.5x to 2x higher (typically ~1.7 to 2.7 µs for Layer 0, and 15 to 20 µs for the complete cascade), remaining comfortably within the 10 to 25 µs operational budget.
 
 ### D. Methodological Reservations, Operational Trade-Offs & Real-World Limitations
 
@@ -164,8 +166,9 @@ Measured on physical hardware (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0, 
    Evaluating benign commands in isolation without host provenance carries measurable friction. On the 103-sample benign training set evaluated without provenance context, the raw engine records 15 quarantines (14.56%) and **1 hard false positive block** on a valid administration command (`Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5`). Zero false positive blocking is therefore not an unconditional property of the raw text classifier; it strictly depends on host provenance context.
 3. **DGA Blind Spot in Apex Domain Discrimination:**
    The apex domain structural exception suppresses centroid-based blocking when no deep subdomains exist, under the premise that DNS data exfiltration tunnels require subdomain encoding channels. While highly effective at eliminating false positives on concatenated dictionary domains (e.g. `sickbeard.com`), this heuristic weakens direct centroid protection against **Domain Generation Algorithms (DGA)**, which register short-lived malicious apex domains directly. DGA threats without deep subdomains must rely entirely on the INT8 decision head or a dedicated upstream DGA classifier.
-4. **TTY Evasion Window and Provenance Mocking:**
-   Bypassing the ambiguous quarantine band (Hamming distance 13 to 24) under interactive TTY sessions eliminates administrative friction for authorized operators. However, it introduces an evasion surface: an attacker operating inside an authenticated interactive shell (e.g. via stolen SSH credentials) is completely exempt from the 13–24 distance quarantine band. Detection relies exclusively on the strict centroid block radius ($\le 12$) or an explicit hostile classification (`predClass == 1`) by the INT8 head. If an unknown hostile payload falls in the 13–24 band and receives an INT8 prediction of class 0 (even non-conforming), it passes without quarantine. Furthermore, the test harness applies a generic `/usr/bin/bash` provenance across the admin benchmark, which includes PowerShell command lines—a necessary laboratory simplification that should be replaced with native OS auditd/ETW telemetry in deployment.
+4. **TTY Evasion Window, Provenance Mocking & Complete Benignity Conditions:**
+   Bypassing the ambiguous quarantine band (Hamming distance 13 to 24) under interactive sessions eliminates administrative friction for authorized operators. Ontological evaluation yields an allow verdict (`OntoVerdictAllow`) only when strict conditions are met cumulatively: (1) an authenticated interactive session (verified TTY presence, login UID, and lack of setuid elevation: `EUID == UID`), (2) execution of a trusted system binary target (`TgtBinSystem`, residing in `/bin`, `/usr/bin`, or `/sbin`), and (3) complete absence of hostile process indicators (no `kworker` spoofing, no anonymous `memfd_create` execution, no deleted binary on disk, and no writable-executable `W+X` memory mappings). When satisfied, `OntoVerdictAllow` unconditionally disables the ambiguous quarantine band (13 to 24 bits Hamming distance).
+   However, this introduces an evasion surface: an attacker operating inside an authenticated interactive shell (e.g. via stolen SSH credentials) executing a system binary without memory flags is completely exempt from the 13–24 distance quarantine band. Detection relies exclusively on the strict centroid block radius ($\le 12$) or an explicit hostile classification (`predClass == 1`) by the INT8 head. If an unknown hostile payload falls in the 13–24 band and receives an INT8 prediction of class 0 (even non-conforming), it passes without quarantine. Furthermore, the test harness applies a generic `/usr/bin/bash` provenance across the admin benchmark, which includes PowerShell command lines—a necessary laboratory simplification that should be replaced with native OS auditd/ETW telemetry in deployment.
 5. **Parametric Nature of Mutation Variants:**
    The 111 mutation samples are synthetically generated variants derived by substituting IP addresses and port numbers (including replacing the default constant 4444) across known reverse shell templates via regular expressions (`ipPortVariant`). No shell paths, commands, or execution arguments are modified. They do not constitute 111 distinct wild attack families.
 

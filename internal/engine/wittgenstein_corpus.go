@@ -10,8 +10,10 @@ import (
 	"bufio"
 	_ "embed"
 	"encoding/json"
+	"log"
 	"os"
 	"strings"
+	"sync"
 )
 
 // ReverseShellTrainPercent est la part des reverse shells réels réservée à la
@@ -30,6 +32,8 @@ var defaultWittgensteinFloppyKeys = map[uint16]string{
 	FloppyFamilyAgentMCP: "c2blue-hmac-key-mcp-wittgenstein",
 }
 
+var warnDemoKeyOnce sync.Once
+
 // WittgensteinFloppyKey retourne la clé de sceau HMAC d'une famille,
 // en résolvant d'abord l'environnement (C2BLUE_HMAC_KEY_*), puis les clés de test.
 func WittgensteinFloppyKey(family uint16) []byte {
@@ -47,10 +51,18 @@ func WittgensteinFloppyKey(family uint16) []byte {
 			return []byte(k)
 		}
 	}
+	// Exigence effective en production : refus du repli sur les clés publiques si le mode strict est actif.
+	if os.Getenv("C2BLUE_REQUIRE_SECURE_KEYS") == "1" || os.Getenv("C2BLUE_PRODUCTION") == "1" {
+		log.Printf("c2blue55: ERREUR: variable d'environnement secrète %s absente en mode de production strict", envVar)
+		return nil
+	}
 	k, ok := defaultWittgensteinFloppyKeys[family]
 	if !ok {
 		return nil
 	}
+	warnDemoKeyOnce.Do(func() {
+		log.Printf("c2blue55: AVERTISSEMENT: utilisation de clés HMAC de démonstration publiques. En production, définir C2BLUE_HMAC_KEY_LOLBAS, C2BLUE_HMAC_KEY_DNS, C2BLUE_HMAC_KEY_MCP (ou C2BLUE_REQUIRE_SECURE_KEYS=1)")
+	})
 	return []byte(k)
 }
 

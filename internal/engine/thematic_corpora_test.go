@@ -89,6 +89,22 @@ func TestThematicCorporarRealDatasets(t *testing.T) {
 }
 
 func TestBuildThematicAllCodebooksTmp(t *testing.T) {
+	requiredSources := []string{
+		resolveThematicPath("C2BLUE_CVE_SIGNALS_PATH", DefaultCVEExploitationSignalsPath),
+		resolveThematicPath("C2BLUE_CVE_5YEARS_PATH", DefaultCVE5YearsPath),
+		resolveThematicPath("C2BLUE_KERNEL_VULN_PATH", DefaultKernelVulnCSVPath),
+		resolveThematicPath("C2BLUE_DPO_PATH", DefaultCyberNativeDPOPath),
+		resolveThematicPath("C2BLUE_FILELESS_TESTDATA_PATH", DefaultFilelessTestdataPath,
+			filepath.Join("..", "probes", "testdata"),
+			filepath.Join("internal", "probes", "testdata"),
+		),
+	}
+	for _, src := range requiredSources {
+		if _, err := os.Stat(src); err != nil {
+			t.Skipf("source externe de corpus thématique absente (%s) : %v (saut du test d'intégration des 5 catalogues)", src, err)
+		}
+	}
+
 	tmpDir := t.TempDir()
 	results, err := BuildThematicAllCodebooks(tmpDir)
 	if err != nil {

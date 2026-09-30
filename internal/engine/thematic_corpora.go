@@ -24,6 +24,25 @@ const (
 	DefaultVulnCorporaOutputDir       = "/devhoros/data/vuln_corpora"
 )
 
+// resolveThematicPath résout un chemin en consultant d'abord la variable d'environnement
+// fournie, puis le chemin par défaut, avec repli relatif pour les données internes au dépôt.
+func resolveThematicPath(envVar, defaultPath string, relativeCandidates ...string) string {
+	if envVar != "" {
+		if v := os.Getenv(envVar); v != "" {
+			return v
+		}
+	}
+	if _, err := os.Stat(defaultPath); err == nil {
+		return defaultPath
+	}
+	for _, cand := range relativeCandidates {
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
+	}
+	return defaultPath
+}
+
 const (
 	motifSubWeb uint16 = 4
 )
@@ -134,7 +153,10 @@ func mapSubsystemFromText(desc, cwe string) uint16 {
 // BuildThematicCVECorpus ingere les gisements de CVE reels (2021-2026) et produit le codebook.
 func BuildThematicCVECorpus(paths ...string) (*Codebook, error) {
 	if len(paths) == 0 {
-		paths = []string{DefaultCVEExploitationSignalsPath, DefaultCVE5YearsPath}
+		paths = []string{
+			resolveThematicPath("C2BLUE_CVE_SIGNALS_PATH", DefaultCVEExploitationSignalsPath),
+			resolveThematicPath("C2BLUE_CVE_5YEARS_PATH", DefaultCVE5YearsPath),
+		}
 	}
 
 	fe := NewFeatureExtractor()
@@ -229,7 +251,7 @@ func BuildThematicCVECorpus(paths ...string) (*Codebook, error) {
 // BuildThematicKernelCorpus ingere le CSV de vulnerabilites et correctifs reels du noyau Linux.
 func BuildThematicKernelCorpus(csvPath string) (*Codebook, error) {
 	if csvPath == "" {
-		csvPath = DefaultKernelVulnCSVPath
+		csvPath = resolveThematicPath("C2BLUE_KERNEL_VULN_PATH", DefaultKernelVulnCSVPath)
 	}
 
 	f, err := os.Open(csvPath)
@@ -324,7 +346,7 @@ func BuildThematicKernelCorpus(csvPath string) (*Codebook, error) {
 // BuildThematicDPOCorpus ingere les anti-patterns de programmation vulnerable reels de CyberNative DPO.
 func BuildThematicDPOCorpus(jsonPath string) (*Codebook, error) {
 	if jsonPath == "" {
-		jsonPath = DefaultCyberNativeDPOPath
+		jsonPath = resolveThematicPath("C2BLUE_DPO_PATH", DefaultCyberNativeDPOPath)
 	}
 
 	data, err := os.ReadFile(jsonPath)
@@ -394,7 +416,10 @@ func BuildThematicDPOCorpus(jsonPath string) (*Codebook, error) {
 // BuildThematicFilelessCorpus ingere les signatures d'evasion memoire reelles de /proc/pid/maps et /proc/pid/exe.
 func BuildThematicFilelessCorpus(testdataDir string) (*Codebook, error) {
 	if testdataDir == "" {
-		testdataDir = DefaultFilelessTestdataPath
+		testdataDir = resolveThematicPath("C2BLUE_FILELESS_TESTDATA_PATH", DefaultFilelessTestdataPath,
+			filepath.Join("..", "probes", "testdata"),
+			filepath.Join("internal", "probes", "testdata"),
+		)
 	}
 
 	fe := NewFeatureExtractor()
