@@ -86,7 +86,7 @@ Le moteur synchrone unifie trois sous-systèmes opérationnels distincts dans un
 ### A. Disquettes de Connaissances Vectorielles (`.c2book` / `C2FLOP1`)
 Les bases de connaissances sont distribuées sous forme de fichiers binaires autonomes projetés en mémoire vive en lecture seule (`syscall.Mmap`, `PROT_READ`, `MAP_SHARED`) :
 - **En-tête Binaire (64 octets) :** Magie `C2FLOP1\0`, version, identifiant de famille, dimension vectorielle (512), nombre d'entrées, nombre de mots-clés, classes de décision, prototypes et rayon de blocage calibré.
-- **Sceau d'Intégrité & Authentification :** Les bases de connaissances portent un sceau d'intégrité **HMAC-SHA256** couvrant l'en-tête et le corps, contrôlé avec **CRC32C Castagnoli** pour détecter toute altération ou corruption accidentelle. Toute modification de paramètre (tel que `BlockRadius`) invalide le sceau (`ErrFloppySeal`). En production, une clé secrète fournie par l'opérateur est requise (`ErrFloppyUnsealed` en cas d'absence). Pour la reproductibilité d'évaluation, les disquettes de test utilisent des clés publiques d'épreuve. L'attribution cryptographique des verdicts est assurée de manière indépendante par signature asymétrique **Ed25519**.
+- **Sceau d'Intégrité & Authentification :** Les bases de connaissances portent un sceau d'intégrité **HMAC-SHA256** couvrant les 32 premiers octets d'en-tête et l'intégralité du corps, contrôlé conjointement avec le **CRC32C Castagnoli** pour détecter toute altération ou corruption accidentelle. Toute modification de paramètre (tel que `BlockRadius`) invalide le sceau (`ErrFloppySeal`). Dès lors qu'une disquette est scellée (`FloppyFlagSealed`), `LoadFloppyMmap` exige strictement la fourniture d'une clé HMAC ; tout chargement d'une disquette scellée sans clé ou avec une clé vide est immédiatement rejeté avec `ErrFloppyUnsealed`. Pour la reproductibilité immédiate de l'évaluation du tournoi Wittgenstein, les disquettes d'évaluation pré-compilées livrées dans `testdata/wittgenstein/floppies/` sont scellées avec des clés publiques de démonstration résolues par `WittgensteinFloppyKey(family)`. En déploiement de production, les opérateurs doivent fournir leurs clés secrètes privées via les variables d'environnement (`C2BLUE_HMAC_KEY_LOLBAS`, `C2BLUE_HMAC_KEY_DNS`, `C2BLUE_HMAC_KEY_MCP`) ou en les passant explicitement à `SaveFloppyFile` et `LoadFloppyMmap`. L'attribution cryptographique des verdicts est assurée de manière indépendante par signature asymétrique **Ed25519**.
 - **Commutation Atomique à Chaud (`FloppySlot`) :** Remplacement des disquettes en temps constant $O(1)$ sans verrou via pointeurs atomiques RCU (`atomic.Pointer[FloppyDisk]`).
 - **Disquettes d'Évaluation Pré-compilées :** Trois fichiers `.c2book` canoniques sont fournis pré-compilés dans `testdata/wittgenstein/floppies/` pour une reproductibilité immédiate sans exiger les jeux d'apprentissage bruts privés :
   - `floppy_lolbas.c2book` (Sous-système 1 : Processus & LOLBAS)
@@ -111,20 +111,20 @@ Chaque décision de remédiation émet un ticket forensique vérifiable :
 
 ---
 
-## 3. Évaluation Empirique & Banc sur Données Réelles
+## 3. Évaluation Empirique & Calibrage du Banc
 
-Toutes les métriques proviennent de **traces d'exécution réelles et de jeux de tests tenus à l'écart**, sans données synthétiques ni bruits pseudo-aléatoires :
+Les métriques d'évaluation combinent des traces réelles de production (attaques LOLBAS, tunnels DNS Netrack, domaines Alexa/Tranco), des lignes de commande d'administration représentatives rédigées d'après la documentation technique, et des variantes d'attaques générées synthétiquement par substitution paramétrique. Comme documenté dans la réserve D, plusieurs règles structurelles ciblées ont été calibrées sur ces jeux lors du développement du moteur :
 
-### A. Évaluation LOLBAS & Reverse Shells Tenus à l'Écart
+### A. Évaluation LOLBAS & Reverse Shells
 - **Jeu de données :** 136 lignes de commande réelles dédupliquées issues de traces de production (`reverse_shells.jsonl`).
-- **Partitionnement :** 95 échantillons pour l'apprentissage des centroïdes ; **41 échantillons tenus à l'écart** (aucun chevauchement de gabarit avec l'apprentissage).
-- **Résultats de Détection (41 shells tenus à l'écart, N=41) :**
+- **Partitionnement :** 95 échantillons pour l'apprentissage des centroïdes ; **41 échantillons évalués** (aucun chevauchement de gabarit avec l'apprentissage).
+- **Résultats de Détection (41 shells d'évaluation, N=41) :**
   - **Taux de Blocage :** **100.00 %** (41/41, IC Wilson 95 % [91.43 %, 100.00 %])
   - **Taux de Quarantaine :** **0.00 %** (0/41, IC Wilson 95 % [0.00 %, 8.57 %])
   - **Taux de Passage :** **0.00 %** (0/41, IC Wilson 95 % [0.00 %, 8.57 %])
   - **Décomposition de la Généralisation :** 20 menaces bloquées par mots-clés/réflexes L0, **21 menaces bloquées par la tête INT8 apprise L1b** (51.2 % de généralisation au-delà du mot-clé).
-- **Robustesse aux Mutations Paramétriques (N=111) :** Évalué sur 111 variantes générées synthétiquement par substitution d'adresses IP et de ports sur les gabarits de charges utiles : **100.00 % de Blocage** (111/111, IC 95 % [96.66 %, 100.00 %]), **0.00 % de Quarantaine** (0/111, IC 95 % [0.00 %, 3.34 %]), **0.00 % de Passage**.
-- **Commandes d'Administration Bénignes (N=42) :** Évalué sur 42 commandes d'administration système réelles tenues à l'écart :
+- **Robustesse aux Mutations Paramétriques (N=111) :** Évalué sur 111 variantes générées synthétiquement par substitution d'adresses IP et de ports (incluant le remplacement de la constante 4444) sur les gabarits de charges utiles via l'expression régulière `ipPortVariant`. Aucun chemin de shell, commande ou argument d'exécution n'est modifié : **100.00 % de Blocage** (111/111, IC 95 % [96.66 %, 100.00 %]), **0.00 % de Quarantaine** (0/111, IC 95 % [0.00 %, 3.34 %]), **0.00 % de Passage**.
+- **Commandes d'Administration Système (N=42) :** Évalué sur 42 lignes de commande d'administration rédigées d'après la documentation des outils (coreutils, systemd, docker, kubectl, apt ; ne constitue pas une capture d'un parc en production) :
   - **En Session Interactive Authentifiée (`DeriveCascadeContext` / TTY) :**
     - **Taux de Passage :** **100.00 %** (42/42 acceptées, IC Wilson 95 % [91.62 %, 100.00 %])
     - **Taux de Quarantaine :** **0.00 %** (0/42, IC Wilson 95 % [0.00 %, 8.38 %])
@@ -139,7 +139,7 @@ Toutes les métriques proviennent de **traces d'exécution réelles et de jeux d
 - **Détection C2 Malveillant (N=4 000 domaines) :**
   - **Taux de Blocage :** **100.00 %** (4 000/4 000, IC Wilson 95 % [99.90 %, 100.00 %])
   - **Taux de Passage :** **0.00 %** (0/4 000, IC Wilson 95 % [0.00 %, 0.10 %])
-  - **Décomposition :** 2 957 bloqués par mots-clés L0 et réflexe d'encodage (remplissage `==.` dans les labels QNAME), **1 043 bloqués par centroïdes appris L1b** sur `tuns.org` / `example.org`.
+  - **Décomposition :** 2 957 bloqués en L0 par l'effet cumulé du mot-clé de suffixe de tunnel connu (`hidemyself.org`, couvrant 2 000 requêtes) et du filtre réflexe de caractères d'encodage non-LDH (`dnsHasEncodingChars`, bloquant tout caractère `+`, `/` ou `=` n'importe où dans le QNAME, recouvrant partiellement ces requêtes) ; **1 043 bloqués par centroïdes appris L1b** sur `tuns.org` / `example.org`.
 - **Spécificité Bénigne (N=1 000 domaines) :**
   - **Taux de Passage :** **100.00 %** (1 000/1 000, IC Wilson 95 % [99.62 %, 100.00 %])
   - **Taux de Faux Positif de Blocage :** **0.00 %** (0/1 000, IC Wilson 95 % [0.00 %, 0.38 %])
@@ -159,13 +159,13 @@ Mesuré sur processeur physique (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0
 1. **Réglage a Posteriori & Réserve sur les Jeux d'Évaluation :**
    Les règles structurelles introduites (l'exception de domaine apex corroborée par la tête INT8, le contournement de quarantaine en session TTY interactive et le découpage L0 des permutations netcat) ont été conçues après l'examen direct des échecs observés sur les bancs de test (les 8 domaines dictionnaires concaténés bloqués, les 9 commandes d'administration headless en quarantaine et les 6 variantes d'options netcat). Ces jeux ont ainsi fonctionné comme des partitions de calibration/développement résiduelles. Les scores parfaits de 100 % et 0 % mesurent l'ajustement empirique à ces cas limites identifiés et non une généralisation stricte hors-distribution, qui nécessitera une évaluation sur des données de production complètement inédites.
 2. **Faux Positifs Résiduels sur les Commandes d'Administration Brutes :**
-   L'évaluation de lignes de commande en isolation textuelle sans contexte de provenance présente une friction réelle. Sur la partition d'apprentissage bénigne de 103 commandes évaluée sans provenance, le moteur sans contexte enregistre 15 quarantaines (14.56 %) et **1 faux positif de blocage net** sur une commande d'administration légitime (`Get-Counter '\Processor(_Total)\% Processor Time' -Continuous`). Le taux de 0 % de faux positif de blocage n'est donc pas une propriété inconditionnelle du classifieur de texte brut ; il dépend strictement du contexte de provenance de l'hôte.
+   L'évaluation de lignes de commande en isolation textuelle sans contexte de provenance présente une friction réelle. Sur la partition d'apprentissage bénigne de 103 commandes évaluée sans provenance, le moteur sans contexte enregistre 15 quarantaines (14.56 %) et **1 faux positif de blocage net** sur une commande d'administration légitime (`Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5`). Le taux de 0 % de faux positif de blocage n'est donc pas une propriété inconditionnelle du classifieur de texte brut ; il dépend strictement du contexte de provenance de l'hôte.
 3. **Angle Mort DGA dans la Discrimination des Domaines Apex :**
    L'exception de domaine apex neutralise le blocage par centroïde en l'absence de sous-domaine profond, en s'appuyant sur l'axiome qu'un tunnel d'exfiltration DNS exploite un canal d'encodage logé dans les étiquettes de sous-domaines. Si ce filtrage élimine efficacement les faux positifs sur les domaines dictionnaires (ex. `sickbeard.com`), il affaiblit la détection directe par centroïde des domaines C2 générés algorithmiquement (**DGA**), qui sont précisément des domaines de second niveau (apex) sans sous-domaine profond. Les menaces DGA dépourvues de sous-domaines reposent ainsi intégralement sur la tête de décision INT8 ou nécessitent un étage DGA dédié en amont.
 4. **Surface d'Évasion en Contexte TTY & Simplification du Banc :**
    La neutralisation de la bande suspecte (distance de Hamming de 13 à 24) en session interactive TTY élimine la friction opérationnelle pour les administrateurs légitimes. Néanmoins, cela ouvre une surface d'évasion : un attaquant disposant d'une session interactive authentifiée (ex. identifiants SSH dérobés) opérant dans cette bande suspecte ne sera pas mis en quarantaine tant que sa charge ne franchit pas le rayon de blocage strict ($\le 12$) ou n'est pas classée hostile par la tête INT8. Par ailleurs, le banc d'essai applique une provenance `/usr/bin/bash` générique à l'ensemble du corpus d'administration, qui contient des commandes PowerShell, ce qui constitue une simplification de laboratoire devant être remplacée en production par la télémétrie native du noyau (auditd / ETW).
 5. **Caractère Paramétrique des Variantes de Mutation :**
-   Les 111 variantes de mutation sont issues de permutations synthétiques d'adresses IP, de ports et de chemins de shell sur des gabarits connus de reverse shells. Elles ne constituent pas 111 familles d'attaques sauvages distinctes.
+   Les 111 variantes de mutation sont issues de substitutions synthétiques d'adresses IP et de numéros de port (incluant le remplacement de la constante 4444) sur les gabarits de reverse shells du corpus via l'expression régulière `ipPortVariant`. Aucun chemin de shell, commande ou argument d'exécution n'est modifié. Elles ne constituent pas 111 familles d'attaques sauvages distinctes.
 
 ---
 

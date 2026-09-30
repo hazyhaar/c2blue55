@@ -83,8 +83,10 @@ type FloppyPrototype struct {
 
 // Erreurs d'ouverture d'une disquette.
 var (
-	// ErrFloppyUnsealed signale une disquette sans sceau alors qu'une clé est fournie.
-	ErrFloppyUnsealed = errors.New("c2flop: disquette non scellée alors qu'une clé HMAC est exigée")
+	// ErrFloppyUnsealed signale une discordance de sceau : soit la disquette est
+	// scellée et aucune clé HMAC n'est fournie, soit une clé est fournie alors
+	// que la disquette n'est pas scellée.
+	ErrFloppyUnsealed = errors.New("c2flop: clé HMAC requise pour une disquette scellée, ou disquette non scellée")
 	// ErrFloppySeal signale un sceau HMAC-SHA256 discordant.
 	ErrFloppySeal = errors.New("c2flop: sceau HMAC-SHA256 discordant")
 	// ErrFloppyTruncated signale un corps dont les sections ne tombent pas juste.
@@ -210,13 +212,16 @@ func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
 
 	body := data[FloppyHeaderSize:]
 
-	// Sceau HMAC-SHA256 exigé dès qu'une clé est fournie.
-	// Le HMAC couvre les 32 premiers octets de l'en-tête (Magic, Version,
-	// FamilyID, VectorDim, Flags, BlockRadius, EntryCount, KwCount, CRC32C,
-	// HeadClasses, ProtoCount) ainsi que l'intégralité du corps, pour interdire
-	// toute altération non détectée des paramètres de décision ou de veto.
-	if len(hmacKey) > 0 {
-		if hdr.Flags&FloppyFlagSealed == 0 {
+	// Contrôle d'intégrité HMAC-SHA256 :
+	// - Si la disquette est scellée (FloppyFlagSealed), la fourniture d'une clé HMAC
+	//   est strictement obligatoire ; un chargement sans clé est refusé avec ErrFloppyUnsealed.
+	// - Si une clé est fournie alors que la disquette n'est pas scellée, elle est refusée avec ErrFloppyUnsealed.
+	// - Le HMAC couvre les 32 premiers octets de l'en-tête (Magic, Version,
+	//   FamilyID, VectorDim, Flags, BlockRadius, EntryCount, KwCount, CRC32C,
+	//   HeadClasses, ProtoCount) ainsi que l'intégralité du corps, interdisant
+	//   toute altération non détectée des paramètres de décision ou de veto.
+	if hdr.Flags&FloppyFlagSealed != 0 {
+		if len(hmacKey) == 0 {
 			return nil, ErrFloppyUnsealed
 		}
 		mac := hmac.New(sha256.New, hmacKey)
@@ -225,6 +230,8 @@ func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
 		if !hmac.Equal(mac.Sum(nil), hdr.Seal[:]) {
 			return nil, ErrFloppySeal
 		}
+	} else if len(hmacKey) > 0 {
+		return nil, ErrFloppyUnsealed
 	}
 
 	// Contrôle CRC32C Castagnoli

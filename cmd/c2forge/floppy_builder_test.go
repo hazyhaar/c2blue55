@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -66,6 +67,15 @@ func TestWittgenstein_Floppies_BuildAndLoad(t *testing.T) {
 		if bad, err := engine.LoadFloppyMmap(p, []byte("cle-erronee")); err == nil {
 			bad.Close()
 			t.Fatalf("LoadFloppyMmap(%s) a accepté une clé HMAC erronée", ft.filename)
+		} else if !errors.Is(err, engine.ErrFloppySeal) {
+			t.Fatalf("LoadFloppyMmap(%s) attendait ErrFloppySeal, a eu: %v", ft.filename, err)
+		}
+		// Une disquette scellée chargée sans clé doit être rejetée avec ErrFloppyUnsealed.
+		if bad, err := engine.LoadFloppyMmap(p, nil); err == nil {
+			bad.Close()
+			t.Fatalf("LoadFloppyMmap(%s) a accepté un chargement sans clé d'une disquette scellée", ft.filename)
+		} else if !errors.Is(err, engine.ErrFloppyUnsealed) {
+			t.Fatalf("LoadFloppyMmap(%s) sans clé attendait ErrFloppyUnsealed, a eu: %v", ft.filename, err)
 		}
 		disk, err := engine.LoadFloppyMmap(p, engine.WittgensteinFloppyKey(ft.family))
 		if err != nil {
