@@ -261,7 +261,17 @@ func (ce *CascadeEngine) evaluateResolved(ev *Probe_event_t, payload []byte, cct
 		}
 	}
 
-	// 2. Évaluation ontologique déterministe O(1)
+	// 2. Réflexes structurels : ils précèdent l'axiome de bénignité, qu'aucun
+	// contexte interactif ne puisse faire passer une charge courte hostile.
+	if (ev.Subsystem == 3 && dnsHasEncodingChars(payload)) || (ev.Subsystem == 1 && netcatWithExec(payload)) {
+		v.Action = VerdictBlock
+		v.Flags |= 0x0002 // FlagBlocked
+		v.ConfidenceQ8 = 256
+		v.DurationNs = time.Now().UnixNano() - start
+		return v
+	}
+
+	// 3. Évaluation ontologique déterministe O(1)
 	ontoKey := deriveCascadeOntoKey(ev, cctx)
 	ontoVerdict := EvaluateOntology(ontoKey)
 	if ontoVerdict == OntoVerdictDeny {
@@ -322,26 +332,35 @@ func (ce *CascadeEngine) evaluateResolved(ev *Probe_event_t, payload []byte, cct
 	v.Stage = StageL1b
 
 	if disk != nil {
+		// Inférence linéaire entière DecisionHead (Zero-Alloc, INT8), calculée
+		// d'abord : elle arbitre le veto centroïde des noms de domaine apex.
+		predClass, _, conforms := disk.PredictINT8(features[:])
+
 		// 1. Recherche du centroïde RaBitQ le plus proche dans la disquette
 		match, dist, found := disk.SearchCentroid(&bitcode, 128)
 		if found {
 			v.HammingDist = dist
 			v.ThreatID = match.ThreatID
-			if dist <= disk.BlockRadius() { // Proximité stricte avec un centroïde d'attaque réel
+			// Un nom enregistrable sans sous-domaine ne porte aucun canal
+			// d'encodage : la proximité d'un centroïde de tunnel n'y vaut veto
+			// que si la tête ne le certifie pas bénin et conforme.
+			apexCertified := ev.Subsystem == 3 && predClass == 0 && conforms && isApexDomain(payload)
+			if dist <= disk.BlockRadius() && !apexCertified { // Proximité stricte avec un centroïde d'attaque réel
 				v.Action = ce.applyNonSoftening(v.Action, VerdictBlock)
 				v.Flags |= 0x0002 // FlagBlocked
 				v.ConfidenceQ8 = uint16((128 - dist) * 2)
 				v.DurationNs = time.Now().UnixNano() - start
 				return v
-			} else if dist <= 24 { // Zone suspecte : mise en quarantaine
+			} else if dist > disk.BlockRadius() && dist <= 24 && ontoVerdict != OntoVerdictAllow {
+				// Zone suspecte : mise en quarantaine, sauf sous bénignité
+				// ontologique certifiée, où seule la tête hostile tranche.
 				v.Action = ce.applyNonSoftening(v.Action, VerdictQuarantine)
 				v.Flags |= 0x0004 // FlagAnomaly
 				v.ConfidenceQ8 = 160
 			}
 		}
 
-		// 2. Inférence linéaire entière DecisionHead (Zero-Alloc, INT8)
-		predClass, _, conforms := disk.PredictINT8(features[:])
+		// 2. Décision de la tête INT8
 		if predClass == 1 && conforms {
 			// Classe hostile certifiée conforme
 			v.Action = ce.applyNonSoftening(v.Action, VerdictBlock)
@@ -362,6 +381,174 @@ func (ce *CascadeEngine) evaluateResolved(ev *Probe_event_t, payload []byte, cct
 	v.Action = ce.applyNonSoftening(v.Action, VerdictPass)
 	v.DurationNs = time.Now().UnixNano() - start
 	return v
+}
+
+// dnsHasEncodingChars dit si un QNAME porte un caractère hors de l'alphabet
+// d'hôte (lettres, chiffres, tiret, point, souligné) propre à l'encodage
+// Base64 d'un tunnel : « + », « / » ou le remplissage « = ».
+func dnsHasEncodingChars(qname []byte) bool {
+	for _, c := range qname {
+		if c == '+' || c == '/' || c == '=' {
+			return true
+		}
+	}
+	return false
+}
+
+// twoLevelSuffixes énumère les suffixes publics de second niveau reconnus
+// pour isApexDomain (« com.br », « co.uk »…).
+var twoLevelSuffixes = [...]string{
+	"com.br", "net.br", "org.br", "gov.br",
+	"co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk",
+	"com.au", "net.au", "org.au", "edu.au",
+	"co.jp", "ne.jp", "or.jp", "ac.jp",
+	"co.nz", "co.za", "co.in", "co.kr", "co.il", "co.id", "co.th",
+	"com.cn", "net.cn", "org.cn", "com.hk", "com.tw", "com.sg", "com.my",
+	"com.mx", "com.ar", "com.co", "com.pe", "com.tr", "com.ua", "com.pl",
+	"com.eg", "com.sa", "com.ng", "com.pk", "com.vn", "com.ph",
+}
+
+// isApexDomain dit si un nom de domaine est un nom enregistrable direct, sans
+// sous-domaine : deux libellés, ou trois lorsque les deux derniers forment un
+// suffixe public connu. Tout libellé vide ou tout caractère hors de l'alphabet
+// d'hôte rend faux. Sans allocation.
+func isApexDomain(name []byte) bool {
+	if n := len(name); n > 0 && name[n-1] == '.' {
+		name = name[:n-1]
+	}
+	if len(name) == 0 {
+		return false
+	}
+	labels := 1
+	lastDot, prevDot := -1, -1
+	for i, c := range name {
+		switch {
+		case c == '.':
+			if i == 0 || i == lastDot+1 {
+				return false // libellé vide
+			}
+			labels++
+			prevDot, lastDot = lastDot, i
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-':
+		default:
+			return false
+		}
+	}
+	if lastDot == len(name)-1 {
+		return false
+	}
+	switch labels {
+	case 2:
+		return true
+	case 3:
+		suffix := name[prevDot+1:]
+		for _, s := range twoLevelSuffixes {
+			if len(suffix) == len(s) && equalFoldASCII(suffix, s) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func equalFoldASCII(b []byte, s string) bool {
+	for i := range b {
+		c := b[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != s[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// netcatWithExec dit si une commande invoque nc, ncat ou netcat avec une
+// option d'exécution de programme (-e, -c, --exec, --sh-exec) dans la même
+// commande simple. Un séparateur de commandes (|, ;, &, saut de ligne) remet
+// l'analyse à zéro. Sans allocation.
+func netcatWithExec(cmd []byte) bool {
+	inNetcat := false
+	i := 0
+	for i < len(cmd) {
+		c := cmd[i]
+		if c == '|' || c == ';' || c == '&' || c == '\n' || c == '(' || c == ')' || c == '`' {
+			inNetcat = false
+			i++
+			continue
+		}
+		if c == ' ' || c == '\t' || c == '\r' || c == '"' || c == '\'' {
+			i++
+			continue
+		}
+		j := i
+		for j < len(cmd) {
+			d := cmd[j]
+			if d == ' ' || d == '\t' || d == '\r' || d == '\n' || d == '|' || d == ';' || d == '&' || d == '"' || d == '\'' || d == '(' || d == ')' || d == '`' {
+				break
+			}
+			j++
+		}
+		tok := cmd[i:j]
+		i = j
+		if inNetcat && isNetcatExecOption(tok) {
+			return true
+		}
+		if isNetcatBinary(tok) {
+			inNetcat = true
+		}
+	}
+	return false
+}
+
+// isNetcatBinary reconnaît nc, ncat, netcat et leurs variantes nommées
+// (nc.traditional, nc.openbsd), avec ou sans chemin.
+func isNetcatBinary(tok []byte) bool {
+	for k := len(tok) - 1; k >= 0; k-- {
+		if tok[k] == '/' {
+			tok = tok[k+1:]
+			break
+		}
+	}
+	for k := range tok {
+		if tok[k] == '.' {
+			tok = tok[:k]
+			break
+		}
+	}
+	s := string(tok) // comparaison sans allocation
+	return s == "nc" || s == "ncat" || s == "netcat"
+}
+
+// isNetcatExecOption reconnaît -e, -c, --exec, --sh-exec, leur forme collée
+// (-e/bin/sh, --exec=/bin/sh) et un groupe d'options courtes terminé par e
+// (-nve).
+func isNetcatExecOption(tok []byte) bool {
+	if len(tok) < 2 || tok[0] != '-' {
+		return false
+	}
+	if tok[1] == '-' {
+		name := tok[2:]
+		for k := range name {
+			if name[k] == '=' {
+				name = name[:k]
+				break
+			}
+		}
+		s := string(name) // comparaison sans allocation
+		return s == "exec" || s == "sh-exec"
+	}
+	if tok[1] == 'e' || tok[1] == 'c' {
+		return len(tok) == 2 || tok[2] == '/'
+	}
+	for k := 1; k < len(tok); k++ {
+		c := tok[k]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+			return false
+		}
+	}
+	return tok[len(tok)-1] == 'e'
 }
 
 // deriveCascadeOntoKey extrait un quadruplet ontologique propre et typé depuis

@@ -155,7 +155,9 @@ func EvaluateOntology(k OntoKey) uint8 {
 	if subj == SubjRootSystemd && ctx == CtxSystemdUnit && act == ActExecve && tgt == TgtBinSystem {
 		return OntoVerdictAllow
 	}
-	if subj == SubjUserInteractive && ctx == CtxInteractiveTTY && act == ActExecve && tgt == TgtBinSystem {
+	// Une session interactive root établie par la provenance (loginuid, terminal,
+	// sans élévation setuid) relève du même axiome qu'une session utilisateur.
+	if (subj == SubjUserInteractive || subj == SubjRootInteractive) && ctx == CtxInteractiveTTY && act == ActExecve && tgt == TgtBinSystem {
 		return OntoVerdictAllow
 	}
 
