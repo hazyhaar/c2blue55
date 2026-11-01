@@ -1,0 +1,15 @@
+{
+  "run_id": "soar-signed-nxdomain-cache-auth",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "soar",
+  "note": "Authoritative leg Unbound -> soar-server 10.55.0.24:53 (Ed25519 signed 64B NXDOMAIN with ANCOUNT=1)",
+  "family": "redhost-soar"
+}

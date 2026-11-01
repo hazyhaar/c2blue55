@@ -1,0 +1,15 @@
+{
+  "run_id": "slipstream-2doq-multipath-stub",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "slipstream",
+  "note": "Client stub leg splitting 1 inner Slipstream QUIC session across 2 DoQ stubs (:25361->:853, :25362->:8853, OPT UDPSize=4096)",
+  "family": "redhost-slipstream"
+}

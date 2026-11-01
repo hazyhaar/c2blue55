@@ -1,0 +1,19 @@
+{
+  "run_id": "dns2tcp-clear",
+  "host": "redbo",
+  "interface": "wg0",
+  "filter": "udp port 53 or tcp port 53",
+  "resolver": "10.55.0.1",
+  "start": "2026-10-31T17:55:00Z",
+  "end": "2026-10-31T18:16:00Z",
+  "queried_domains": [
+    "t.exfil.lab",
+    "lab.pound2pound.fr"
+  ],
+  "label": "redhost-dns2tcp",
+  "family": "redhost-dns2tcp",
+  "tool": "dns2tcp",
+  "emitter": "dns2tcp",
+  "server": "10.55.0.1",
+  "note": "Banc L1 dns2tcp-clear.pcap sha256=3f99d3b1bb1c6c0c5ae3228baf6149044557de7a4c6519a958b9d38c5143dcb2"
+}

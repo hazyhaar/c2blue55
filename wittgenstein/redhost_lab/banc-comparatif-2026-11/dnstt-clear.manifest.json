@@ -1,0 +1,19 @@
+{
+  "run_id": "dnstt-clear",
+  "host": "redbo",
+  "interface": "wg0",
+  "filter": "udp port 53 or tcp port 53",
+  "resolver": "10.55.0.1",
+  "start": "2026-10-31T17:55:00Z",
+  "end": "2026-10-31T18:16:00Z",
+  "queried_domains": [
+    "t.exfil.lab",
+    "lab.pound2pound.fr"
+  ],
+  "label": "redhost-dnstt",
+  "family": "redhost-dnstt",
+  "tool": "dnstt",
+  "emitter": "dnstt",
+  "server": "10.55.0.1",
+  "note": "Banc L1 dnstt-clear.pcap sha256=ac4f5c66dbdc34672988eae1b63b12604b089af72f523c6e6d5fe8fa2c293834"
+}

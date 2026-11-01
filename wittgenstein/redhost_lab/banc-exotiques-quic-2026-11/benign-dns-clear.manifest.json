@@ -1,0 +1,15 @@
+{
+  "run_id": "benign-dns-clear",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "benign-dns-l1",
+  "note": "L1 benign DNS clear",
+  "family": "benign-dns-l1"
+}

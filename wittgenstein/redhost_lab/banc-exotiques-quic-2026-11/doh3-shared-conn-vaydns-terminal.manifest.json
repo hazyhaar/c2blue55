@@ -1,0 +1,15 @@
+{
+  "run_id": "doh3-shared-conn-vaydns-terminal",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "h3_shared_origin+vaydns",
+  "note": "Terminal UDP leg h3_shared_origin -> vaydns-server 10.55.0.21:53 (raw RFC 8484 relay preserves 0x5c in CAA.Value!)",
+  "family": "redhost-vaydns"
+}

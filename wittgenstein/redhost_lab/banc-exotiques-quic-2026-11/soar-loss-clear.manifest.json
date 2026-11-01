@@ -1,0 +1,15 @@
+{
+  "run_id": "soar-loss-clear",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "soar",
+  "note": "10% uplink loss (4096B) then 10% downlink loss (4096B) -> LOST frames & retransmission, via Unbound",
+  "family": "redhost-soar"
+}

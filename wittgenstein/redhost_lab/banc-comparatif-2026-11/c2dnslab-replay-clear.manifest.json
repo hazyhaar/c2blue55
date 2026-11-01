@@ -1,0 +1,19 @@
+{
+  "run_id": "c2dnslab-replay-clear",
+  "host": "redbo",
+  "interface": "wg0",
+  "filter": "udp port 53 or tcp port 53",
+  "resolver": "10.55.0.1",
+  "start": "2026-10-31T17:55:00Z",
+  "end": "2026-10-31T18:16:00Z",
+  "queried_domains": [
+    "t.exfil.lab",
+    "lab.pound2pound.fr"
+  ],
+  "label": "redhost-c2dnslab-emit",
+  "family": "redhost-c2dnslab-emit",
+  "tool": "c2dnslab-emit",
+  "emitter": "c2dnslab-emit",
+  "server": "10.55.0.1",
+  "note": "Banc L1 c2dnslab-replay-clear.pcap sha256=50eb75a8e8b75893f71aaf9a09b6e89c2cff6e10ab23226e05b6ec25e900081c"
+}

@@ -1,0 +1,15 @@
+{
+  "run_id": "vaydns-caa-clear-sharedsock",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "vaydns",
+  "note": "record-type=caa direct 10.55.0.2 -> 10.55.0.21:53, -udp-shared-socket (1 source port)",
+  "family": "redhost-vaydns"
+}

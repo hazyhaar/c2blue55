@@ -1,0 +1,20 @@
+{
+ "run_id": "n04-benin-soa-v2",
+ "capture_host": "redhost",
+ "capture_interface": "wg0",
+ "capture_source": "/var/lib/dnslab/pcap/dnslab-20261029T14Z.pcap (tcpdump, dnslab-capture.service)",
+ "emitter": "c2dnslab-emit@ec77785de6a3 sur redbo, famille redhost-negative-soa, outil replay, Recursive=true",
+ "path": "redbo stub -> unbound 1.13.1 (10.55.0.2:5335, qname-minimisation) -> redhost dnslab-auth@77ebc4c265c3 (10.55.0.1:53)",
+ "server_negative_mode": "soa",
+ "server_negative_seed": "0",
+ "names_seed": "0x2026C",
+ "names_count": 100,
+ "label": "benin",
+ "window_utc": [
+  "2026-10-29T15:33:07.353506Z",
+  "2026-10-29T15:33:47.361524Z"
+ ],
+ "packets": 200,
+ "sha256_pcap": "57bb8f2f207b4f7c1e657eece8ddb3f152969aefcd5dc7a7c1497c0361eb92f8",
+ "generated_by": "d\u00e9coupage par fen\u00eatre de run de la capture r\u00e9elle ; aucun paquet fabriqu\u00e9"
+}

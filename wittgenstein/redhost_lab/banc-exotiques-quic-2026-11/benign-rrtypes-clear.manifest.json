@@ -1,0 +1,15 @@
+{
+  "run_id": "benign-rrtypes-clear",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "benign-rrtypes",
+  "note": "L1-bis RFC benign RR types",
+  "family": "benign-rrtypes"
+}

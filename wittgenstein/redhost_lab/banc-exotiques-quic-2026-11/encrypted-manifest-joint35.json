@@ -1,0 +1,212 @@
+[
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/dnstt-doq.pcap",
+    "family": "dnstt",
+    "run_id": "l1_dnstt-doq",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/dnstt-doh2.pcap",
+    "family": "dnstt",
+    "run_id": "l1_dnstt-doh2",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/dnstt-doh3.pcap",
+    "family": "dnstt",
+    "run_id": "l1_dnstt-doh3",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/iodine-doq.pcap",
+    "family": "iodine",
+    "run_id": "l1_iodine-doq",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/iodine-doh2.pcap",
+    "family": "iodine",
+    "run_id": "l1_iodine-doh2",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/iodine-doh3.pcap",
+    "family": "iodine",
+    "run_id": "l1_iodine-doh3",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/dns2tcp-doq.pcap",
+    "family": "dns2tcp",
+    "run_id": "l1_dns2tcp-doq",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/dns2tcp-doh2.pcap",
+    "family": "dns2tcp",
+    "run_id": "l1_dns2tcp-doh2",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/dns2tcp-doh3.pcap",
+    "family": "dns2tcp",
+    "run_id": "l1_dns2tcp-doh3",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/c2dnslab-replay-doq.pcap",
+    "family": "c2dnslab-replay",
+    "run_id": "l1_c2dnslab-replay-doq",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/c2dnslab-replay-doh2.pcap",
+    "family": "c2dnslab-replay",
+    "run_id": "l1_c2dnslab-replay-doh2",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/c2dnslab-replay-doh3.pcap",
+    "family": "c2dnslab-replay",
+    "run_id": "l1_c2dnslab-replay-doh3",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/periodic-slow-20m-doq.pcap",
+    "family": "periodic-slow-20m",
+    "run_id": "l1_periodic-slow-20m-doq",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/benign-dns-doq.pcap",
+    "family": "benign-dns",
+    "run_id": "l1_benign-dns-doq",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/benign-dns-doh2.pcap",
+    "family": "benign-dns",
+    "run_id": "l1_benign-dns-doh2",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/benign-dns-doh3.pcap",
+    "family": "benign-dns",
+    "run_id": "l1_benign-dns-doh3",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/benign-h3-nav.pcap",
+    "family": "benign-h3-nav",
+    "run_id": "l1_benign-h3-nav",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/benign-h3-nav-dns-doq.pcap",
+    "family": "benign-h3-nav-dns",
+    "run_id": "l1_benign-h3-nav-dns-doq",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-comparatif-2026-11/benign-h3-bulk.pcap",
+    "family": "benign-h3-bulk",
+    "run_id": "l1_benign-h3-bulk",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/vaydns-caa-doq-transit.pcap",
+    "family": "vaydns",
+    "run_id": "vaydns-caa-doq-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/vaydns-caa-doh3-transit.pcap",
+    "family": "vaydns",
+    "run_id": "vaydns-caa-doh3-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/vaydns-srv-doq-transit.pcap",
+    "family": "vaydns",
+    "run_id": "vaydns-srv-doq-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/vaydns-srv-doh3-transit.pcap",
+    "family": "vaydns",
+    "run_id": "vaydns-srv-doh3-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/slipstream-doq-transit.pcap",
+    "family": "slipstream",
+    "run_id": "slipstream-doq-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/slipstream-doh3-transit.pcap",
+    "family": "slipstream",
+    "run_id": "slipstream-doh3-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/slipstream-2doq-multipath-transit.pcap",
+    "family": "slipstream",
+    "run_id": "slipstream-2doq-multipath-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/noizdns-var1540-doq-transit.pcap",
+    "family": "noizdns",
+    "run_id": "noizdns-var1540-doq-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/doh3-shared-web-only.pcap",
+    "family": "h3-shared-origin",
+    "run_id": "doh3-shared-web-only",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/doh3-shared-conn-vaydns-transit.pcap",
+    "family": "vaydns",
+    "run_id": "doh3-shared-conn-vaydns-transit",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/doh3-split-origins.pcap",
+    "family": "vaydns",
+    "run_id": "doh3-split-origins",
+    "hostile": true
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/cache-txid-doq-transit.pcap",
+    "family": "control-l1bis_aux",
+    "run_id": "cache-txid-doq-transit",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/cache-txid-doh3-transit.pcap",
+    "family": "control-l1bis_aux",
+    "run_id": "cache-txid-doh3-transit",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/edns-opt-suite-doq-transit.pcap",
+    "family": "control-edns_opt_probe",
+    "run_id": "edns-opt-suite-doq-transit",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/edns-opt-suite-doh3-transit.pcap",
+    "family": "control-edns_opt_probe",
+    "run_id": "edns-opt-suite-doh3-transit",
+    "hostile": false
+  },
+  {
+    "path": "wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/edns-largeresp-doq-transit.pcap",
+    "family": "control-l1bis_aux",
+    "run_id": "edns-largeresp-doq-transit",
+    "hostile": false
+  }
+]

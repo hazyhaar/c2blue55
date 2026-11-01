@@ -1,0 +1,10 @@
+{
+  "pcap": "testdata/a04-20261029/redhost-dnslab-20261029T17Z.pcap",
+  "sha256": "6418f2d0dbeaf44711bee0484515d47ee0109770ef28b66fd3295332d1b1b2ee",
+  "responses": 805,
+  "aaaa_answers": 805,
+  "fires": 383,
+  "fired_keys": 1,
+  "packets_to_first_fire": 16,
+  "first_fire_ts_ns": 1793293931553081000
+}

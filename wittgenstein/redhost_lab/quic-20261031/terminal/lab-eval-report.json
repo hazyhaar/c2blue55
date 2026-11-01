@@ -1,0 +1,82 @@
+[
+  {
+    "Family": "redhost-dns2tcp-doh3-terminal",
+    "Runs": 1,
+    "Questions": 1153,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 1222,
+      "MajorityClassRate": 0.9435351882160393,
+      "TP": 1036,
+      "FP": 20,
+      "TN": 49,
+      "FN": 0,
+      "QuarantineHostile": 117,
+      "QuarantineBenign": 0,
+      "L0Blocks": 61,
+      "L1aPasses": 23,
+      "L1bBlocks": 995,
+      "AUC": 0.7103963196198951
+    }
+  },
+  {
+    "Family": "redhost-dns2tcp-doq-terminal",
+    "Runs": 1,
+    "Questions": 1153,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 1222,
+      "MajorityClassRate": 0.9435351882160393,
+      "TP": 401,
+      "FP": 20,
+      "TN": 49,
+      "FN": 60,
+      "QuarantineHostile": 692,
+      "QuarantineBenign": 0,
+      "L0Blocks": 61,
+      "L1aPasses": 23,
+      "L1bBlocks": 360,
+      "AUC": 0.708083512450193
+    }
+  },
+  {
+    "Family": "redhost-iodine-doh3-terminal",
+    "Runs": 1,
+    "Questions": 118,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 187,
+      "MajorityClassRate": 0.6310160427807486,
+      "TP": 24,
+      "FP": 20,
+      "TN": 49,
+      "FN": 26,
+      "QuarantineHostile": 68,
+      "QuarantineBenign": 0,
+      "L0Blocks": 0,
+      "L1aPasses": 23,
+      "L1bBlocks": 44,
+      "AUC": 0.6978629329403095
+    }
+  },
+  {
+    "Family": "redhost-iodine-doq-terminal",
+    "Runs": 1,
+    "Questions": 109,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 178,
+      "MajorityClassRate": 0.6123595505617978,
+      "TP": 66,
+      "FP": 20,
+      "TN": 49,
+      "FN": 12,
+      "QuarantineHostile": 31,
+      "QuarantineBenign": 0,
+      "L0Blocks": 0,
+      "L1aPasses": 23,
+      "L1bBlocks": 86,
+      "AUC": 0.6971147453796038
+    }
+  }
+]

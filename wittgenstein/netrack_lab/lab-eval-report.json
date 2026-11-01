@@ -1,0 +1,82 @@
+[
+  {
+    "Family": "redhost-netrack-dns2tcp",
+    "Runs": 1,
+    "Questions": 4537,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 13191,
+      "MajorityClassRate": 0.65605336972178,
+      "TP": 4537,
+      "FP": 2385,
+      "TN": 6014,
+      "FN": 0,
+      "QuarantineHostile": 0,
+      "QuarantineBenign": 255,
+      "L0Blocks": 4537,
+      "L1aPasses": 5441,
+      "L1bBlocks": 2385,
+      "AUC": 1
+    }
+  },
+  {
+    "Family": "redhost-netrack-dnscapy",
+    "Runs": 1,
+    "Questions": 13760,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 22414,
+      "MajorityClassRate": 0.6139020255197645,
+      "TP": 13759,
+      "FP": 2385,
+      "TN": 6014,
+      "FN": 0,
+      "QuarantineHostile": 1,
+      "QuarantineBenign": 255,
+      "L0Blocks": 13170,
+      "L1aPasses": 5441,
+      "L1bBlocks": 2974,
+      "AUC": 1
+    }
+  },
+  {
+    "Family": "redhost-netrack-iodine",
+    "Runs": 1,
+    "Questions": 72,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 8726,
+      "MajorityClassRate": 0.9917487966995187,
+      "TP": 6,
+      "FP": 2385,
+      "TN": 6014,
+      "FN": 47,
+      "QuarantineHostile": 19,
+      "QuarantineBenign": 255,
+      "L0Blocks": 0,
+      "L1aPasses": 5441,
+      "L1bBlocks": 2391,
+      "AUC": 0.35113017743882086
+    }
+  },
+  {
+    "Family": "redhost-netrack-tuns",
+    "Runs": 1,
+    "Questions": 63108,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 71762,
+      "MajorityClassRate": 0.8794069284579582,
+      "TP": 63108,
+      "FP": 2385,
+      "TN": 6014,
+      "FN": 0,
+      "QuarantineHostile": 0,
+      "QuarantineBenign": 255,
+      "L0Blocks": 0,
+      "L1aPasses": 5441,
+      "L1bBlocks": 65493,
+      "AUC": 1
+    }
+  }
+]

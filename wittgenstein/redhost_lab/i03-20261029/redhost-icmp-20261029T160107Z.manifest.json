@@ -1,0 +1,15 @@
+{
+ "run_id": "i03-20261029",
+ "capture_host": "redhost",
+ "capture_interface": "wg0",
+ "capture_command": "tcpdump -i wg0 -nn -s 0 -U icmp -w (processus d\u00e9di\u00e9, la capture dnslab-capture ne filtre que le port 53)",
+ "responder": "c2icmplab-respond@46cf907 sur redhost, -iface wg0 -key 0x1C01 -magic c2il -max-per-second 50 (socket brut, root) ; le noyau de redhost r\u00e9pond aussi \u00e0 chaque Echo Request",
+ "emitter_hostile": "c2icmplab-emit@46cf907 sur redbo : Run-A -seed 0x2026A -id 0x101 -count 20 -per-second 5 -chunk 32 ; Run-B -seed 0x2026B -id 0x202, m\u00eames bornes",
+ "emitter_benign": "ping -c 20 -i 0.2 10.55.0.1 puis ping -c 10 -i 0.2 10.55.0.1 depuis redbo (iputils, r\u00e9ponses du noyau)",
+ "order": "ping 20, Run-A, Run-B, ping 10",
+ "packets": 180,
+ "label": "mixte : ids 14 et 15 (ping) b\u00e9nins, ids 257 et 514 hostiles",
+ "sha256_pcap": "4ad300bb7593c127bc5c034f74a863f7f03954f5ee84c2a4516f6ffca3430b44",
+ "sha256_responder_log": "0542f1afab5d5345556ceab347cf8a900e8431377fc3cfb43f800db4c6f13f55",
+ "generated_by": "capture r\u00e9elle sur le banc ; aucun paquet fabriqu\u00e9"
+}

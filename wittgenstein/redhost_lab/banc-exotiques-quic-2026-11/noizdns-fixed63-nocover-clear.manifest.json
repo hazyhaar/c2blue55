@@ -1,0 +1,15 @@
+{
+  "run_id": "noizdns-fixed63-nocover-clear",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "noizdns",
+  "note": "Classic dnstt mode (full 63-char labels), -cover-domains none, via Unbound -> 10.55.0.23:53, 32 KiB",
+  "family": "redhost-noizdns"
+}

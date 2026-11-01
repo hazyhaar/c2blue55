@@ -1,0 +1,42 @@
+[
+  {
+    "Family": "redhost-dns2tcp-live",
+    "Runs": 1,
+    "Questions": 1162,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 1231,
+      "MajorityClassRate": 0.9439480097481722,
+      "TP": 819,
+      "FP": 20,
+      "TN": 49,
+      "FN": 0,
+      "QuarantineHostile": 343,
+      "QuarantineBenign": 0,
+      "L0Blocks": 61,
+      "L1aPasses": 23,
+      "L1bBlocks": 778,
+      "AUC": 0.7103943725211405
+    }
+  },
+  {
+    "Family": "redhost-iodine-live",
+    "Runs": 1,
+    "Questions": 411,
+    "InsuffisantPourAUC": false,
+    "Metrics": {
+      "Total": 480,
+      "MajorityClassRate": 0.85625,
+      "TP": 290,
+      "FP": 20,
+      "TN": 49,
+      "FN": 18,
+      "QuarantineHostile": 103,
+      "QuarantineBenign": 0,
+      "L0Blocks": 0,
+      "L1aPasses": 23,
+      "L1bBlocks": 310,
+      "AUC": 0.700130470044783
+    }
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "pcap": "testdata/i03-20261029/redhost-ptunnel-20261029T164739Z.pcap",
+  "sha256": "ca9f79ef797cef21189b8ece552b3472e5270fe03a1fcb38e12058a3abd0acbd",
+  "ipv4_packets": 48,
+  "echo_requests": 22,
+  "echo_replies": 26,
+  "fires": 6,
+  "asymmetric_fires": 3,
+  "unsolicited_fires": 3,
+  "packets_to_first_fire": 5,
+  "first_fire_ts_ns": 1793292465084823000
+}

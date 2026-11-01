@@ -1,0 +1,15 @@
+{
+  "run_id": "soar-txt-heldpoll-clear",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "soar",
+  "note": "4096B echo -> 2.5s idle pause (-hold 1500ms retained polls) -> 4096B echo immediate poll release, via Unbound",
+  "family": "redhost-soar"
+}

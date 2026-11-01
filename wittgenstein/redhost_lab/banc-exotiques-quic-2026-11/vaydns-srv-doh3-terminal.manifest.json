@@ -1,0 +1,15 @@
+{
+  "run_id": "vaydns-srv-doh3-terminal",
+  "host": "client",
+  "interface": "wg0",
+  "filter": "udp",
+  "resolver": "10.55.0.1:53",
+  "start": "2026-10-31T18:00:00Z",
+  "end": "2026-10-31T18:05:00Z",
+  "queried_domains": [
+    "lab.pound2pound.fr"
+  ],
+  "label": "vaydns",
+  "note": "record-type=srv terminal UDP leg dnsproxy -> 10.55.0.21:53 (DoH3 :8443)",
+  "family": "redhost-vaydns"
+}

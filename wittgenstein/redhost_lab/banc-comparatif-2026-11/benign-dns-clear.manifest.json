@@ -1,0 +1,19 @@
+{
+  "run_id": "benign-dns-clear",
+  "host": "redbo",
+  "interface": "wg0",
+  "filter": "udp port 53 or tcp port 53",
+  "resolver": "10.55.0.1",
+  "start": "2026-10-31T17:55:00Z",
+  "end": "2026-10-31T18:16:00Z",
+  "queried_domains": [
+    "t.exfil.lab",
+    "lab.pound2pound.fr"
+  ],
+  "label": "benign-b1-dns",
+  "family": "benign-b1-dns",
+  "tool": "benign-b1-dns",
+  "emitter": "benign-b1-dns",
+  "server": "10.55.0.1",
+  "note": "Banc L1 benign-dns-clear.pcap sha256=669ffb8bb41aa1593125c29cd3c5a2113d9a65d146dd481121c8f12d8986ac7e"
+}

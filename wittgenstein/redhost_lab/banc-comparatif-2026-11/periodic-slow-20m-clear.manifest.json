@@ -1,0 +1,19 @@
+{
+  "run_id": "periodic-slow-20m-clear",
+  "host": "redbo",
+  "interface": "wg0",
+  "filter": "udp port 53 or tcp port 53",
+  "resolver": "10.55.0.1",
+  "start": "2026-10-31T17:55:00Z",
+  "end": "2026-10-31T18:16:00Z",
+  "queried_domains": [
+    "t.exfil.lab",
+    "lab.pound2pound.fr"
+  ],
+  "label": "redhost-periodic-slow-emit",
+  "family": "redhost-periodic-slow-emit",
+  "tool": "periodic-slow-emit",
+  "emitter": "periodic-slow-emit",
+  "server": "10.55.0.1",
+  "note": "Banc L1 periodic-slow-20m-clear.pcap sha256=43b90ad3627e6eef9a5efd78d09166cd34bda34b8a41e2ba46828a79bbb19cbe"
+}

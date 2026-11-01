@@ -1,0 +1,12 @@
+{
+  "pcap": "testdata/i03-20261029/i03-runB.pcap",
+  "sha256": "0c66050c423caff6ce67c28d9ac2d4edb1c30b698052cc908aef771f14de7612",
+  "ipv4_packets": 60,
+  "echo_requests": 20,
+  "echo_replies": 40,
+  "fires": 20,
+  "asymmetric_fires": 20,
+  "unsolicited_fires": 0,
+  "packets_to_first_fire": 3,
+  "first_fire_ts_ns": 1793289681106548000
+}

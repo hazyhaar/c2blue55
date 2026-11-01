@@ -1,0 +1,20 @@
+{
+  "run_id": "ttl-stego-synth-20261028T224000Z",
+  "host": "none",
+  "interface": "none",
+  "filter": "udp port 53",
+  "resolver": "none",
+  "start": "2026-10-28T21:40:00Z",
+  "end": "2026-10-28T21:41:00Z",
+  "queried_domains": [
+    "hazyhaar.fr",
+    "pound2pound.fr"
+  ],
+  "label": "redhost-ttl-stego-v5",
+  "note": "Paquets CONSTRUITS par gen_motif_pcap.py (trames IPv4/UDP assembl\u00e9es en Python, charges DNS par dnspython) ; AUCUNE capture r\u00e9elle, aucun socket ; horodatages et ports pos\u00e9s par le programme. R\u00e9\u00e9tiquet\u00e9 le 2026-10-29 sur aval de l'usager (manifeste ant\u00e9rieur frauduleux : \u00ab Real UDP socket capture via dig + dnspython \u00bb).",
+  "family": "redhost-ttl-stego-v5",
+  "tool": "gen_motif_pcap.py",
+  "emitter": "generator",
+  "server": "none",
+  "generator": "/devhoros/c2blue55/wittgenstein/redhost_lab/motifs_v5/gen_motif_pcap.py"
+}
