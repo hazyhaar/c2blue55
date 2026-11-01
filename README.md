@@ -45,7 +45,7 @@ The synchronous detection engine unifies three distinct operational subsystems i
                       ▼                           ▼
                  [BLOCK L0]       ┌───────────────────────────────────┐
                                   │ 512-Dim Feature Extractor (FE)    │
-                                  │ - Normalized n-gram frequency     │
+                                  │ - 4,096 B NUL-safe n-gram scan    │
                                   │ - Entropy, lengths, structural tag│
                                   │ - QuantizeFHT512 (Fast Hadamard)  │
                                   └───────────────┬───────────────────┘
@@ -86,7 +86,7 @@ The synchronous detection engine unifies three distinct operational subsystems i
 ### A. Memory-Mapped Vector Knowledge Bases (`.c2book` / `C2FLOP1`)
 Knowledge bases are distributed as standalone binary files loaded via read-only memory projection (`syscall.Mmap`, `PROT_READ`, `MAP_SHARED`):
 - **Binary Header (64 bytes):** Magic `C2FLOP1\0`, version, family ID, vector dimension (512), entry count, keyword count, decision classes, prototype count, and calibrated block radius.
-- **Integrity Seal & Cryptographic Authentication:** Knowledge bases carry an **HMAC-SHA256** integrity seal covering the 32-byte header and the entire body, verified alongside **Castagnoli CRC32C** to detect accidental corruption or tampering. Modifying any parameter (such as `BlockRadius`) invalidates the seal (`ErrFloppySeal`). When a disk is marked sealed (`FloppyFlagSealed`), `LoadFloppyMmap` strictly requires an HMAC key; loading a sealed disk with a nil or empty key is immediately rejected (`ErrFloppyUnsealed`). Conversely, loading an unsealed disk with an HMAC key is rejected with `ErrFloppyUnsealed`, while loading an unsealed disk without a key is accepted with Castagnoli CRC32C verification only, without cryptographic authentication (in practice, no caller outside test suites loads floppy disks at all). For out-of-the-box reproducibility of tournament evaluation suites, `WittgensteinFloppyKey(family)` logs a security warning and defaults to public demonstration keys when environment variables (`C2BLUE_HMAC_KEY_*`) are unset. In production deployments, setting `C2BLUE_REQUIRE_SECURE_KEYS=1` (or `C2BLUE_PRODUCTION=1`) enforces strict key provision at two levels: `WittgensteinFloppyKey` refuses fallback to public demonstration keys (returning `nil`), and the binary loader (`decodeFloppy`) categorically rejects any unsealed disk (`FloppyFlagSealed` unset) with `ErrFloppyUnsealed`. This closes the loophole where simply clearing the header's seal flag (which is not covered by the body's CRC32C checksum) would allow an unsealed disk to load without authentication when a nil key is supplied.
+- **Integrity Seal & Cryptographic Authentication:** Knowledge bases carry an **HMAC-SHA256** integrity seal covering the 32-byte header and the entire body, verified alongside **Castagnoli CRC32C** to detect accidental corruption or tampering. Modifying any parameter (such as `BlockRadius`) invalidates the seal (`ErrFloppySeal`). When a disk is marked sealed (`FloppyFlagSealed`), `LoadFloppyMmap` strictly requires an HMAC key; loading a sealed disk with a nil or empty key is immediately rejected (`ErrFloppyUnsealed`). Conversely, loading an unsealed disk with an HMAC key is rejected with `ErrFloppyUnsealed`, while loading an unsealed disk without a key is accepted with Castagnoli CRC32C verification only, without cryptographic authentication (in this repository, `LoadFloppyMmap` is called by `c2forge lab-eval` / `dns-delta` and the test suites, whereas the standalone daemons `c2agent` and `c2blue-mcp-guard` use separate codebooks and server oracles). For out-of-the-box reproducibility of tournament evaluation suites, `WittgensteinFloppyKey(family)` logs a security warning and defaults to public demonstration keys when environment variables (`C2BLUE_HMAC_KEY_*`) are unset. In production deployments, setting `C2BLUE_REQUIRE_SECURE_KEYS=1` (or `C2BLUE_PRODUCTION=1`) enforces strict key provision at two levels: `WittgensteinFloppyKey` refuses fallback to public demonstration keys (returning `nil`), and the binary loader (`decodeFloppy`) categorically rejects any unsealed disk (`FloppyFlagSealed` unset) with `ErrFloppyUnsealed`. This closes the loophole where simply clearing the header's seal flag (which is not covered by the body's CRC32C checksum) would allow an unsealed disk to load without authentication when a nil key is supplied.
 - **Atomic Hot-Swapping (`FloppySlot`):** Disks swap in $O(1)$ constant time with zero locks via RCU atomic pointers (`atomic.Pointer[FloppyDisk]`).
 - **Pre-compiled Evaluation Knowledge Bases:** Three canonical `.c2book` files are provided pre-compiled in `testdata/wittgenstein/floppies/` for immediate out-of-the-box reproducibility without requiring private raw training corpora:
   - `floppy_lolbas.c2book` (Subsystem 1: Process & LOLBAS)
@@ -119,31 +119,32 @@ Evaluation metrics combine deduplicated reverse shell command lines from attack 
 
 ### A. LOLBAS & Reverse Shell Evaluation
 - **Dataset:** 136 unique real-world command lines deduplicated from production attack logs (`reverse_shells.jsonl`).
-- **Partitioning:** 95 training samples; **41 evaluation samples** (partitioned with zero template overlap with training samples).
-- **Detection Results (41 evaluation shells, N=41):**
-  - **Block Rate:** **100.00%** (41/41, 95% Wilson CI [91.43%, 100.00%])
-  - **Quarantine Rate:** **0.00%** (0/41, 95% Wilson CI [0.00%, 8.57%])
-  - **Pass Rate:** **0.00%** (0/41, 95% Wilson CI [0.00%, 8.57%])
-  - **Generalization Breakdown:** 20 blocked by L0 keywords/reflexes, **21 blocked by L1b learned INT8 heads** (51.2% learned generalization beyond keyword matching).
-- **Parametric Mutation Robustness (N=111):** Evaluated on 111 synthetically mutated variants generated by IP address and port substitutions across reverse shell templates via regular expressions (`ipPortVariant`). No shell paths, commands, or execution arguments are modified: **100.00% Block** (111/111, 95% CI [96.65%, 100.00%]), **0.00% Quarantine** (0/111, 95% CI [0.00%, 3.35%]), **0.00% Pass**.
+- **Partitioning:** 95 training samples; **41 evaluation samples** (partitioned with zero template overlap with training samples), evaluated over the full 4,096-byte NUL-safe payload window.
+- **Detection Results (41 evaluation shells, N=41 — 100.00% intercepted, 0/41 passed):**
+  - **Hard Block Rate:** **80.49%** (33/41, 95% Wilson CI [65.99%, 89.77%])
+  - **Fail-Safe Quarantine Rate:** **19.51%** (8/41, 95% Wilson CI [10.23%, 34.01%])
+  - **Pass (Missed) Rate:** **0.00%** (0/41, 95% Wilson CI [0.00%, 8.57%])
+  - **Generalization Breakdown:** 20 blocked by L0 keywords/reflexes, **13 blocked + 8 quarantined by L1b learned INT8 heads / centroids** (51.2% learned interception beyond keyword matching).
+- **Parametric Mutation Robustness (N=111):** Evaluated on 111 synthetically mutated variants generated by IP address and port substitutions across reverse shell templates via regular expressions (`ipPortVariant`). No shell paths, commands, or execution arguments are modified: **80.18% Hard Block** (89/111, 95% CI [71.81%, 86.53%]: 48 L0 + 41 L1b), **19.82% Quarantine** (22/111, 95% CI [13.47%, 28.19%]: 22 L1b), **0.00% Pass** (0/111, 95% CI [0.00%, 3.35%]; **100.00% intercepted**).
 - **Administrative Command Lines (N=42):** Evaluated on 42 curated administrative command lines drawn from standard system and container documentation (coreutils, systemd, docker, kubectl, apt; not a live production fleet capture):
   - **Under Authenticated Interactive Session (`DeriveCascadeContext` / TTY):**
     - **Pass Rate:** **100.00%** (42/42, 95% Wilson CI [91.62%, 100.00%])
     - **Quarantine Rate:** **0.00%** (0/42, 95% Wilson CI [0.00%, 8.38%])
     - **False Positive Block Rate:** **0.00%** (0/42, 95% Wilson CI [0.00%, 8.38%])
   - **Raw Headless Baseline (Without Provenance Metadata):**
-    - **Pass Rate:** **78.57%** (33/42, 95% Wilson CI [64.06%, 88.29%])
-    - **Quarantine Rate:** **21.43%** (9/42, 95% Wilson CI [11.71%, 35.94%])
+    - **Pass Rate:** **30.95%** (13/42, 95% Wilson CI [19.07%, 46.03%])
+    - **Quarantine Rate:** **69.05%** (29/42, 95% Wilson CI [53.97%, 80.93%])
     - **False Positive Block Rate:** **0.00%** (0/42, 95% Wilson CI [0.00%, 8.38%])
 
 ### B. Netrack DNS C2 Benchmark
 - **Dataset:** 4,000 authentic DNS C2 tunnel queries (`validate.csv`) vs 1,000 real benign domains.
-- **Malicious C2 Detection (N=4,000 domains):**
-  - **Block Rate:** **100.00%** (4,000/4,000, 95% Wilson CI [99.90%, 100.00%])
-  - **Pass Rate:** **0.00%** (0/4,000, 95% Wilson CI [0.00%, 0.10%])
-  - **Breakdown:** 2,957 blocked at Layer 0 through the cumulative effect of the known tunnel domain keyword (`hidemyself.org`, covering 2,000 queries) and the non-LDH character reflex (`dnsHasEncodingChars`, blocking any `+`, `/`, or `=` character anywhere in the QNAME, which partially overlaps these queries); **1,043 blocked by L1b learned centroids** on `tuns.org` / `example.org`.
+- **Malicious C2 Detection (N=4,000 domains — 100.00% intercepted, 0/4,000 passed):**
+  - **Hard Block Rate:** **99.35%** (3,974/4,000, 95% Wilson CI [99.05%, 99.56%])
+  - **Fail-Safe Quarantine Rate:** **0.65%** (26/4,000, 95% Wilson CI [0.44%, 0.95%])
+  - **Pass (Missed) Rate:** **0.00%** (0/4,000, 95% Wilson CI [0.00%, 0.10%])
+  - **Breakdown:** 2,957 blocked at Layer 0 through the cumulative effect of the known tunnel domain keyword (`hidemyself.org`, covering 2,000 queries) and the non-LDH character reflex (`dnsHasEncodingChars`, blocking any `+`, `/`, or `=` character anywhere in the QNAME, covering 957 `example.org` queries); **1,017 blocked + 26 quarantined at Layer 1b** (`43/43` remaining `example.org` blocked; `974/1,000` `tuns.org` blocked and `26/1,000` quarantined).
 - **Benign Specificity (N=1,000 domains):**
-  - **Pass Rate:** **100.00%** (1,000/1,000, 95% Wilson CI [99.62%, 100.00%])
+  - **Pass Rate:** **100.00%** (1,000/1,000, 95% Wilson CI [99.62%, 100.00%]: 856 L1a + 144 L1b)
   - **False Positive Block Rate:** **0.00%** (0/1,000, 95% Wilson CI [0.00%, 0.38%])
 
 ### C. Hardware Latency & Platform Variability (Pure CPU)
@@ -154,16 +155,16 @@ Measured on physical hardware (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0, 
 | **L0 Reflex Substring Filter** | **1.12 µs/op** | $\approx 895,000\text{ ops/s}$ | **0 B/op (0 allocs)** |
 | **Complete Cascade (Benign Command)** | **8.63 µs/op** | $\approx 115,800\text{ ops/s}$ | **0 B/op (0 allocs)** |
 | **Complete Cascade (DNS Query)** | **11.68 µs/op** | $\approx 85,600\text{ ops/s}$ | **0 B/op (0 allocs)** |
-| **Complete Cascade (Extended Payload Quarantine)** | **16.32 µs/op** | $\approx 61,300\text{ ops/s}$ | **0 B/op (0 allocs)** |
+| **Complete Cascade (Extended Arena Payload, L1b)** | **16.32 µs/op** | $\approx 61,300\text{ ops/s}$ | **0 B/op (0 allocs)** |
 
 *Platform Variability Note:* Independent verifications on alternative server hardware and test platforms observe latencies approximately 1.5x to 2x higher (typically ~1.7 to 2.7 µs for Layer 0, and 15 to 20 µs for the complete cascade), remaining comfortably within the 10 to 25 µs operational budget.
 
 ### D. Methodological Reservations, Operational Trade-Offs & Real-World Limitations
 
 1. **A Posteriori Tuning & Residual Validation Caveat:**
-   The targeted structural rules—specifically the apex domain rule (where centroid proximity blocks by default unless the INT8 head explicitly certifies benignity and conformity), the interactive TTY quarantine bypass (where ontology unconditionally disables the 13–24 suspect band, leaving only hostile INT8 predictions to quarantine or block), and the L0 netcat permutation segmentation—were designed after analyzing false positive and quarantine failures on the evaluation benchmarks themselves (8 concatenated dictionary domains, 9 headless admin quarantines, and 6 netcat flag variations). Consequently, these evaluation sets functioned as a calibration/development set. The reported 100% and 0% metrics measure empirical fit on these known edge cases rather than provable out-of-distribution generalization, which will require subsequent evaluation against completely unobserved production corpora.
+   The targeted structural rules—specifically the apex domain rule (where centroid proximity blocks by default unless the INT8 head explicitly certifies benignity and conformity), the interactive TTY quarantine bypass (where ontology unconditionally disables the 13–24 suspect band, leaving only hostile INT8 predictions to quarantine or block), and the L0 netcat permutation segmentation—were designed after analyzing false positive and quarantine failures on the evaluation benchmarks themselves (8 concatenated dictionary domains, the initial 9 headless admin quarantines observed under the earlier 96-byte prefix prototype, and 6 netcat flag variations). Consequently, these evaluation sets functioned as a calibration/development set. The reported 100% and 0% metrics measure empirical fit on these known edge cases rather than provable out-of-distribution generalization, which will require subsequent evaluation against completely unobserved production corpora.
 2. **Baseline Residual False Positives on Raw Command Sets:**
-   Evaluating benign commands in isolation without host provenance carries measurable friction. On the 103-sample benign training set evaluated without provenance context, the raw engine records 15 quarantines (14.56%) and **1 hard false positive block** on a valid administration command (`Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5`). Zero false positive blocking is therefore not an unconditional property of the raw text classifier; it strictly depends on host provenance context.
+   Evaluating benign commands in isolation without host provenance carries measurable friction. On the 103-sample benign training set evaluated without provenance context over the full 4,096-byte payload window, the raw engine records 69 quarantines (66.99%) and **1 hard false positive block** (0.97%) on a valid administration command (`Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5`). Zero false positive blocking is therefore not an unconditional property of the raw text classifier; it strictly depends on host provenance context.
 3. **DGA Blind Spot in Apex Domain Discrimination:**
    The apex domain structural exception suppresses centroid-based blocking when no deep subdomains exist, under the premise that DNS data exfiltration tunnels require subdomain encoding channels. While highly effective at eliminating false positives on concatenated dictionary domains (e.g. `sickbeard.com`), this heuristic weakens direct centroid protection against **Domain Generation Algorithms (DGA)**, which register short-lived malicious apex domains directly. DGA threats without deep subdomains must rely entirely on the INT8 decision head or a dedicated upstream DGA classifier.
 4. **TTY Evasion Window, Provenance Mocking & Broad Subsystem Target Classification:**
@@ -171,6 +172,15 @@ Measured on physical hardware (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0, 
    However, this introduces an important evasion surface: `deriveCascadeOntoKey` unconditionally assigns `TgtBinSystem` to any event originating from the process subsystem (`Subsystem == SubProc`), without inspecting filesystem paths. Only temporary directories are screened out indirectly by `DeriveOntoContext` (which flags `CtxTmpResidence` if the executable path contains `/tmp/`, `/var/tmp/`, or `/dev/shm/`). Consequently, binaries located in user home directories (`/home/...`), `/opt/`, or `/usr/local/` are classified as `TgtBinSystem` and also benefit from the benignity axiom under an interactive TTY session. An attacker operating inside an authenticated interactive shell (e.g. via stolen SSH credentials) executing an arbitrary binary from a user directory without memory flags is therefore completely exempt from the 13–24 quarantine band. Detection relies exclusively on the strict centroid block radius ($\le 12$) or an explicit hostile classification (`predClass == 1`) by the INT8 head. If an unknown hostile payload falls in the 13–24 band and receives an INT8 prediction of class 0 (even non-conforming), it passes without quarantine. Furthermore, the test harness applies a generic `/usr/bin/bash` provenance across the admin benchmark, which includes PowerShell command lines—a necessary laboratory simplification that should be replaced with native OS auditd/ETW telemetry in deployment.
 5. **Parametric Nature of Mutation Variants:**
    The 111 mutation samples are synthetically generated variants derived by substituting IP addresses and port numbers (including replacing the default constant 4444) across known reverse shell templates via regular expressions (`ipPortVariant`). No shell paths, commands, or execution arguments are modified. They do not constitute 111 distinct wild attack families.
+
+### E. Closed Laboratory Bench on Our Own Infrastructure (2026-10-27)
+
+The public datasets above were complemented by a closed bench entirely under our control: an authoritative server for a laboratory zone under our own domain (`cmd/dnslab-auth`, bound to a private mesh address, port 53 never exposed to the Internet), a campaign emitter on a second host (`cmd/c2dnslab-emit`: replay of names under the zone, `iodine` handshake), hourly packet captures and typed journals shipped to a log sink. Captures are ingested by `IngestRedhostLabRun`, evaluated with the family of the run held out of training (`EvaluateDNSLabFamilies`), and missed views are recompiled into an N+1 floppy by `RecompileDNSTunnelDelta` with the proof predicate `ProvePattern` (evasion counted on N, `FN = 0` on N+1, no increase of benign false positives).
+
+- **Held-out family `redhost-replay`** (1,328 questions, 3 runs): TP 1,254, FN 74, AUC 0.7945 on a laboratory benign set of 69 questions emitted by us (45 FP: the 20 tunnel-shaped probe queries, blocked by the tunnel head and whose names are also replayed as hostile, plus the 25 queries to `hazyhaar.fr` / `www.hazyhaar.fr`, all blocked by the DGA head; 24 TN on `pound2pound.fr` / `lab.pound2pound.fr`; accuracy 0.9148 at that operating point, below the majority-class rate 0.9506).
+- **Evasions closed in-sample by differential recompilation** (`c2forge dns-delta`, exit code 0; N+1 recompiled from the evaded views of a run and measured on that same run): `iodine` version handshake, FN 5 → 0 (+4 centroids); the one-label name `canary.lab.pound2pound.fr`, FN 74 → 0 (+1 centroid); benign FP 20 → 20 in both cases. Out of sample: 598 real `tuns.org` labels replayed under the zone, never learned, all blocked by the base floppy (exit code 3, already covered). Per distinct name: 605 of 606 hostile names blocked; the per-question totals repeat 8 laboratory names about 75 times each and count the partial `tuns.org` run twice.
+- **Learned projector ablation** (`internal/projlearn`, kernels transpiled from C99): held-out AUC 0.7585 against 0.9932 / 0.9449 for the fixed projection; not adopted.
+- **Not measured:** generalization of a centroid learned from 5 `iodine` questions to another client or version; real Internet noise; systematic alphabet, length and cadence variations (`GenerateVariationNames` is shipped and tested, no variation campaign was run).
 
 ---
 
@@ -182,7 +192,7 @@ Measured on physical hardware (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0, 
 
 ### Compiling the Forge Tool
 ```bash
-go build -ldflags="-s -w" -o bin/c2forge ./cmd/c2forge
+GOEXPERIMENT=simd go build -ldflags="-s -w" -o bin/c2forge ./cmd/c2forge
 ```
 
 ### Forging Knowledge Bases
@@ -191,6 +201,22 @@ To generate the three `.c2book` files from training data:
 ./bin/c2forge -wittgenstein-floppies \
   -wittgenstein-data /path/to/data/wittgenstein \
   -out-dir /path/to/output/floppies
+```
+
+### Laboratory Bench & Encrypted-Transit Evaluation (`lab-eval`, `dns-delta`, `encrypted-eval`)
+```bash
+# Held-out evaluation of each laboratory family (add -tolerant for RFC 1035/2181 binary non-LDH labels)
+./bin/c2forge lab-eval -tolerant -data /path/to/data/wittgenstein -lab /path/to/redhost_lab \
+  -out /path/to/floppies -report 07-homologation-laboratoire.json
+
+# Differential recompilation and pattern proof (exit 0 proved, 3 already covered, 4 not proved)
+./bin/c2forge dns-delta -base /path/to/floppies/redhost-iodine/floppy_dns_tunnel.c2book \
+  -lab /path/to/redhost_lab -run iodine-20261027T151046Z -benign local-dns-20261027T113715Z \
+  -out iodine-n1.c2book -proof 06-motifs-prouves-iodine.json
+
+# Keyless zero-allocation kinetic inspection on DoQ / DoH2 / DoH3 / H3 PCAPs
+./bin/c2forge encrypted-eval -pcap /path/to/capture.pcap -out /tmp/verdict.json
+./bin/c2forge encrypted-eval -manifest /path/to/encrypted_manifest.json -report /tmp/lofo-report.json
 ```
 
 ### Running Targeted Tests
@@ -207,39 +233,113 @@ go test -race -count=1 .
 
 ---
 
+## 4b. Cloning, Building and Reproducing the Laboratory Results (added 2026-10-31)
+
+In the published standalone tree, the three shared Go modules (`c2slm`, `c2pkg`, `pkg`) are materialized under `vendor/` so builds run offline with `-mod=vendor`; in a local multi-module checkout where `vendor/` is not committed, `go.mod` resolves the sibling modules via `replace` directives. Running `./scripts/verify-standalone.sh` copies the tree into an isolated temporary directory, materializes `vendor/` if absent, strips every `replace` directive from `go.mod`, and verifies offline builds and unit suites under `GOPROXY=off GOSUMDB=off -mod=vendor`.
+
+```bash
+git clone https://github.com/hazyhaar/c2blue55.git
+cd c2blue55
+go build ./...                      # portable scalar build (Go 1.27+)
+GOEXPERIMENT=simd go build ./...    # AVX2 kernels; 4 to 5 times faster inference, same results
+go vet ./...
+```
+
+Test suite. Packages that need zero external files run out of the box with `GOEXPERIMENT=simd go test -race -count=1 ./socagent ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web ./internal/dnslab ./internal/icmplab ./internal/goclassifier ./internal/probes/...`. Four test groups in `.`, `./cmd/c2forge`, `./internal/engine`, `./internal/projlearn`, `./internal/cinetique`, and `./cmd/c2agent` need external material and fail with an explicit message when it is absent:
+
+| Tests | Need | How to provide |
+|---|---|---|
+| `internal/cinetique` end-to-end chain, `cmd/c2agent` SLM tests | a GGUF model | download `qwen2.5-0.5b-instruct-q4_k_m.gguf` (Qwen2.5-0.5B-Instruct-GGUF on Hugging Face) and export `C2_TEST_QWEN_GGUF=/path/to/it`; `cmd/c2agent` reads `C2BLUE_MODEL_PATH` at run time |
+| `internal/projlearn` training tests, `TestLabFamilies_RealRunsHeldOut`, `TestDeltaRecompile_ProofTriplet`, `internal/engine` `TestForgeDNSFloppies_NoCorpusDomainLeak`, `TestDNSLeakFix`, `TestDNSAgent_ColdFamilyGeneralization`, and every `c2forge lab-eval` run below (the DNS floppies are trained on netrack plus this DGA corpus) | `wittgenstein/abusayed_dga_full.csv` (76 MB, 2.46 M rows `DGA_family,Domain,Type`; its publisher states no license, so it is not redistributed here) | download `dga_dataset_full.csv` from `AbuSayed1/DGA-DATASET` on Hugging Face and save it as `wittgenstein/abusayed_dga_full.csv` |
+| `internal/engine` `TestProveMotif*6Pieces` | synthetic motif captures expected one directory above the repository | copy `wittgenstein/redhost_lab/motifs_v5/` to `../wittgenstein/redhost_lab/motifs_v5/` relative to the repository root |
+| `internal/cinetique` `TestBancInvarianceHybrideReel` | a quiet machine (host load below 2) | run alone |
+
+Run the detector on laboratory captures (`lab-eval` requires `wittgenstein/abusayed_dga_full.csv`; `encrypted-eval` needs only the repository):
+
+```bash
+GOEXPERIMENT=simd go build -o bin/c2forge ./cmd/c2forge
+# real iodine / dns2tcp tunnels through Unbound (-tolerant ingests binary Base128 labels)
+./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/tunnels-20261031 -out /tmp/floppies-live -report /tmp/live.json
+# same tunnels after DoQ / DoH3 termination
+./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/quic-20261031/terminal -out /tmp/floppies-terminal -report /tmp/terminal.json
+# external real captures (netrack/learn, Apache-2.0: iodine 6,119/6,119 judged, AUC 0.9922; plain benign 2,385/8,654 = 27.6% FP)
+./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/netrack_lab -out /tmp/floppies-netrack -report /tmp/netrack.json
+# encrypted DoQ / DoH2 / DoH3 / H3 keyless kinetic inspection (zero external corpus needed)
+./bin/c2forge encrypted-eval -pcap wittgenstein/redhost_lab/banc-comparatif-2026-11/dnstt-doq.pcap -out /tmp/dnstt-doq.json
+./bin/c2forge encrypted-eval -pcap wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/vaydns-srv-doh3-transit.pcap -out /tmp/vaydns-doh3.json
+./bin/c2forge encrypted-eval -manifest wittgenstein/redhost_lab/banc-comparatif-2026-11/encrypted-manifest-l1.json -report /tmp/enc-l1.json
+./bin/c2forge encrypted-eval -manifest wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/encrypted-manifest-joint35.json -report /tmp/enc-joint35.json
+# L1 & L1-bis clear/terminal DNS benches (requires wittgenstein/abusayed_dga_full.csv)
+./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/banc-comparatif-2026-11 -out /tmp/floppies-l1 -report /tmp/l1-clear.json
+./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/banc-exotiques-quic-2026-11 -out /tmp/floppies-l1bis -report /tmp/l1bis-clear.json
+```
+
+Each `lab-eval` line prints: family, runs, questions, TP, FP, TN, FN, hostile quarantined, benign quarantined, L0 blocks, L1a passes, L1b blocks, majority-class rate, AUC, AUC-insufficient flag. Each `encrypted-eval` report emits conversation-level regime estimates (`R0a`, `R0b`, `R1a`, `R1b`) and, in `-manifest` mode, Leave-One-Family-Out confusion counts, majority-class rates, ROC AUCs, and sample-sufficiency flags.
+
+Data provenance and licenses: `wittgenstein/redhost_lab/` (`banc-comparatif-2026-11`, `banc-exotiques-quic-2026-11`, `tunnels-20261031`, `quic-20261031`) are captures from our own private WireGuard laboratory (MIT, as the repository); `wittgenstein/netrack_dns/` and `wittgenstein/netrack_lab/` come from `github.com/netrack/learn` under Apache-2.0 (license file included); the external benign witness (`cyberjonlab/DNS_exfil`, CC BY-NC-4.0) is referenced by SHA-256 and not redistributed.
+
+---
+
+## 4c. Post-Audit Hardening & Integrity Gates (2026-11-01, v8.1)
+
+Following a full adversarial code audit across all 21 Go packages, the following fail-closed security and integrity invariants are enforced and covered by permanent negative tests:
+
+- **Full 4,096-byte NUL-safe payload extraction (`internal/engine/feature_extractor.go`):** `ExtractFeatures512` scans up to `MaxPayloadScanBytes = 4096` without stopping on interior `0x00` bytes; all three pre-compiled `.c2book` floppies (`testdata/wittgenstein/floppies/` and `wittgenstein/floppies/`) are forged under this 4,096-byte representation.
+- **Non-circular evaluation & measured OOS gates:** Synthetic IRL benchmarks extract wire features blindly without reading ground-truth labels (`irl_bench_thesaurus.go`); `ProvePatternOutOfSample` enforces `Recall >= 0.90` alongside `BenignRunBFP == 0`; `EvaluateConfusion18x18AndAblation` and the 6-piece motif proofs execute the actual baseline `N` detector; `c2agent record --export-blueteam` requires a validated `--oos-proof <path>` report before exporting Sigma/Suricata rules.
+- **Holdout collision & `NaN`/`±Inf` drift protection:** `ValidateAgainstHoldoutSet` rejects `nil`/empty holdout sets (`ErrHoldoutUnvalidated`) and measures Hamming-radius collisions against `maxAllowedRegression`; `CusumDriftGuard` rejects any `NaN` or `±Inf` vector (`ErrDriftGuardNaN`) without mutating the installed reference; `BuildBaselineFromSilo` returns `ErrOracleCorrupt` when all silo slices fail authentication.
+- **Wire, probe, SOC & CLI fail-closed bounds:** `ParseDNSMessage` raises `MaxDNSRDataBytes = 1536` and returns `ErrRDataTooLong` / `ErrTooManyRRs` rather than silently truncating; `ReadPCAPDNSMessages` rejects UDP headers `< 8` bytes; `dnslab.BuildResponse` bounds 253-byte SOA apexes without panicking; `internal/probes/ring.go` retains `srcPort == 53` DNS replies; `policy.IsProtectedPath` enforces `/` segment boundaries; `socagent.ComposeV7` encodes the full 16-bit sequence and `RemediationFor` requires at least one attested fact; `cmd/c2dnslab-emit` enforces constant-time HTTP Bearer authentication (`-api-token` / `C2DNSLAB_API_TOKEN`) and `maxQPS` pacing; `cmd/c2scanner` rejects files `> 16 MiB` (`ErrScanFileTooLarge`); `cmd/c2forge` aborts on unreadable corpus inputs.
+
+---
+
 ## 5. Repository Structure
 
 ```
-pkg/c2blue55/
+c2blue55/
 ├── cmd/
 │   ├── c2agent/               # Autonomous endpoint agent daemon with optional pure Go SLM
 │   ├── c2blue-arena-web/      # Real-time web visualizer for seqlock arena & telemetry
 │   ├── c2blue-mcp-guard/      # MCP proxy guard: real-time inspection for AI agent tools
-│   └── c2forge/               # CLI utility: floppy forging, pyramid compilation, evaluation
-│       ├── floppy_builder.go  # Empirical training and floppy generation
-│       ├── main.go            # Entrypoint
-│       └── pyramid.go         # Hierarchical delta compilation
+│   ├── c2cinetique/           # Standalone kinetic telemetry CLI
+│   ├── c2dnslab-emit/         # Closed-bench DNS campaign emitter (Bearer-authenticated)
+│   ├── c2forge/               # CLI utility: floppy forging, lab-eval, dns-delta, encrypted-eval
+│   │   ├── floppy_builder.go  # Empirical training and floppy generation
+│   │   ├── main.go            # Entrypoint & subcommand router
+│   │   └── pyramid.go         # Hierarchical delta compilation
+│   ├── c2icmplab-emit/        # Closed-bench ICMP Echo emitter
+│   ├── c2icmplab-respond/     # Closed-bench ICMP Echo transform responder
+│   ├── c2multiagent/          # Multi-subsystem corpus benchmark runner
+│   ├── c2scanner/             # Static & binary artifact scanner (fail-closed > 16 MiB)
+│   └── dnslab-auth/           # Authoritative laboratory DNS server
 ├── internal/
+│   ├── cinetique/             # Kinetic ratio features & pure Go SLM form arbitrator
+│   ├── dnslab/                # Closed-bench DNS campaign runner & PatternCatalog29
 │   ├── engine/                # Core low-level algorithmic engine
 │   │   ├── arena_pool.go      # 4KB atomic seqlock ring buffer (zero race)
 │   │   ├── delta_catalog.go   # LSM catalog and delta indexing
 │   │   ├── drift_guard.go     # Standalone statistical drift detector for offline recertification
-│   │   ├── feature_extractor.go # Zero-alloc 512-dim embedding extraction
+│   │   ├── feature_extractor.go # Zero-alloc 512-dim 4,096 B NUL-safe embedding extraction
 │   │   ├── floppy_engine.go   # .c2book mmap loader, HMAC-SHA256, RCU slot
 │   │   ├── forensic_proof.go  # Ed25519 signature and verification chain
-│   │   ├── inference_cascade.go # Dual-layer cascade orchestrator
+│   │   ├── inference_cascade.go # Dual-layer cascade orchestrator & NonLDHBurstGuard
 │   │   ├── pyramid_engine.go  # LSM delta merge and pyramid trees
 │   │   ├── rabitq512.go       # 512-bit Fast Hadamard Transform adapter & quantization
 │   │   ├── server_oracle.go   # Server-side consensus and authority
 │   │   └── wittgenstein_corpus.go # Authentic dataset loaders and splitters
-│   └── goclassifier/          # Embedded standalone FHT512, RaBitQ conformal probe & MIT license
-├── docs/                      # Architectural monographs & tournament articles
-│   ├── c2blue55_wittgenstein_article.md # Formal submission article for Wittgenstein Tournament
+│   ├── goclassifier/          # Embedded standalone FHT512, RaBitQ conformal probe & MIT license
+│   ├── icmplab/               # ICMP Echo parity & unsolicited reply trackers
+│   ├── probes/                # Linux host probes (cn_proc, fanotify, inet_diag, UDP/53 ring)
+│   └── projlearn/             # Transpiled C99 learned-projector ablation kernels
+├── docs/                      # Architectural monographs & roadmaps
+│   ├── inter_channel_c2_roadmap.md # Cross-channel C2 telemetry roadmap
 │   └── why_micro_optimization_is_a_security_choice.md # Technical monograph on zero-alloc security
 ├── socagent/                  # Dedicated SOC telemetry ingestion and event dispatcher
-├── testdata/                  # Packaged authentic datasets & pre-compiled floppies (1.3 MB)
+├── testdata/                  # Packaged authentic datasets & pre-compiled floppies
 │   └── wittgenstein/          # Evaluation corpora (LOLBAS, DNS C2 validate.csv, sealed .c2book disks)
+├── wittgenstein/              # Laboratory PCAP captures (redhost_lab/, netrack_lab/, netrack_dns/)
 ├── c2blue55.go                # Public module API and configuration
+├── encrypted_wire_decode.go   # Zero-alloc PCAP / DoQ / DoH2 / DoH3 / H3 wire decoder
+├── encrypted_wire_eval.go     # Keyless 9-dim KineticVector, R0a..R1b regimes & LOFO evaluator
+├── encrypted_wire_lab.go      # Manifest loader & standalone PCAP encrypted-eval runner
 ├── router.go                  # Subsystem multiplexing (SubProc, SubNet, SubMCP)
 ├── lsm_receiver.go            # Continuous telemetry ingestion receiver
 ├── subsystems.go              # Subsystem protocol definitions
@@ -253,8 +353,8 @@ pkg/c2blue55/
 
 ## 6. Publications & Monographs
 
-- [**Wittgenstein AI Tournament Article**](docs/c2blue55_wittgenstein_article.md): Architecture, formal evaluation on authentic datasets, and operational trade-offs.
 - [**Why Micro-Optimization is a Fundamental Security Choice**](docs/why_micro_optimization_is_a_security_choice.md): Technical monograph on architectural determinism, zero-allocation ingestion, and low-latency remediation decisions.
+- [**Inter-Channel C2 Roadmap**](docs/inter_channel_c2_roadmap.md): Design notes on multi-channel C2 kinetic correlation.
 
 ---
 
