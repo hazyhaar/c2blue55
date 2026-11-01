@@ -13,12 +13,18 @@ const (
 
 // SOANegativeEvalReport synthétise les compteurs d'évaluation hors ligne du canal SOA négatif sur une capture PCAP.
 type SOANegativeEvalReport struct {
-	Responses          uint32
-	NegativeWithSOA    uint32
-	Fires              uint32
-	FiredKeys          uint32
-	PacketsToFirstFire uint32
-	FirstFireTsNs      uint64
+	Responses                 uint32
+	NegativeWithSOA           uint32
+	NegativeWithAnswerPayload uint32
+	Fires                     uint32
+	FiredKeys                 uint32
+	PacketsToFirstFire        uint32
+	FirstFireTsNs             uint64
+}
+
+// NegativeAnswerPayloadPackets retourne le nombre de réponses NXDOMAIN portant une section Answer non permise par RFC 2308/4035.
+func NegativeAnswerPayloadPackets(report SOANegativeEvalReport) uint32 {
+	return report.NegativeWithAnswerPayload
 }
 
 func extraireParentMinuscules(paquetFilaire []byte) ([255]byte, int) {
@@ -167,6 +173,41 @@ func contientSOAAutorite(paquetFilaire []byte) bool {
 	return false
 }
 
+func contientChargeReponseIllegitimeNXDOMAIN(paquetFilaire []byte) bool {
+	position := 12
+	questions := int(binary.BigEndian.Uint16(paquetFilaire[4:6]))
+	reponses := int(binary.BigEndian.Uint16(paquetFilaire[6:8]))
+	if questions == 0 {
+		return true
+	}
+	for range questions {
+		var valide bool
+		position, valide = sauterNomDNS(paquetFilaire, position)
+		if !valide || len(paquetFilaire)-position < 4 {
+			return true
+		}
+		position += 4
+	}
+	for range reponses {
+		var valide bool
+		position, valide = sauterNomDNS(paquetFilaire, position)
+		if !valide || len(paquetFilaire)-position < 10 {
+			return true
+		}
+		typeRessource := binary.BigEndian.Uint16(paquetFilaire[position : position+2])
+		longueurDonnees := int(binary.BigEndian.Uint16(paquetFilaire[position+8 : position+10]))
+		position += 10
+		if longueurDonnees > len(paquetFilaire)-position {
+			return true
+		}
+		if typeRessource != 5 && typeRessource != 39 && typeRessource != 46 {
+			return true
+		}
+		position += longueurDonnees
+	}
+	return false
+}
+
 // EvaluateSOANegativePCAP évalue une capture PCAP bidirectionnelle contre le détecteur SOANegativeTracker.
 func EvaluateSOANegativePCAP(pcapPath string) (SOANegativeEvalReport, error) {
 	var rapport SOANegativeEvalReport
@@ -184,9 +225,13 @@ func EvaluateSOANegativePCAP(pcapPath string) (SOANegativeEvalReport, error) {
 		}
 		rapport.Responses++
 
+		codeOperation := (chargeFilaire[2] >> 3) & 0x0F
 		codeReponse := chargeFilaire[3] & 0x0F
 		nbReponses := binary.BigEndian.Uint16(chargeFilaire[6:8])
 		nbAutorites := binary.BigEndian.Uint16(chargeFilaire[8:10])
+		if codeOperation == 0 && codeReponse == 3 && nbReponses >= 1 && contientChargeReponseIllegitimeNXDOMAIN(chargeFilaire) {
+			rapport.NegativeWithAnswerPayload++
+		}
 		if nbReponses == 0 && (codeReponse == 0 || codeReponse == 3) && nbAutorites >= 1 && contientSOAAutorite(chargeFilaire) {
 			rapport.NegativeWithSOA++
 		}

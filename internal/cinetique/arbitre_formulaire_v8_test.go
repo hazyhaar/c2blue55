@@ -40,7 +40,15 @@ func v8CasReference(t *testing.T) []struct {
 	diagMemoryPSI.VariationsPct[IndiceKioPicRSSParFil] = 26
 	debutIdle := InstantaneTache{PID: 88, DebutTacheTicks: 444, HorodatageNs: 1_000_000}
 	finIdle := InstantaneTache{PID: 88, DebutTacheTicks: 444, HorodatageNs: 31_000_000, TempsExecutionNs: 2_000_000, AttenteFileNs: 8_000_000, CommutationsVolontaires: 10, CommutationsSubies: 20, VmRSSKio: 20_000, NombreFils: 1}
-	epNormal, err := EvaluerEpisodeCinetique(debutIdle, finIdle, InstantanePressionPSI{HorodatageNs: 1_000_000}, InstantanePressionPSI{HorodatageNs: 31_000_000, CPUSomeTotalUs: 12_000}, CompteursReseauEpisode{OctetsSortants: 200, ConnexionsSortantes: 1, ResolutionsDNS: 1}, TopologieHybride{}, ConfigPlanchersParDefaut())
+	epNormal, err := EvaluerEpisodeCinetique(
+		debutIdle,
+		finIdle,
+		InstantanePressionPSI{HorodatageNs: 1_000_000},
+		InstantanePressionPSI{HorodatageNs: 31_000_000, CPUSomeTotalUs: 12_000},
+		CompteursReseauEpisode{OctetsSortants: 200, ConnexionsSortantes: 1, ResolutionsDNS: 1},
+		TopologieHybride{},
+		ConfigPlanchersParDefaut(),
+	)
 	if err != nil {
 		t.Fatalf("epNormal: %v", err)
 	}

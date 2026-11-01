@@ -129,6 +129,8 @@ type parsedWireSummary struct {
 	firstLabelHasHyphen  bool
 	answerCount          int
 	answers              [16]parsedWireRR
+	authorityCount       int
+	authorities          [16]parsedWireRR
 	additionalCount      int
 	additionals          [16]parsedWireRR
 }
@@ -176,54 +178,53 @@ func decodeWireSection(raw []byte, off int, rrCount uint16, dst *[16]parsedWireR
 	return off, stored
 }
 
-func summarizeWirePacket(raw []byte) parsedWireSummary {
-	var s parsedWireSummary
-	if len(raw) < 12 {
-		return s
+func summarizeWirePacket(wirePacket []byte) parsedWireSummary {
+	var summary parsedWireSummary
+	if len(wirePacket) < 12 {
+		return summary
 	}
-	flags := binary.BigEndian.Uint16(raw[2:4])
-	s.opcode = uint8((flags >> 11) & 0x0F)
-	s.rcode = uint8(flags & 0x000F)
-	s.qdCount = binary.BigEndian.Uint16(raw[4:6])
-	s.anCount = binary.BigEndian.Uint16(raw[6:8])
-	s.nsCount = binary.BigEndian.Uint16(raw[8:10])
-	s.arCount = binary.BigEndian.Uint16(raw[10:12])
+	flags := binary.BigEndian.Uint16(wirePacket[2:4])
+	summary.opcode = uint8((flags >> 11) & 0x0F)
+	summary.rcode = uint8(flags & 0x000F)
+	summary.qdCount = binary.BigEndian.Uint16(wirePacket[4:6])
+	summary.anCount = binary.BigEndian.Uint16(wirePacket[6:8])
+	summary.nsCount = binary.BigEndian.Uint16(wirePacket[8:10])
+	summary.arCount = binary.BigEndian.Uint16(wirePacket[10:12])
 
-	if len(raw) > 13 {
-		l0 := int(raw[12])
-		if l0 > 0 && l0 <= 63 && 13+l0 <= len(raw) {
+	if len(wirePacket) > 13 {
+		l0 := int(wirePacket[12])
+		if l0 > 0 && l0 <= 63 && 13+l0 <= len(wirePacket) {
 			for i := range l0 {
-				b := raw[13+i]
+				b := wirePacket[13+i]
 				if b >= 'A' && b <= 'Z' {
-					s.firstLabelUpper++
+					summary.firstLabelUpper++
 				} else if b >= 'a' && b <= 'z' {
-					s.firstLabelLower++
+					summary.firstLabelLower++
 				} else if b >= '0' && b <= '9' {
-					s.firstLabelDigits++
+					summary.firstLabelDigits++
 				}
 				if b == '0' || b == 'O' || b == 'I' || b == 'l' {
-					s.firstLabelHasZeroOIl = true
+					summary.firstLabelHasZeroOIl = true
 				}
 				if b == '-' {
-					s.firstLabelHasHyphen = true
+					summary.firstLabelHasHyphen = true
 				}
 			}
 		}
 	}
 
 	off := 12
-	for q := uint16(0); q < s.qdCount && off < len(raw); q++ {
-		off = skipWireName(raw, off)
+	for q := uint16(0); q < summary.qdCount && off < len(wirePacket); q++ {
+		off = skipWireName(wirePacket, off)
 		off += 4
 	}
-	if off > len(raw) {
-		return s
+	if off > len(wirePacket) {
+		return summary
 	}
-	off, s.answerCount = decodeWireSection(raw, off, s.anCount, &s.answers)
-	var authDummy [16]parsedWireRR
-	off, _ = decodeWireSection(raw, off, s.nsCount, &authDummy)
-	_, s.additionalCount = decodeWireSection(raw, off, s.arCount, &s.additionals)
-	return s
+	off, summary.answerCount = decodeWireSection(wirePacket, off, summary.anCount, &summary.answers)
+	off, summary.authorityCount = decodeWireSection(wirePacket, off, summary.nsCount, &summary.authorities)
+	_, summary.additionalCount = decodeWireSection(wirePacket, off, summary.arCount, &summary.additionals)
+	return summary
 }
 
 func hasIntraRRsetATTLStego(resp *parsedWireSummary) bool {

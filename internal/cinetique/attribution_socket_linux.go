@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/hazyhaar/c2blue55/internal/probes"
@@ -21,6 +22,10 @@ const (
 	capaciteSocketsDiag    = 1024
 	tailleTamponNetlink    = 32768
 	capaciteCacheInodes    = 128
+	ensemblesCacheTuples   = 256
+	voiesCacheTuples       = 4
+	dureeVieCacheTuples    = 2 * time.Second
+	etatTCPListen          = 10
 	capaciteTableProcessus = 256
 )
 
@@ -51,17 +56,39 @@ type entreeCacheInode struct {
 	longueurNom     uint8
 }
 
+type entreeCacheTuple struct {
+	occupee          bool
+	familleRequete   uint8
+	protocole        uint8
+	portLocal        uint16
+	portDistant      uint16
+	adresseLocale    [16]byte
+	adresseDistante  [16]byte
+	ordreAcces       uint64
+	instantInsertion time.Time
+	identite         IdentiteProcessusSocket
+	cheminLienFD     [40]byte
+	motifSocket      [32]byte
+	longueurMotif    uint8
+}
+
 // ResolveurSocketProcessus effectue hors chemin chaud la résolution
-// (Famille, Protocole, PortLocal, PortDistant) -> Inode Netlink inet_diag -> (PID, DebutTacheTicks).
+// (Famille, Protocole, PortLocal, PortDistant) -> Inode Netlink inet_diag -> (PID, DebutTacheTicks),
+// précédée d'un cache borné fixe de 1024 entrées (256 ensembles x 4 voies) en 0 B/op.
 type ResolveurSocketProcessus struct {
-	mu            sync.Mutex
-	fdInetDiag    int
-	capteurProc   *CapteurProcLinux
-	prochaineSeq  uint32
-	tamponNetlink [tailleTamponNetlink]byte
-	tableSockets  [capaciteSocketsDiag]probes.SocketInfo
-	cacheInodes   [capaciteCacheInodes]entreeCacheInode
-	curseurCache  uint8
+	mu                 sync.Mutex
+	fdInetDiag         int
+	capteurProc        *CapteurProcLinux
+	prochaineSeq       uint32
+	tamponNetlink      [tailleTamponNetlink]byte
+	tableSockets       [capaciteSocketsDiag]probes.SocketInfo
+	cacheInodes        [capaciteCacheInodes]entreeCacheInode
+	curseurCache       uint8
+	cacheTuples        [ensemblesCacheTuples][voiesCacheTuples]entreeCacheTuple
+	seqCacheTuples     uint64
+	succesCacheTuples  uint64
+	defautsCacheTuples uint64
+	tamponVerifLien    [64]byte
 }
 
 // OuvrirResolveurSocketProcessus initialise la socket NETLINK_INET_DIAG et le descripteur /proc.
@@ -115,6 +142,55 @@ func (r *ResolveurSocketProcessus) CapteurProc() *CapteurProcLinux {
 	return r.capteurProc
 }
 
+// StatistiquesCacheTuples rend les compteurs cumulatifs de succès (hits 0 B/op)
+// et de défauts (misses ayant déclenché une interrogation inet_diag) du cache 1024 tuples.
+func (r *ResolveurSocketProcessus) StatistiquesCacheTuples() (succes uint64, defauts uint64) {
+	if r == nil {
+		return 0, 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.succesCacheTuples, r.defautsCacheTuples
+}
+
+// StatistiquesCacheTuplesResolveur retourne les compteurs cumulatifs de succès et de défauts du cache de tuples.
+func StatistiquesCacheTuplesResolveur(r *ResolveurSocketProcessus) (succes uint64, defauts uint64) {
+	return r.StatistiquesCacheTuples()
+}
+
+// DetecterEcouteDNSClairProcessus vérifie si la tâche détient une socket locale d'écoute DNS clair.
+func DetecterEcouteDNSClairProcessus(r *ResolveurSocketProcessus, pid int, debutTacheTicks uint64) (bool, error) {
+	if r == nil {
+		return false, ErrProprietaireIntrouvable
+	}
+	return r.DetecterEcouteDNSClairLocale(pid, debutTacheTicks)
+}
+
+// EnregistrerObservationResolveurProcessus accumule en 0 B/op sur le collecteur la ventilation résolveur du processus.
+func EnregistrerObservationResolveurProcessus(
+	c *CollecteurReseauParProcessus,
+	pid int,
+	debutTacheTicks uint64,
+	octetsVersResolveurChiffre uint64,
+	octetsHorsResolveur uint64,
+	nouvelleConnexionHorsResolveur bool,
+	ecouteDNSClairLocale bool,
+	fluxResolveurChiffrePresent bool,
+) {
+	if c == nil {
+		return
+	}
+	c.EnregistrerObservationResolveur(
+		pid,
+		debutTacheTicks,
+		octetsVersResolveurChiffre,
+		octetsHorsResolveur,
+		nouvelleConnexionHorsResolveur,
+		ecouteDNSClairLocale,
+		fluxResolveurChiffrePresent,
+	)
+}
+
 // ResoudreTupleIPv4 identifie le processus propriétaire d'une socket UDP ou TCP IPv4
 // à partir de son port source local et de son port distant, avec repli automatique sur
 // les sockets double pile AF_INET6 (:: ou ::ffff:x.x.x.x) utilisées par défaut sous Linux/Go.
@@ -124,17 +200,34 @@ func (r *ResolveurSocketProcessus) ResoudreTupleIPv4(
 	portDistant uint16,
 	pidCandidat int,
 ) (IdentiteProcessusSocket, error) {
-	if r == nil {
+	if r == nil || portLocal == 0 {
 		return IdentiteProcessusSocket{}, ErrSocketIntrouvable
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	ident, errV4 := r.resoudreTupleFamilleVerrouille(unix.AF_INET, protocole, portLocal, portDistant, pidCandidat, false)
-	if errV4 == nil || !errors.Is(errV4, ErrSocketIntrouvable) {
+	var adrVide [16]byte
+	if identCache, okCache := r.chercherCacheTupleVerrouille(unix.AF_INET, protocole, adrVide, portLocal, adrVide, portDistant, pidCandidat); okCache {
+		r.succesCacheTuples++
+		return identCache, nil
+	}
+	r.defautsCacheTuples++
+
+	var nomFD [24]byte
+	var lgFD int
+	ident, errV4 := r.resoudreTupleFamilleVerrouille(unix.AF_INET, protocole, portLocal, portDistant, pidCandidat, false, &nomFD, &lgFD)
+	if errV4 == nil {
+		r.insererCacheTupleVerrouille(unix.AF_INET, protocole, adrVide, portLocal, adrVide, portDistant, ident, nomFD[:lgFD])
+		return ident, nil
+	}
+	if !errors.Is(errV4, ErrSocketIntrouvable) {
 		return ident, errV4
 	}
-	return r.resoudreTupleFamilleVerrouille(unix.AF_INET6, protocole, portLocal, portDistant, pidCandidat, true)
+	identV6, errV6 := r.resoudreTupleFamilleVerrouille(unix.AF_INET6, protocole, portLocal, portDistant, pidCandidat, true, &nomFD, &lgFD)
+	if errV6 == nil {
+		r.insererCacheTupleVerrouille(unix.AF_INET, protocole, adrVide, portLocal, adrVide, portDistant, identV6, nomFD[:lgFD])
+	}
+	return identV6, errV6
 }
 
 // ResoudreTupleIPv6 identifie le processus propriétaire d'une socket UDP ou TCP IPv6.
@@ -144,12 +237,271 @@ func (r *ResolveurSocketProcessus) ResoudreTupleIPv6(
 	portDistant uint16,
 	pidCandidat int,
 ) (IdentiteProcessusSocket, error) {
-	if r == nil {
+	if r == nil || portLocal == 0 {
 		return IdentiteProcessusSocket{}, ErrSocketIntrouvable
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.resoudreTupleFamilleVerrouille(unix.AF_INET6, protocole, portLocal, portDistant, pidCandidat, false)
+
+	var adrVide [16]byte
+	if identCache, okCache := r.chercherCacheTupleVerrouille(unix.AF_INET6, protocole, adrVide, portLocal, adrVide, portDistant, pidCandidat); okCache {
+		r.succesCacheTuples++
+		return identCache, nil
+	}
+	r.defautsCacheTuples++
+
+	var nomFD [24]byte
+	var lgFD int
+	ident, errV6 := r.resoudreTupleFamilleVerrouille(unix.AF_INET6, protocole, portLocal, portDistant, pidCandidat, false, &nomFD, &lgFD)
+	if errV6 == nil {
+		r.insererCacheTupleVerrouille(unix.AF_INET6, protocole, adrVide, portLocal, adrVide, portDistant, ident, nomFD[:lgFD])
+	}
+	return ident, errV6
+}
+
+func indiceEnsembleCacheTuple(famille, protocole uint8, portLocal, portDistant uint16) int {
+	melange := uint32(famille)*2654435761 ^
+		uint32(protocole)*2246822519 ^
+		uint32(portLocal)*3266489917 ^
+		uint32(portDistant)*668265263
+	melange ^= melange >> 16
+	return int(melange & (ensemblesCacheTuples - 1))
+}
+
+func (r *ResolveurSocketProcessus) chercherCacheTupleVerrouille(
+	familleRequete uint8,
+	protocole uint8,
+	adrLocale [16]byte,
+	portLocal uint16,
+	adrDistante [16]byte,
+	portDistant uint16,
+	pidCandidat int,
+) (IdentiteProcessusSocket, bool) {
+	if r.capteurProc == nil {
+		return IdentiteProcessusSocket{}, false
+	}
+	idxEnsemble := indiceEnsembleCacheTuple(familleRequete, protocole, portLocal, portDistant)
+	ensemble := &r.cacheTuples[idxEnsemble]
+
+	for voie := range voiesCacheTuples {
+		entree := &ensemble[voie]
+		if !entree.occupee ||
+			entree.familleRequete != familleRequete ||
+			entree.protocole != protocole ||
+			entree.portLocal != portLocal ||
+			entree.portDistant != portDistant ||
+			entree.adresseLocale != adrLocale ||
+			entree.adresseDistante != adrDistante {
+			continue
+		}
+		if pidCandidat > 0 && entree.identite.PID != pidCandidat {
+			continue
+		}
+		if time.Since(entree.instantInsertion) > dureeVieCacheTuples {
+			entree.occupee = false
+			continue
+		}
+		if entree.longueurMotif == 0 || entree.cheminLienFD[0] == 0 {
+			entree.occupee = false
+			continue
+		}
+		nLien, _, errnoLink := unix.Syscall6(
+			unix.SYS_READLINKAT,
+			uintptr(r.capteurProc.fdProc),
+			uintptr(unsafe.Pointer(&entree.cheminLienFD[0])),
+			uintptr(unsafe.Pointer(&r.tamponVerifLien[0])),
+			uintptr(len(r.tamponVerifLien)),
+			0, 0,
+		)
+		if errnoLink != 0 ||
+			int(nLien) != int(entree.longueurMotif) ||
+			!bytes.Equal(r.tamponVerifLien[:nLien], entree.motifSocket[:entree.longueurMotif]) {
+			entree.occupee = false
+			continue
+		}
+		r.seqCacheTuples++
+		entree.ordreAcces = r.seqCacheTuples
+		return entree.identite, true
+	}
+	return IdentiteProcessusSocket{}, false
+}
+
+func (r *ResolveurSocketProcessus) insererCacheTupleVerrouille(
+	familleRequete uint8,
+	protocole uint8,
+	adrLocale [16]byte,
+	portLocal uint16,
+	adrDistante [16]byte,
+	portDistant uint16,
+	identite IdentiteProcessusSocket,
+	nomFD []byte,
+) {
+	if len(nomFD) == 0 || identite.PID <= 0 || identite.InodeSocket == 0 {
+		return
+	}
+	idxEnsemble := indiceEnsembleCacheTuple(familleRequete, protocole, portLocal, portDistant)
+	ensemble := &r.cacheTuples[idxEnsemble]
+
+	voieCible := -1
+	voieLRU := 0
+	plusAncien := ensemble[0].ordreAcces
+
+	for voie := range voiesCacheTuples {
+		entree := &ensemble[voie]
+		if entree.occupee &&
+			entree.familleRequete == familleRequete &&
+			entree.protocole == protocole &&
+			entree.portLocal == portLocal &&
+			entree.portDistant == portDistant &&
+			entree.adresseLocale == adrLocale &&
+			entree.adresseDistante == adrDistante {
+			voieCible = voie
+			break
+		}
+		if !entree.occupee {
+			voieLRU = voie
+			plusAncien = 0
+			continue
+		}
+		if plusAncien > 0 && entree.ordreAcces < plusAncien {
+			plusAncien = entree.ordreAcces
+			voieLRU = voie
+		}
+	}
+	if voieCible < 0 {
+		voieCible = voieLRU
+	}
+
+	var cheminFD [40]byte
+	curseurChemin := strconv.AppendInt(cheminFD[:0], int64(identite.PID), 10)
+	curseurChemin = append(curseurChemin, "/fd/"...)
+	if len(curseurChemin)+len(nomFD)+1 > len(cheminFD) {
+		return
+	}
+	curseurChemin = append(curseurChemin, nomFD...)
+	cheminFD[len(curseurChemin)] = 0
+
+	var motif [32]byte
+	trancheMotif := formaterCibleSocketInode(motif[:0], identite.InodeSocket)
+	if len(trancheMotif) > len(motif) {
+		return
+	}
+
+	r.seqCacheTuples++
+	emplacement := &ensemble[voieCible]
+	*emplacement = entreeCacheTuple{
+		occupee:          true,
+		familleRequete:   familleRequete,
+		protocole:        protocole,
+		portLocal:        portLocal,
+		portDistant:      portDistant,
+		adresseLocale:    adrLocale,
+		adresseDistante:  adrDistante,
+		ordreAcces:       r.seqCacheTuples,
+		instantInsertion: time.Now(),
+		identite:         identite,
+		cheminLienFD:     cheminFD,
+		motifSocket:      motif,
+		longueurMotif:    uint8(len(trancheMotif)),
+	}
+}
+
+// DetecterEcouteDNSClairLocale vérifie via inet_diag et /proc/[pid]/fd si la tâche
+// (pid, debutTacheTicks) détient une socket UDP ou TCP en écoute locale sur un port
+// DNS clair standard (53, 5335, 5353, 5354), distinguant un résolveur/forwarder local
+// (type unbound ou systemd-resolved) d'un client de tunnelisation confiné.
+func (r *ResolveurSocketProcessus) DetecterEcouteDNSClairLocale(pid int, debutTacheTicks uint64) (bool, error) {
+	if r == nil || pid <= 0 {
+		return false, ErrProprietaireIntrouvable
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.fdInetDiag < 0 || r.capteurProc == nil {
+		return false, ErrSocketIntrouvable
+	}
+	debutReel, errStat := lireDebutTacheRapide(r.capteurProc.fdProc, pid)
+	if errStat != nil {
+		return false, errStat
+	}
+	if debutTacheTicks > 0 && debutReel != debutTacheTicks {
+		return false, ErrReutilisationPID
+	}
+
+	familles := [2]uint8{unix.AF_INET, unix.AF_INET6}
+	protocoles := [2]uint8{unix.IPPROTO_UDP, unix.IPPROTO_TCP}
+
+	var cibleLien [32]byte
+	for _, famille := range familles {
+		for _, protocole := range protocoles {
+			r.prochaineSeq++
+			nbSockets, errDump := probes.DumpInetDiag(
+				r.fdInetDiag,
+				famille,
+				protocole,
+				probes.StateMaskAll,
+				r.tableSockets[:],
+				r.tamponNetlink[:],
+				r.prochaineSeq,
+			)
+			if errDump != nil {
+				return false, fmt.Errorf("cinetique: dump inet_diag ecoute DNS: %w", errDump)
+			}
+			for i := range nbSockets {
+				entree := r.tableSockets[i]
+				if entree.Inode == 0 || entree.DstPort != 0 {
+					continue
+				}
+				if protocole == unix.IPPROTO_TCP && entree.State != etatTCPListen {
+					continue
+				}
+				if !estPortDNSClairLocal(entree.SrcPort) {
+					continue
+				}
+				if !estAdresseEcouteLocale(famille, entree.Src) {
+					continue
+				}
+				motif := formaterCibleSocketInode(cibleLien[:0], entree.Inode)
+				if processusDetientSocket(r.capteurProc.fdProc, pid, motif) {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
+func estPortDNSClairLocal(port uint16) bool {
+	return port == 53 || port == 5335 || port == 5353 || port == 5354
+}
+
+func estAdresseEcouteLocale(famille uint8, adr [16]byte) bool {
+	if famille == unix.AF_INET {
+		if adr[0] == 127 {
+			return true
+		}
+		return adr[0] == 0 && adr[1] == 0 && adr[2] == 0 && adr[3] == 0
+	}
+	tousZerosPrefixe10 := true
+	for i := range 10 {
+		if adr[i] != 0 {
+			tousZerosPrefixe10 = false
+			break
+		}
+	}
+	if !tousZerosPrefixe10 {
+		return false
+	}
+	if adr[10] == 0xff && adr[11] == 0xff {
+		if adr[12] == 127 {
+			return true
+		}
+		return adr[12] == 0 && adr[13] == 0 && adr[14] == 0 && adr[15] == 0
+	}
+	if adr[10] == 0 && adr[11] == 0 && adr[12] == 0 && adr[13] == 0 && adr[14] == 0 {
+		return adr[15] == 0 || adr[15] == 1
+	}
+	return false
 }
 
 func estAdresseDualStackCompatibleIPv4(adr [16]byte) bool {
@@ -176,6 +528,8 @@ func (r *ResolveurSocketProcessus) resoudreTupleFamilleVerrouille(
 	portDistant uint16,
 	pidCandidat int,
 	exigerDualStackIPv4 bool,
+	nomFDSortie *[24]byte,
+	longueurFDSortie *int,
 ) (IdentiteProcessusSocket, error) {
 	var identite IdentiteProcessusSocket
 	if r == nil || r.fdInetDiag < 0 || r.capteurProc == nil || portLocal == 0 {
@@ -234,13 +588,19 @@ func (r *ResolveurSocketProcessus) resoudreTupleFamilleVerrouille(
 		var cibleLien [32]byte
 		for i := range nbExactes {
 			motif := formaterCibleSocketInode(cibleLien[:0], exactes[i].Inode)
-			if processusDetientSocket(r.capteurProc.fdProc, pidCandidat, motif) {
+			if lgFD, detenu := processusDetientSocketAvecFD(r.capteurProc.fdProc, pidCandidat, motif, nomFDSortie); detenu {
+				if longueurFDSortie != nil {
+					*longueurFDSortie = lgFD
+				}
 				return r.construireEtMettreEnCache(pidCandidat, exactes[i].UID, exactes[i].Inode)
 			}
 		}
 		for i := range nbReplis {
 			motif := formaterCibleSocketInode(cibleLien[:0], replis[i].Inode)
-			if processusDetientSocket(r.capteurProc.fdProc, pidCandidat, motif) {
+			if lgFD, detenu := processusDetientSocketAvecFD(r.capteurProc.fdProc, pidCandidat, motif, nomFDSortie); detenu {
+				if longueurFDSortie != nil {
+					*longueurFDSortie = lgFD
+				}
 				return r.construireEtMettreEnCache(pidCandidat, replis[i].UID, replis[i].Inode)
 			}
 		}
@@ -248,18 +608,18 @@ func (r *ResolveurSocketProcessus) resoudreTupleFamilleVerrouille(
 
 	var derniereErr error
 	for i := range nbExactes {
-		res, errRes := r.resoudreInodeSocketVerrouille(exactes[i].Inode, exactes[i].UID, pidCandidat)
-		if errRes == nil {
-			return res, nil
+		identiteResolue, errInode := r.resoudreInodeSocketAvecFDVerrouille(exactes[i].Inode, exactes[i].UID, pidCandidat, nomFDSortie, longueurFDSortie)
+		if errInode == nil {
+			return identiteResolue, nil
 		}
-		derniereErr = errRes
+		derniereErr = errInode
 	}
 	for i := range nbReplis {
-		res, errRes := r.resoudreInodeSocketVerrouille(replis[i].Inode, replis[i].UID, pidCandidat)
-		if errRes == nil {
-			return res, nil
+		identiteResolue, errInode := r.resoudreInodeSocketAvecFDVerrouille(replis[i].Inode, replis[i].UID, pidCandidat, nomFDSortie, longueurFDSortie)
+		if errInode == nil {
+			return identiteResolue, nil
 		}
-		derniereErr = errRes
+		derniereErr = errInode
 	}
 	if derniereErr != nil {
 		return identite, derniereErr
@@ -279,13 +639,15 @@ func (r *ResolveurSocketProcessus) ResoudreInodeSocket(
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.resoudreInodeSocketVerrouille(inode, uidAttendu, pidCandidat)
+	return r.resoudreInodeSocketAvecFDVerrouille(inode, uidAttendu, pidCandidat, nil, nil)
 }
 
-func (r *ResolveurSocketProcessus) resoudreInodeSocketVerrouille(
+func (r *ResolveurSocketProcessus) resoudreInodeSocketAvecFDVerrouille(
 	inode uint32,
 	uidAttendu uint32,
 	pidCandidat int,
+	nomFDSortie *[24]byte,
+	longueurFDSortie *int,
 ) (IdentiteProcessusSocket, error) {
 	var identite IdentiteProcessusSocket
 	if inode == 0 || r == nil || r.capteurProc == nil {
@@ -301,9 +663,12 @@ func (r *ResolveurSocketProcessus) resoudreInodeSocketVerrouille(
 		if !entree.occupee || entree.inode != inode {
 			continue
 		}
-		if processusDetientSocket(r.capteurProc.fdProc, entree.pid, motifSocket) {
+		if lgFD, detenu := processusDetientSocketAvecFD(r.capteurProc.fdProc, entree.pid, motifSocket, nomFDSortie); detenu {
 			debutTicks, errStat := lireDebutTacheRapide(r.capteurProc.fdProc, entree.pid)
 			if errStat == nil && debutTicks == entree.debutTacheTicks {
+				if longueurFDSortie != nil {
+					*longueurFDSortie = lgFD
+				}
 				return IdentiteProcessusSocket{
 					PID:             entree.pid,
 					DebutTacheTicks: entree.debutTacheTicks,
@@ -317,18 +682,26 @@ func (r *ResolveurSocketProcessus) resoudreInodeSocketVerrouille(
 	}
 
 	// 2. Voie rapide sur pidCandidat s'il est fourni.
-	if pidCandidat > 0 && processusDetientSocket(r.capteurProc.fdProc, pidCandidat, motifSocket) {
-		return r.construireEtMettreEnCache(pidCandidat, uidAttendu, inode)
+	if pidCandidat > 0 {
+		if lgFD, detenu := processusDetientSocketAvecFD(r.capteurProc.fdProc, pidCandidat, motifSocket, nomFDSortie); detenu {
+			if longueurFDSortie != nil {
+				*longueurFDSortie = lgFD
+			}
+			return r.construireEtMettreEnCache(pidCandidat, uidAttendu, inode)
+		}
 	}
 
 	// 3. Parcours filtré par UID des répertoires numériques de /proc via getdents64.
-	pidDecouvert, trouve := chercherPIDParInodeDansProc(r.capteurProc.fdProc, motifSocket, uidAttendu, true)
+	pidDecouvert, lgFD, trouve := chercherPIDParInodeDansProc(r.capteurProc.fdProc, motifSocket, uidAttendu, true, nomFDSortie)
 	if !trouve {
 		// Repli sans filtre UID au cas où le processus a changé d'euid (setuid).
-		pidDecouvert, trouve = chercherPIDParInodeDansProc(r.capteurProc.fdProc, motifSocket, 0, false)
+		pidDecouvert, lgFD, trouve = chercherPIDParInodeDansProc(r.capteurProc.fdProc, motifSocket, 0, false, nomFDSortie)
 	}
 	if !trouve {
 		return identite, ErrProprietaireIntrouvable
+	}
+	if longueurFDSortie != nil {
+		*longueurFDSortie = lgFD
 	}
 	return r.construireEtMettreEnCache(pidDecouvert, uidAttendu, inode)
 }
@@ -374,7 +747,7 @@ func formaterCibleSocketInode(dst []byte, inode uint32) []byte {
 	return dst
 }
 
-func chercherPIDParInodeDansProc(fdProc int, motifSocket []byte, uidAttendu uint32, filtrerUID bool) (int, bool) {
+func chercherPIDParInodeDansProc(fdProc int, motifSocket []byte, uidAttendu uint32, filtrerUID bool, nomFDSortie *[24]byte) (int, int, bool) {
 	fdScan, _, errnoDup := unix.Syscall6(
 		unix.SYS_OPENAT,
 		uintptr(fdProc),
@@ -384,7 +757,7 @@ func chercherPIDParInodeDansProc(fdProc int, motifSocket []byte, uidAttendu uint
 	)
 	runtime.KeepAlive(&pointNul)
 	if errnoDup != 0 {
-		return 0, false
+		return 0, 0, false
 	}
 	defer func() { _, _, _ = unix.Syscall(unix.SYS_CLOSE, fdScan, 0, 0) }()
 
@@ -407,8 +780,8 @@ func chercherPIDParInodeDansProc(fdProc int, motifSocket []byte, uidAttendu uint
 				if pid64, okNum := parserUintDecimal(nom); okNum && pid64 > 0 {
 					pid := int(pid64)
 					if !filtrerUID || verifierUIDRepertoireProc(fdProc, nom, uidAttendu) {
-						if processusDetientSocket(fdProc, pid, motifSocket) {
-							return pid, true
+						if lgFD, detenu := processusDetientSocketAvecFD(fdProc, pid, motifSocket, nomFDSortie); detenu {
+							return pid, lgFD, true
 						}
 					}
 				}
@@ -416,7 +789,7 @@ func chercherPIDParInodeDansProc(fdProc int, motifSocket []byte, uidAttendu uint
 			curseur += reclen
 		}
 	}
-	return 0, false
+	return 0, 0, false
 }
 
 var pointNul = [2]byte{'.', 0}
@@ -437,6 +810,11 @@ func verifierUIDRepertoireProc(fdProc int, nomPID []byte, uidAttendu uint32) boo
 }
 
 func processusDetientSocket(fdProc int, pid int, motifSocket []byte) bool {
+	_, detenu := processusDetientSocketAvecFD(fdProc, pid, motifSocket, nil)
+	return detenu
+}
+
+func processusDetientSocketAvecFD(fdProc int, pid int, motifSocket []byte, nomFDSortie *[24]byte) (int, bool) {
 	var cheminFD [32]byte
 	curseur := strconv.AppendInt(cheminFD[:0], int64(pid), 10)
 	curseur = append(curseur, "/fd"...)
@@ -451,7 +829,7 @@ func processusDetientSocket(fdProc int, pid int, motifSocket []byte) bool {
 	)
 	runtime.KeepAlive(curseur)
 	if errnoOpen != 0 {
-		return false
+		return 0, false
 	}
 	defer func() { _, _, _ = unix.Syscall(unix.SYS_CLOSE, fdDir, 0, 0) }()
 
@@ -487,14 +865,17 @@ func processusDetientSocket(fdProc int, pid int, motifSocket []byte) bool {
 					runtime.KeepAlive(&tamponLien)
 					if errnoLink == 0 && int(nLien) == len(motifSocket) &&
 						bytes.Equal(tamponLien[:nLien], motifSocket) {
-						return true
+						if nomFDSortie != nil {
+							copy(nomFDSortie[:], nomBrut[:finNom])
+						}
+						return finNom, true
 					}
 				}
 			}
 			pos += reclen
 		}
 	}
-	return false
+	return 0, false
 }
 
 func lireDebutTacheRapide(fdProc int, pid int) (uint64, error) {
@@ -546,6 +927,41 @@ func NouveauCollecteurReseauParProcessus() *CollecteurReseauParProcessus {
 	return &CollecteurReseauParProcessus{}
 }
 
+func (c *CollecteurReseauParProcessus) acquerirEmplacementVerrouille(pid int, debutTacheTicks uint64) *entreeCollecteReseau {
+	c.seqAcces++
+	idxCible := -1
+	idxLRU := 0
+	minSeq := c.entrees[0].dernierAccesSeq
+
+	for i := range capaciteTableProcessus {
+		entree := &c.entrees[i]
+		if entree.occupee && entree.pid == pid && entree.debutTacheTicks == debutTacheTicks {
+			idxCible = i
+			break
+		}
+		if !entree.occupee {
+			idxLRU = i
+			minSeq = 0
+			continue
+		}
+		if minSeq > 0 && entree.dernierAccesSeq < minSeq {
+			minSeq = entree.dernierAccesSeq
+			idxLRU = i
+		}
+	}
+	if idxCible < 0 {
+		idxCible = idxLRU
+		c.entrees[idxCible] = entreeCollecteReseau{
+			occupee:         true,
+			pid:             pid,
+			debutTacheTicks: debutTacheTicks,
+		}
+	}
+	emplacement := &c.entrees[idxCible]
+	emplacement.dernierAccesSeq = c.seqAcces
+	return emplacement
+}
+
 // EnregistrerObservationReseau accumule en 0 B/op un événement réseau ou DNS
 // sur le couple (pid, debutTacheTicks).
 func (c *CollecteurReseauParProcessus) EnregistrerObservationReseau(
@@ -565,37 +981,7 @@ func (c *CollecteurReseauParProcessus) EnregistrerObservationReseau(
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.seqAcces++
-	idxCible := -1
-	idxLRU := 0
-	minSeq := c.entrees[0].dernierAccesSeq
-
-	for i := range capaciteTableProcessus {
-		e := &c.entrees[i]
-		if e.occupee && e.pid == pid && e.debutTacheTicks == debutTacheTicks {
-			idxCible = i
-			break
-		}
-		if !e.occupee {
-			idxLRU = i
-			minSeq = 0
-			continue
-		}
-		if minSeq > 0 && e.dernierAccesSeq < minSeq {
-			minSeq = e.dernierAccesSeq
-			idxLRU = i
-		}
-	}
-	if idxCible < 0 {
-		idxCible = idxLRU
-		c.entrees[idxCible] = entreeCollecteReseau{
-			occupee:         true,
-			pid:             pid,
-			debutTacheTicks: debutTacheTicks,
-		}
-	}
-	slot := &c.entrees[idxCible]
-	slot.dernierAccesSeq = c.seqAcces
+	slot := c.acquerirEmplacementVerrouille(pid, debutTacheTicks)
 	slot.compteurs.OctetsSortants = additionnerSatureU64(slot.compteurs.OctetsSortants, octetsSortants)
 	slot.compteurs.OctetsEntrants = additionnerSatureU64(slot.compteurs.OctetsEntrants, octetsEntrants)
 	if nouvelleConnexion {
@@ -610,6 +996,56 @@ func (c *CollecteurReseauParProcessus) EnregistrerObservationReseau(
 	}
 	if codeRaisonDNS > 0 {
 		slot.compteurs.CodeRaisonDNS |= codeRaisonDNS
+	}
+}
+
+// EnregistrerObservationResolveur accumule en 0 B/op la répartition des octets sortants
+// entre résolveurs chiffrés (DoQ/DoH/DoT) et cibles hors résolveur, ainsi que la présence
+// éventuelle d'une socket locale d'écoute DNS clair (forwarder type unbound).
+func (c *CollecteurReseauParProcessus) EnregistrerObservationResolveur(
+	pid int,
+	debutTacheTicks uint64,
+	octetsVersResolveurChiffre uint64,
+	octetsHorsResolveur uint64,
+	nouvelleConnexionHorsResolveur bool,
+	ecouteDNSClairLocale bool,
+	fluxResolveurChiffrePresent bool,
+) {
+	if c == nil || pid <= 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	emplacement := c.acquerirEmplacementVerrouille(pid, debutTacheTicks)
+	emplacement.compteurs.OctetsVersResolveurChiffre = additionnerSatureU64(
+		emplacement.compteurs.OctetsVersResolveurChiffre,
+		octetsVersResolveurChiffre,
+	)
+	emplacement.compteurs.OctetsHorsResolveur = additionnerSatureU64(
+		emplacement.compteurs.OctetsHorsResolveur,
+		octetsHorsResolveur,
+	)
+	totalSortants := additionnerSatureU64(octetsVersResolveurChiffre, octetsHorsResolveur)
+	emplacement.compteurs.OctetsSortants = additionnerSatureU64(
+		emplacement.compteurs.OctetsSortants,
+		totalSortants,
+	)
+	if nouvelleConnexionHorsResolveur {
+		emplacement.compteurs.ConnexionsHorsResolveur = additionnerSatureU32(
+			emplacement.compteurs.ConnexionsHorsResolveur,
+			1,
+		)
+		emplacement.compteurs.ConnexionsSortantes = additionnerSatureU32(
+			emplacement.compteurs.ConnexionsSortantes,
+			1,
+		)
+	}
+	if ecouteDNSClairLocale {
+		emplacement.compteurs.EcouteDNSClairLocale = true
+	}
+	if fluxResolveurChiffrePresent || octetsVersResolveurChiffre > 0 {
+		emplacement.compteurs.FluxResolveurChiffrePresent = true
 	}
 }
 

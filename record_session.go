@@ -102,7 +102,7 @@ func (rs *RecordSession) JSONLPath() string { return rs.jsonlPath }
 func (rs *RecordSession) RecordDNSMessage(raw []byte, tsNs int64, srcIP, dstIP [16]byte) (EvaluationResult, error) {
 	var msg DNSMessage
 	if err := ParseDNSMessage(raw, &msg); err != nil {
-		return EvaluationResult{}, err
+		return EvaluationResult{Decision: DecisionEscalateSLM}, err
 	}
 
 	rs.mu.Lock()

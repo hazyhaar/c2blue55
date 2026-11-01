@@ -74,6 +74,21 @@ func matchDiskKeywordZeroAlloc(d *FloppyDisk, payload []byte) bool {
 	return false
 }
 
+const centrageUnigrammeEvenement float32 = -1.0 / 256.0
+
+func disquetteEspaceEvenement(disk *FloppyDisk) bool {
+	if disk == nil || len(disk.Prototypes) == 0 {
+		return false
+	}
+	vecteur := &disk.Prototypes[0].Vector
+	for indice := range 8 {
+		if vecteur[indice] != centrageUnigrammeEvenement {
+			return false
+		}
+	}
+	return true
+}
+
 func evalSingleDNSFloppy(features *[EmbeddingDim]float32, disk *FloppyDisk) CascadeVerdict {
 	var v CascadeVerdict
 	v.Stage = StageL1a
@@ -82,14 +97,16 @@ func evalSingleDNSFloppy(features *[EmbeddingDim]float32, disk *FloppyDisk) Casc
 	var bitcode [codebookWords]uint64
 	QuantizeFHT512(features[:], &bitcode)
 
-	if probe := disk.Probe(); probe != nil {
-		stats, err := probe.Probe(features[:], 0, 1)
-		if err == nil {
-			if stats.Verdict == goclassifier.ProbeConfirm && !disk.nearThreat(&bitcode) {
-				v.Action = VerdictPass
-				return v
-			} else if stats.Verdict == goclassifier.ProbeAnomaly {
-				v.Flags |= 0x0004
+	if !disquetteEspaceEvenement(disk) {
+		if probe := disk.Probe(); probe != nil {
+			stats, err := probe.Probe(features[:], 0, 1)
+			if err == nil {
+				if stats.Verdict == goclassifier.ProbeConfirm && !disk.nearThreat(&bitcode) {
+					v.Action = VerdictPass
+					return v
+				} else if stats.Verdict == goclassifier.ProbeAnomaly {
+					v.Flags |= 0x0004
+				}
 			}
 		}
 	}
@@ -125,6 +142,70 @@ func evalSingleDNSFloppy(features *[EmbeddingDim]float32, disk *FloppyDisk) Casc
 	return v
 }
 
+// StripLeadingRFCUnderscoreLabels dépouille en 0 B/op jusqu'à 2 labels initiaux
+// commençant par '_' lorsqu'ils appartiennent à la liste RFC autorisée, et retourne
+// une sous-tranche bornée en capacité ainsi que le nombre de labels retirés.
+func StripLeadingRFCUnderscoreLabels(subdomain []byte) ([]byte, uint8) {
+	if len(subdomain) == 0 {
+		return subdomain[:0:0], 0
+	}
+	reste := subdomain
+	var retires uint8
+	for retires < 2 && len(reste) > 0 && reste[0] == '_' {
+		posPoint := -1
+		for indice := range len(reste) {
+			if reste[indice] == '.' {
+				posPoint = indice
+				break
+			}
+		}
+		if posPoint < 0 {
+			if !isAllowedRFCUnderscoreLabel(reste) {
+				break
+			}
+			retires++
+			reste = reste[len(reste):len(reste):len(reste)]
+			break
+		}
+		if posPoint+1 >= len(reste) || reste[posPoint+1] == '.' {
+			break
+		}
+		if !isAllowedRFCUnderscoreLabel(reste[:posPoint]) {
+			break
+		}
+		retires++
+		reste = reste[posPoint+1:]
+	}
+	return reste[:len(reste):len(reste)], retires
+}
+
+func longueurMaxLabelSegment(segment []byte) int {
+	debut := 0
+	maxObserv := 0
+	for indice := 0; indice <= len(segment); indice++ {
+		if indice == len(segment) || segment[indice] == '.' {
+			longueur := indice - debut
+			if longueur > maxObserv {
+				maxObserv = longueur
+			}
+			debut = indice + 1
+		}
+	}
+	return maxObserv
+}
+
+func longueurMaxLabelVueDNS(sousDomaine, sld, tld []byte) uint8 {
+	maxObserv := max(
+		longueurMaxLabelSegment(sousDomaine),
+		longueurMaxLabelSegment(sld),
+		longueurMaxLabelSegment(tld),
+	)
+	if maxObserv > 255 {
+		return 255
+	}
+	return uint8(maxObserv)
+}
+
 // EvaluateDNSView évalue sans allocation (0 B/op) une requête DNS découpée en
 // aiguillant la tranche Subdomain vers tunnelDisk (si len(Subdomain) > 0) et le
 // label enregistrable SLD vers dgaDisk, selon la monotonie défensive L0 -> L1a -> L1b.
@@ -144,12 +225,40 @@ func EvaluateDNSView(view DNSQueryView, tunnelDisk, dgaDisk *FloppyDisk) Cascade
 	hasTunnelEval := false
 
 	if len(view.Subdomain) > 0 && tunnelDisk != nil {
-		var tunnelFeatures [EmbeddingDim]float32
-		if ExtractDNSTunnel512(view.Subdomain, view.QType, view.LabelCount, view.MaxLabelLen, view.SubCardinality, tunnelFeatures[:]) {
-			vTunnel = evalSingleDNSFloppy(&tunnelFeatures, tunnelDisk)
-			hasTunnelEval = true
-			if vTunnel.Action == VerdictBlock || dgaDisk == nil || len(view.SLD) == 0 {
-				return vTunnel
+		sousDomaineEffectif, labelsRetires := StripLeadingRFCUnderscoreLabels(view.Subdomain)
+		if len(sousDomaineEffectif) > 0 {
+			nbLabelsEffectif := view.LabelCount
+			longueurMaxEffectif := view.MaxLabelLen
+			if labelsRetires > 0 {
+				if nbLabelsEffectif > labelsRetires {
+					nbLabelsEffectif -= labelsRetires
+				} else {
+					nbLabelsEffectif = 1
+				}
+				longueurMaxEffectif = longueurMaxLabelVueDNS(sousDomaineEffectif, view.SLD, view.TLD)
+			}
+			var tunnelFeatures [EmbeddingDim]float32
+			if ExtractDNSTunnel512(sousDomaineEffectif, view.QType, nbLabelsEffectif, longueurMaxEffectif, view.SubCardinality, tunnelFeatures[:]) {
+				vTunnel = evalSingleDNSFloppy(&tunnelFeatures, tunnelDisk)
+				if vTunnel.Action != VerdictBlock && disquetteEspaceEvenement(tunnelDisk) {
+					longueurMaxSousDomaine := tunnelFeatures[headerBase+5] * 63.0
+					scoreComposite := tunnelFeatures[aggregateBase+27]
+					chargeLongueTunnel := longueurMaxSousDomaine >= 31.5 && scoreComposite >= 0.70
+					sondeCourteTunnel := longueurMaxSousDomaine >= 9.95 &&
+						tunnelFeatures[aggregateBase+13] >= 0.50 &&
+						tunnelFeatures[aggregateBase+14] >= 0.50 &&
+						scoreComposite >= 0.50
+					if chargeLongueTunnel || sondeCourteTunnel {
+						vTunnel.Stage = StageL1b
+						vTunnel.Action = VerdictBlock
+						vTunnel.Flags |= 0x0002
+						vTunnel.ConfidenceQ8 = 220
+					}
+				}
+				hasTunnelEval = true
+				if vTunnel.Action == VerdictBlock || dgaDisk == nil || len(view.SLD) == 0 {
+					return vTunnel
+				}
 			}
 		}
 	}

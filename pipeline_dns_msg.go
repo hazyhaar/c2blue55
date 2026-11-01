@@ -9,6 +9,9 @@ import (
 
 const (
 	pipeMsgThrP4 = 0.40
+
+	// ReasonDNSParseError signale un échec fail-closed du décodage filaire DNS.
+	ReasonDNSParseError = "REASON_DNS_PARSE_ERROR"
 )
 
 type pipeMsgState struct {
@@ -66,7 +69,8 @@ func (p *Pipeline) EvaluateDNSMessageWithReason(wirePacket []byte, nowNs int64, 
 
 	var msg DNSMessage
 	if err := ParseDNSMessage(wirePacket, &msg); err != nil {
-		return verdict, "BENIGN", engine.ReasonNone, err
+		verdict.Decision = DecisionEscalateSLM
+		return verdict, "PARSE_ERR", ReasonDNSParseError, err
 	}
 
 	sub := msg.Subdomain[:msg.SubdomainLen]

@@ -6,20 +6,22 @@ import (
 	"math/bits"
 )
 
-// Indices canoniques des 10 quotients invariants d'épisode.
+// Indices canoniques des 12 quotients d'épisode (11 invariants décisionnels et 1 descriptif).
 const (
-	IndiceOctetsParAppelES          = 0
-	IndicePartEcriturePermille      = 1
-	IndiceAmplificationBlocPermille = 2
-	IndiceNsCPUParKioLogique        = 3
-	IndiceKioPicRSSParFil           = 4
-	IndiceEgressSurLecturePermille  = 5
-	IndiceConnexionsParMilleDNS     = 6
-	IndicePartPreemptionPermille    = 7
-	IndiceAttenteOrdonnanceur       = 8
-	IndiceDilatationHorsCPU         = 9
+	IndiceOctetsParAppelES              = 0
+	IndicePartEcriturePermille          = 1
+	IndiceAmplificationBlocPermille     = 2
+	IndiceNsCPUParKioLogique            = 3
+	IndiceKioPicRSSParFil               = 4
+	IndiceEgressSurLecturePermille      = 5
+	IndiceConnexionsParMilleDNS         = 6
+	IndicePartPreemptionPermille        = 7
+	IndiceAttenteOrdonnanceur           = 8
+	IndiceDilatationHorsCPU             = 9
+	IndicePartResolveurPermille         = 10
+	IndiceAbsorptionDescriptivePermille = 11
 
-	NombreQuotientsEpisode = 10
+	NombreQuotientsEpisode = 12
 )
 
 // Masque des quotients sensibles à la contention CPU ou à une migration P/E-core.
@@ -27,6 +29,10 @@ const MasqueQuotientsSensiblesCPU uint16 = (1 << IndiceNsCPUParKioLogique) |
 	(1 << IndicePartPreemptionPermille) |
 	(1 << IndiceAttenteOrdonnanceur) |
 	(1 << IndiceDilatationHorsCPU)
+
+// MasqueQuotientsDescriptifs désigne les quotients purement observables qui ne
+// déclenchent jamais d'alerte Welford/MADM ni de changement d'orientation moteur.
+const MasqueQuotientsDescriptifs uint16 = 1 << IndiceAbsorptionDescriptivePermille
 
 var (
 	// ErrReutilisationPID signale une discordance de PID ou de starttime entre début et fin.
@@ -60,6 +66,10 @@ func NomQuotient(indice int) string {
 		return "attente_ordonnanceur_permille"
 	case IndiceDilatationHorsCPU:
 		return "dilatation_hors_cpu_permille"
+	case IndicePartResolveurPermille:
+		return "part_resolveur_permille"
+	case IndiceAbsorptionDescriptivePermille:
+		return "absorption_reseau_permille"
 	default:
 		return "quotient_inconnu"
 	}
@@ -68,71 +78,86 @@ func NomQuotient(indice int) string {
 // ConfigPlanchersCinetiques fixe les dénominateurs minimaux requis pour valider
 // chaque famille de quotient et le plafond d'abstention PSI CPU.
 type ConfigPlanchersCinetiques struct {
-	MinAppelsES           uint64
-	MinOctetsLogiques     uint64
-	MinTempsExecutionNs   uint64
-	MinCommutations       uint64
-	MinResolutionsDNS     uint64
-	PlafondPSICPUPermille uint32
+	MinAppelsES                 uint64
+	MinOctetsLogiques           uint64
+	MinTempsExecutionNs         uint64
+	MinCommutations             uint64
+	MinResolutionsDNS           uint64
+	MinOctetsReseauResolveur    uint64
+	MinOctetsEntrantsAbsorption uint64
+	PlafondPSICPUPermille       uint32
 }
 
 // ConfigPlanchersParDefaut fournit des seuils prudents évitant toute division
 // sur bruit de repos tout en acceptant des épisodes courts calibrés.
 func ConfigPlanchersParDefaut() ConfigPlanchersCinetiques {
 	return ConfigPlanchersCinetiques{
-		MinAppelsES:           4,
-		MinOctetsLogiques:     1024,
-		MinTempsExecutionNs:   100_000, // 100 microsecondes d'exécution effective
-		MinCommutations:       4,
-		MinResolutionsDNS:     1,
-		PlafondPSICPUPermille: 200, // abstention au-delà de 20 % de pression CPU some
+		MinAppelsES:                 4,
+		MinOctetsLogiques:           1024,
+		MinTempsExecutionNs:         100_000, // 100 microsecondes d'exécution effective
+		MinCommutations:             4,
+		MinResolutionsDNS:           1,
+		MinOctetsReseauResolveur:    16384,
+		MinOctetsEntrantsAbsorption: 1 << 20,
+		PlafondPSICPUPermille:       200, // abstention au-delà de 20 % de pression CPU some
 	}
 }
 
 // CompteursReseauEpisode transporte hors bande les compteurs réseau et DNS
 // agrégés sur la même fenêtre temporelle que l'épisode processus.
 type CompteursReseauEpisode struct {
-	OctetsSortants      uint64
-	OctetsEntrants      uint64
-	ConnexionsSortantes uint32
-	ResolutionsDNS      uint32
-	SousProcessusCrees  uint32
-	PortSuspect         uint16
-	ProtocoleSuspectUDP bool
-	CodeRaisonDNS       uint8
+	OctetsSortants              uint64
+	OctetsEntrants              uint64
+	OctetsVersResolveurChiffre  uint64
+	OctetsHorsResolveur         uint64
+	ConnexionsSortantes         uint32
+	ConnexionsHorsResolveur     uint32
+	ResolutionsDNS              uint32
+	SousProcessusCrees          uint32
+	PortSuspect                 uint16
+	ProtocoleSuspectUDP         bool
+	EcouteDNSClairLocale        bool
+	FluxResolveurChiffrePresent bool
+	CodeRaisonDNS               uint8
 }
 
-// QuotientsEpisode rassemble les variations brutes vérifiées et les 10 quotients
-// invariants à virgule fixe d'un épisode d'exécution.
+// QuotientsEpisode rassemble les variations brutes vérifiées et les 12 quotients
+// à virgule fixe d'un épisode d'exécution.
 type QuotientsEpisode struct {
-	PID                       int
-	DebutTacheTicks           uint64
-	DureeHorlogeNs            uint64
-	DeltaExecutionNs          uint64
-	DeltaAttenteFileNs        uint64
-	DeltaHorsCPUNs            uint64
-	DeltaOctetsLusLogiques    uint64
-	DeltaOctetsEcritsLog      uint64
-	DeltaOctetsBloc           uint64
-	DeltaOctetsReseauSortants uint64
-	DeltaOctetsReseauEntrants uint64
-	PicRSSKio                 uint64
-	RSSResidentFinKio         uint64
-	UnitesConcurrence         uint32
-	ConnexionsSortantes       uint32
-	ResolutionsDNS            uint32
-	PressionCPUPermille       uint32
-	PressionIOPermille        uint32
-	ClasseCoeurDebut          ClasseCoeurCPU
-	ClasseCoeurFin            ClasseCoeurCPU
-	MigrationHybride          bool
-	AbstentionPSICPU          bool
-	ConnexionSansDNS          bool
-	PortSuspect               uint16
-	ProtocoleSuspectUDP       bool
-	CodeRaisonDNS             uint8
-	MasqueValidite            uint16
-	Valeurs                   [NombreQuotientsEpisode]int64
+	PID                         int
+	DebutTacheTicks             uint64
+	DureeHorlogeNs              uint64
+	DeltaExecutionNs            uint64
+	DeltaAttenteFileNs          uint64
+	DeltaHorsCPUNs              uint64
+	DeltaOctetsLusLogiques      uint64
+	DeltaOctetsEcritsLog        uint64
+	DeltaOctetsBloc             uint64
+	DeltaOctetsReseauSortants   uint64
+	DeltaOctetsReseauEntrants   uint64
+	OctetsVersResolveurChiffre  uint64
+	OctetsHorsResolveur         uint64
+	PicRSSKio                   uint64
+	RSSResidentFinKio           uint64
+	UnitesConcurrence           uint32
+	ConnexionsSortantes         uint32
+	ConnexionsHorsResolveur     uint32
+	ResolutionsDNS              uint32
+	PressionCPUPermille         uint32
+	PressionIOPermille          uint32
+	ClasseCoeurDebut            ClasseCoeurCPU
+	ClasseCoeurFin              ClasseCoeurCPU
+	MigrationHybride            bool
+	AbstentionPSICPU            bool
+	ConnexionSansDNS            bool
+	EcouteDNSClairLocale        bool
+	FluxResolveurChiffrePresent bool
+	ConfinementResolveur        bool
+	PortSuspect                 uint16
+	ProtocoleSuspectUDP         bool
+	CodeRaisonDNS               uint8
+	MasqueValidite              uint16
+	Valeurs                     [NombreQuotientsEpisode]int64
 }
 
 // EstValide indique si le quotient d'indice donné a franchi son plancher d'activité.
@@ -151,7 +176,7 @@ func (q QuotientsEpisode) ActiviteDisquePresente() bool {
 // OctetsSortantsNuls indique qu'aucun octet réseau sortant n'a été observé sur l'épisode,
 // indépendamment du franchissement éventuel du plancher de lecture disque (MinOctetsLogiques).
 func (q QuotientsEpisode) OctetsSortantsNuls() bool {
-	if q.DeltaOctetsReseauSortants > 0 {
+	if q.DeltaOctetsReseauSortants > 0 || q.OctetsVersResolveurChiffre > 0 || q.OctetsHorsResolveur > 0 {
 		return false
 	}
 	return !q.EstValide(IndiceEgressSurLecturePermille) || q.Valeurs[IndiceEgressSurLecturePermille] <= 0
@@ -162,10 +187,83 @@ func (q QuotientsEpisode) AucuneActiviteReseau() bool {
 	return q.OctetsSortantsNuls() &&
 		q.DeltaOctetsReseauEntrants == 0 &&
 		q.ConnexionsSortantes == 0 &&
+		q.ConnexionsHorsResolveur == 0 &&
 		q.ResolutionsDNS == 0 &&
 		q.PortSuspect == 0 &&
 		q.CodeRaisonDNS == 0 &&
-		!q.ConnexionSansDNS
+		!q.FluxResolveurChiffrePresent &&
+		!q.ConnexionSansDNS &&
+		!q.ConfinementResolveur
+}
+
+// PlanchersResolveurEtAbsorption restitue les planchers d'activation du quotient
+// de confinement résolveur et du quotient descriptif d'absorption réseau.
+func PlanchersResolveurEtAbsorption(cfg ConfigPlanchersCinetiques) (minOctetsResolveur uint64, minOctetsAbsorption uint64) {
+	return cfg.MinOctetsReseauResolveur, cfg.MinOctetsEntrantsAbsorption
+}
+
+// ConstruireCompteursReseauResolveur assemble un enregistrement CompteursReseauEpisode
+// incluant la ventilation entre résolveurs chiffrés (DoQ/DoH/DoT) et cibles hors résolveur.
+func ConstruireCompteursReseauResolveur(
+	octetsSortants uint64,
+	octetsEntrants uint64,
+	octetsVersResolveurChiffre uint64,
+	octetsHorsResolveur uint64,
+	connexionsSortantes uint32,
+	connexionsHorsResolveur uint32,
+	resolutionsDNS uint32,
+	ecouteDNSClairLocale bool,
+	fluxResolveurChiffrePresent bool,
+) CompteursReseauEpisode {
+	return CompteursReseauEpisode{
+		OctetsSortants:              octetsSortants,
+		OctetsEntrants:              octetsEntrants,
+		OctetsVersResolveurChiffre:  octetsVersResolveurChiffre,
+		OctetsHorsResolveur:         octetsHorsResolveur,
+		ConnexionsSortantes:         connexionsSortantes,
+		ConnexionsHorsResolveur:     connexionsHorsResolveur,
+		ResolutionsDNS:              resolutionsDNS,
+		EcouteDNSClairLocale:        ecouteDNSClairLocale,
+		FluxResolveurChiffrePresent: fluxResolveurChiffrePresent,
+	}
+}
+
+// LireCompteursResolveurRecolte extrait les compteurs de ventilation résolveur
+// d'un enregistrement CompteursReseauEpisode récolté.
+func LireCompteursResolveurRecolte(c CompteursReseauEpisode) (
+	octetsVersResolveurChiffre uint64,
+	octetsHorsResolveur uint64,
+	connexionsHorsResolveur uint32,
+	ecouteDNSClairLocale bool,
+	fluxResolveurChiffrePresent bool,
+) {
+	return c.OctetsVersResolveurChiffre,
+		c.OctetsHorsResolveur,
+		c.ConnexionsHorsResolveur,
+		c.EcouteDNSClairLocale,
+		c.FluxResolveurChiffrePresent
+}
+
+// LireCompteursResolveurEpisode extrait les compteurs de ventilation résolveur
+// propagés sur un bilan QuotientsEpisode.
+func LireCompteursResolveurEpisode(q QuotientsEpisode) (
+	octetsVersResolveurChiffre uint64,
+	octetsHorsResolveur uint64,
+	connexionsHorsResolveur uint32,
+	ecouteDNSClairLocale bool,
+	fluxResolveurChiffrePresent bool,
+) {
+	return q.OctetsVersResolveurChiffre,
+		q.OctetsHorsResolveur,
+		q.ConnexionsHorsResolveur,
+		q.EcouteDNSClairLocale,
+		q.FluxResolveurChiffrePresent
+}
+
+// EstConfinementResolveur indique si l'épisode remplit les conditions de confinement
+// exclusif vers un résolveur chiffré hors écoute DNS claire locale.
+func EstConfinementResolveur(q QuotientsEpisode) bool {
+	return q.ConfinementResolveur
 }
 
 func additionnerSatureU64(a, b uint64) uint64 {
@@ -249,11 +347,17 @@ func EvaluerEpisodeCinetique(
 	bilan.DeltaOctetsBloc = deltaBloc
 	bilan.DeltaOctetsReseauSortants = reseau.OctetsSortants
 	bilan.DeltaOctetsReseauEntrants = reseau.OctetsEntrants
+	bilan.OctetsVersResolveurChiffre = reseau.OctetsVersResolveurChiffre
+	bilan.OctetsHorsResolveur = reseau.OctetsHorsResolveur
 	bilan.PicRSSKio = picRSS
 	bilan.RSSResidentFinKio = rssRetenu
 	bilan.UnitesConcurrence = concurrence
 	bilan.ConnexionsSortantes = reseau.ConnexionsSortantes
+	bilan.ConnexionsHorsResolveur = reseau.ConnexionsHorsResolveur
 	bilan.ResolutionsDNS = reseau.ResolutionsDNS
+	bilan.EcouteDNSClairLocale = reseau.EcouteDNSClairLocale
+	fluxResolveurChiffre := reseau.FluxResolveurChiffrePresent || reseau.OctetsVersResolveurChiffre > 0
+	bilan.FluxResolveurChiffrePresent = fluxResolveurChiffre
 	bilan.ClasseCoeurDebut = topologie.ClasseDuCoeur(int(debut.CoeurDerniereExecution))
 	bilan.ClasseCoeurFin = topologie.ClasseDuCoeur(int(fin.CoeurDerniereExecution))
 	if topologie.EstHybride &&
@@ -262,7 +366,7 @@ func EvaluerEpisodeCinetique(
 		bilan.ClasseCoeurDebut != bilan.ClasseCoeurFin {
 		bilan.MigrationHybride = true
 	}
-	bilan.ConnexionSansDNS = reseau.ConnexionsSortantes > 0 && reseau.ResolutionsDNS == 0
+	bilan.ConnexionSansDNS = reseau.ConnexionsSortantes > 0 && reseau.ResolutionsDNS == 0 && !fluxResolveurChiffre
 	bilan.PortSuspect = reseau.PortSuspect
 	bilan.ProtocoleSuspectUDP = reseau.ProtocoleSuspectUDP
 	bilan.CodeRaisonDNS = reseau.CodeRaisonDNS
@@ -330,6 +434,40 @@ func EvaluerEpisodeCinetique(
 
 		bilan.Valeurs[IndiceDilatationHorsCPU] = diviserEchelle64(deltaHorsCPUNs, 1000, deltaExecNs)
 		bilan.MasqueValidite |= 1 << IndiceDilatationHorsCPU
+	}
+	denomResolveur := max(
+		additionnerSatureU64(reseau.OctetsVersResolveurChiffre, reseau.OctetsHorsResolveur),
+		reseau.OctetsSortants,
+	)
+	if denomResolveur >= cfg.MinOctetsReseauResolveur && denomResolveur > 0 {
+		partResolveur := min(diviserEchelle64(reseau.OctetsVersResolveurChiffre, 1000, denomResolveur), 1000)
+		bilan.Valeurs[IndicePartResolveurPermille] = partResolveur
+		bilan.MasqueValidite |= 1 << IndicePartResolveurPermille
+		if partResolveur >= 500 &&
+			reseau.ConnexionsHorsResolveur == 0 &&
+			!reseau.EcouteDNSClairLocale {
+			bilan.ConfinementResolveur = true
+		}
+	}
+	if reseau.OctetsEntrants >= cfg.MinOctetsEntrantsAbsorption && reseau.OctetsEntrants > 0 {
+		var deltaRSSOctets uint64
+		if fin.VmRSSKio > debut.VmRSSKio {
+			deltaRSSKio := fin.VmRSSKio - debut.VmRSSKio
+			hautRSS, basRSS := bits.Mul64(deltaRSSKio, 1024)
+			if hautRSS != 0 {
+				deltaRSSOctets = math.MaxUint64
+			} else {
+				deltaRSSOctets = basRSS
+			}
+		}
+		deltaEcritsBloc := fin.OctetsEcritsBloc - debut.OctetsEcritsBloc
+		octetsAbsorbes := additionnerSatureU64(deltaEcritsBloc, deltaRSSOctets)
+		bilan.Valeurs[IndiceAbsorptionDescriptivePermille] = diviserEchelle64(
+			octetsAbsorbes,
+			1000,
+			reseau.OctetsEntrants,
+		)
+		bilan.MasqueValidite |= 1 << IndiceAbsorptionDescriptivePermille
 	}
 
 	return bilan, nil

@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"slices"
 )
 
 var (
@@ -36,14 +35,23 @@ const (
 
 	// TailleMaximaleCaptureChiffree borne la lecture d'une capture (16 Gio).
 	TailleMaximaleCaptureChiffree int64 = 16 << 30
+
+	// MaxPortsResolveurChiffres borne la liste explicite de ports DoH/DoQ additionnels.
+	MaxPortsResolveurChiffres = 8
+
+	classesDispersionDescendante    = 48
+	pasDispersionDescendante        = 32
+	paquetsDispersionDescendanteMin = 16
 )
 
 // EncryptedWireConfig paramètre l'évaluateur ; la valeur nulle prend les défauts.
 type EncryptedWireConfig struct {
-	CapaciteConversations      int    // puissance de deux, défaut 4096
-	DureeFenetreNs             uint64 // défaut 5 s
-	SilenceInterRafaleNs       uint64 // défaut 1 s
-	PaquetsMinimumConversation uint32 // défaut 4
+	CapaciteConversations      int                               // puissance de deux, défaut 4096
+	DureeFenetreNs             uint64                            // défaut 5 s
+	SilenceInterRafaleNs       uint64                            // défaut 1 s
+	PaquetsMinimumConversation uint32                            // défaut 4
+	AgregationHote             bool                              // agrège les flux résolveurs simultanés par hôte client
+	PortsResolveurChiffres     [MaxPortsResolveurChiffres]uint16 // ports résolveurs chiffrés explicites additionnels
 }
 
 func (config EncryptedWireConfig) avecDefauts() (EncryptedWireConfig, error) {
@@ -141,10 +149,14 @@ type ConversationCounters struct {
 
 type conversationChiffree struct {
 	cle                  ConversationKey
+	ipv6                 bool
 	occupee              bool
 	rang                 uint64 // ordre de première apparition
 	releve               ConversationCounters
 	sensPrecedentPorteur int8
+
+	paquetsDescendantsPorteurs     uint32
+	histogrammeDescendantsPorteurs [classesDispersionDescendante]uint16
 
 	debutRafaleNs                 uint64
 	octetsMontantsRafale          uint64
@@ -170,10 +182,11 @@ type conversationChiffree struct {
 // tampons sont alloués par NewEncryptedWireEvaluator ; Observe n'alloue rien.
 // Non sûr pour un usage concurrent : une instance par flux de capture.
 type EncryptedWireEvaluator struct {
-	config        EncryptedWireConfig
-	conversations []conversationChiffree
-	Stats         EncryptedWireStats
-	trame         EncryptedWireFrame
+	config                  EncryptedWireConfig
+	conversations           []conversationChiffree
+	synchronieConversations []suiviSynchronieConversation
+	Stats                   EncryptedWireStats
+	trame                   EncryptedWireFrame
 }
 
 // NewEncryptedWireEvaluator alloue la table fixe des conversations.
@@ -182,7 +195,15 @@ func NewEncryptedWireEvaluator(config EncryptedWireConfig) (*EncryptedWireEvalua
 	if err != nil {
 		return nil, err
 	}
-	return &EncryptedWireEvaluator{config: retenue, conversations: make([]conversationChiffree, retenue.CapaciteConversations)}, nil
+	var synchronie []suiviSynchronieConversation
+	if retenue.AgregationHote {
+		synchronie = make([]suiviSynchronieConversation, retenue.CapaciteConversations)
+	}
+	return &EncryptedWireEvaluator{
+		config:                  retenue,
+		conversations:           make([]conversationChiffree, retenue.CapaciteConversations),
+		synchronieConversations: synchronie,
+	}, nil
 }
 
 // Observe décode une trame et met à jour sa conversation. Zéro allocation tas.
@@ -216,11 +237,11 @@ func (evaluateur *EncryptedWireEvaluator) Observe(paquet BenchPacket) error {
 		cle.Client, cle.Serveur, cle.PortServeur = trame.DestIP, trame.SourceIP, trame.SourcePort
 		portClient = trame.DestPort
 	}
-	conversation, err := evaluateur.trouverOuCreer(cle)
+	conversation, positionConversation, err := evaluateur.trouverOuCreer(cle, trame.IPv6)
 	if err != nil {
 		return err
 	}
-	evaluateur.accumuler(conversation, trame, portClient)
+	evaluateur.accumuler(conversation, positionConversation, trame, portClient)
 	return nil
 }
 
@@ -242,25 +263,25 @@ func empreinteConversation(cle *ConversationKey) uint64 {
 	return empreinte
 }
 
-func (evaluateur *EncryptedWireEvaluator) trouverOuCreer(cle ConversationKey) (*conversationChiffree, error) {
+func (evaluateur *EncryptedWireEvaluator) trouverOuCreer(cle ConversationKey, ipv6 bool) (*conversationChiffree, int, error) {
 	masque := uint64(len(evaluateur.conversations) - 1)
 	position := empreinteConversation(&cle) & masque
 	for range len(evaluateur.conversations) {
 		conversation := &evaluateur.conversations[position]
 		if !conversation.occupee {
-			*conversation = conversationChiffree{cle: cle, occupee: true, rang: evaluateur.Stats.Conversations}
+			*conversation = conversationChiffree{cle: cle, ipv6: ipv6, occupee: true, rang: evaluateur.Stats.Conversations}
 			evaluateur.Stats.Conversations++
-			return conversation, nil
+			return conversation, int(position), nil
 		}
 		if conversation.cle == cle {
-			return conversation, nil
+			return conversation, int(position), nil
 		}
 		position = (position + 1) & masque
 	}
-	return nil, ErrEncryptedWireTableFull
+	return nil, 0, ErrEncryptedWireTableFull
 }
 
-func (evaluateur *EncryptedWireEvaluator) accumuler(conversation *conversationChiffree, trame *EncryptedWireFrame, portClient uint16) {
+func (evaluateur *EncryptedWireEvaluator) accumuler(conversation *conversationChiffree, positionConversation int, trame *EncryptedWireFrame, portClient uint16) {
 	releve := &conversation.releve
 	instant := trame.TimestampNs
 	premierPaquet := releve.PaquetsMontants+releve.PaquetsDescendants == 0
@@ -308,12 +329,20 @@ func (evaluateur *EncryptedWireEvaluator) accumuler(conversation *conversationCh
 		conversation.octetsDescendantsRafale += charge
 		if porteur {
 			releve.OctetsDescendantsNets += charge - chargePorteuseMin
+			conversation.paquetsDescendantsPorteurs++
+			classeDispersion := min((charge-chargePorteuseMin)/pasDispersionDescendante, classesDispersionDescendante-1)
+			if conversation.histogrammeDescendantsPorteurs[classeDispersion] < math.MaxUint16 {
+				conversation.histogrammeDescendantsPorteurs[classeDispersion]++
+			}
 		}
 		if charge >= chargeQuasiMTUMin {
 			releve.PaquetsDescendantsQuasiMTU++
 		}
 	}
 	if porteur {
+		if evaluateur.config.AgregationHote && positionConversation < len(evaluateur.synchronieConversations) {
+			enregistrerTrancheSynchronie(&evaluateur.synchronieConversations[positionConversation], instant)
+		}
 		releve.OctetsPorteurs += charge
 		sens := int8(-1)
 		if trame.Montant {
@@ -450,16 +479,18 @@ func (regime EncryptedRegime) String() string {
 
 // ConversationVerdict est le constat intégral rendu pour une conversation.
 type ConversationVerdict struct {
-	Cle                    ConversationKey
-	Releve                 ConversationCounters
-	Vecteur                KineticVector
-	CVInterRafales         float64
-	CVInterRafalesDefini   bool
-	CVChargeMontante       float64
-	CVChargeMontanteDefini bool
-	RegimeEstime           EncryptedRegime
-	RegimeLabel            string
-	Insuffisante           bool // moins de PaquetsMinimumConversation paquets : constatée, non jugée
+	Cle                           ConversationKey
+	Releve                        ConversationCounters
+	Vecteur                       KineticVector
+	CVInterRafales                float64
+	CVInterRafalesDefini          bool
+	CVChargeMontante              float64
+	CVChargeMontanteDefini        bool
+	DispersionDescendantePermille int64
+	DispersionDescendanteDefinie  bool
+	RegimeEstime                  EncryptedRegime
+	RegimeLabel                   string
+	Insuffisante                  bool // moins de PaquetsMinimumConversation paquets : constatée, non jugée
 }
 
 func construireVerdict(conversation *conversationChiffree, config EncryptedWireConfig) ConversationVerdict {
@@ -497,6 +528,10 @@ func construireVerdict(conversation *conversationChiffree, config EncryptedWireC
 			vecteur.IsochronieMontante = assainirFlottantChiffre(regulariteDepuisCV(cvCadence))
 		}
 	}
+	verdict.DispersionDescendantePermille, verdict.DispersionDescendanteDefinie = calculerDispersionDescendante(
+		conversation.paquetsDescendantsPorteurs,
+		&conversation.histogrammeDescendantsPorteurs,
+	)
 	verdict.RegimeEstime = EstimateEncryptedRegime(&verdict)
 	verdict.RegimeLabel = verdict.RegimeEstime.String()
 	return verdict
@@ -524,24 +559,7 @@ func EstimateEncryptedRegime(verdict *ConversationVerdict) EncryptedRegime {
 // Finalize clôt toutes les conversations et les rend dans l'ordre de première
 // apparition. L'évaluateur est ensuite remis à zéro.
 func (evaluateur *EncryptedWireEvaluator) Finalize(visit func(*ConversationVerdict) error) error {
-	occupees := make([]int, 0, evaluateur.Stats.Conversations)
-	for indice := range evaluateur.conversations {
-		if evaluateur.conversations[indice].occupee {
-			occupees = append(occupees, indice)
-		}
-	}
-	slices.SortFunc(occupees, func(gauche, droite int) int {
-		return int(evaluateur.conversations[gauche].rang) - int(evaluateur.conversations[droite].rang)
-	})
-	for _, indice := range occupees {
-		verdict := construireVerdict(&evaluateur.conversations[indice], evaluateur.config)
-		if err := visit(&verdict); err != nil {
-			return err
-		}
-	}
-	clear(evaluateur.conversations)
-	evaluateur.Stats = EncryptedWireStats{}
-	return nil
+	return evaluateur.FinalizeWithHosts(visit, nil)
 }
 
 // EncryptedWireCapture est le constat intégral d'une capture : empreinte,
@@ -552,6 +570,7 @@ type EncryptedWireCapture struct {
 	Lecture       BenchPCAPStats
 	Decodage      EncryptedWireStats
 	Conversations []ConversationVerdict
+	Hotes         []HostAggregateVerdict `json:",omitempty"`
 }
 
 // EvaluateEncryptedWirePCAP lit intégralement une capture bornée par
@@ -591,10 +610,20 @@ func EvaluateEncryptedWirePCAP(chemin string, config EncryptedWireConfig) (const
 	}
 	constat = EncryptedWireCapture{Chemin: chemin, SHA256: hex.EncodeToString(empreinte.Sum(nil)), Lecture: lecture, Decodage: evaluateur.Stats}
 	constat.Conversations = make([]ConversationVerdict, 0, evaluateur.Stats.Conversations)
-	err = evaluateur.Finalize(func(verdict *ConversationVerdict) error {
-		constat.Conversations = append(constat.Conversations, *verdict)
-		return nil
-	})
+	var visiteurHotes func(*HostAggregateVerdict) error
+	if config.AgregationHote {
+		visiteurHotes = func(verdictHote *HostAggregateVerdict) error {
+			constat.Hotes = append(constat.Hotes, *verdictHote)
+			return nil
+		}
+	}
+	err = evaluateur.FinalizeWithHosts(
+		func(verdict *ConversationVerdict) error {
+			constat.Conversations = append(constat.Conversations, *verdict)
+			return nil
+		},
+		visiteurHotes,
+	)
 	if err != nil {
 		return EncryptedWireCapture{}, err
 	}

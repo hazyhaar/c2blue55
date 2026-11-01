@@ -1,0 +1,53 @@
+{
+  "captures": [
+    {
+      "file": "testdata/rat-20261101/benign-dns-doq.pcap",
+      "bytes": 142814,
+      "sha256": "604b6e71143ac074e5894049c46e1d140f59001a8012efca48ba344a744eff21",
+      "capture_interface": "wg0",
+      "bench": "redhost_lab L1 / L1-bis (2026-10-31)"
+    },
+    {
+      "file": "testdata/rat-20261101/benign-rrtypes-clear.pcap",
+      "bytes": 49402,
+      "sha256": "98f86e2bded7425062c27d66ba851a7e087e2368834a8cb8ef639d5fe3f0feac",
+      "capture_interface": "wg0",
+      "bench": "redhost_lab L1 / L1-bis (2026-10-31)"
+    },
+    {
+      "file": "testdata/rat-20261101/slipstream-2doq-multipath-transit.pcap",
+      "bytes": 145728,
+      "sha256": "97ffe641876c0759d9288acf0173605ef4c3dc8b7a28904e0c9aff723f1c1971",
+      "capture_interface": "wg0",
+      "bench": "redhost_lab L1 / L1-bis (2026-10-31)"
+    },
+    {
+      "file": "testdata/rat-20261101/slipstream-doq-transit.pcap",
+      "bytes": 100622,
+      "sha256": "bec07aca02061b3e10419f6047d8a36e4364e356d98598b8146987cc49cc36dd",
+      "capture_interface": "wg0",
+      "bench": "redhost_lab L1 / L1-bis (2026-10-31)"
+    },
+    {
+      "file": "testdata/rat-20261101/soar-signed-nxdomain-cache-auth.pcap",
+      "bytes": 13984,
+      "sha256": "6b2d1ccc7205c52e45d5f20f3e5eb7cd4d1f64e0cf1f34324a90c0c5e7c1da38",
+      "capture_interface": "wg0",
+      "bench": "redhost_lab L1 / L1-bis (2026-10-31)"
+    },
+    {
+      "file": "testdata/rat-20261101/vaydns-mx-clear.pcap",
+      "bytes": 183569,
+      "sha256": "44e4e18c4ca0a9427e811bcfacee57c60466c43536334a22d756e8b3da28bd3e",
+      "capture_interface": "wg0",
+      "bench": "redhost_lab L1 / L1-bis (2026-10-31)"
+    },
+    {
+      "file": "testdata/rat-20261101/vaydns-srv-clear.pcap",
+      "bytes": 191618,
+      "sha256": "74552a24913a7ace533fd4c290d4310b8adac7eb18fd462dd3bc0535731caa9d",
+      "capture_interface": "wg0",
+      "bench": "redhost_lab L1 / L1-bis (2026-10-31)"
+    }
+  ]
+}

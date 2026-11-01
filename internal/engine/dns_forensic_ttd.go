@@ -9,24 +9,26 @@ import (
 )
 
 const (
-	ReasonNone                  = "REASON_NONE"
-	ReasonM01LongLabel          = "REASON_M01_LONG_LABEL"
-	ReasonM02HighEntropy        = "REASON_M02_HIGH_ENTROPY"
-	ReasonM03Burst              = "REASON_M03_HIGH_FREQ_BURST"
-	ReasonM04DGAConsonantNX     = "REASON_M04_DGA_CONSONANT_NX"
-	ReasonP1DownlinkExfil       = "REASON_P1_DOWNLINK_EXFIL"
-	ReasonP2DenseEncoding       = "REASON_P2_DENSE_ENCODING"
-	ReasonP3BeaconMarkov        = "REASON_P3_BEACON_MARKOV"
-	ReasonP4MultiParentSharding = "REASON_P4_MULTIPARENT_SHARDING"
-	ReasonP5AXFRBulk            = "REASON_P5_AXFR_BULK"
-	ReasonP6DynamicUpdate       = "REASON_P6_DYNAMIC_UPDATE"
-	ReasonP7SRVC2Endpoint       = "REASON_P7_SRV_C2"
-	ReasonP8CNameChain          = "REASON_P8_CNAME_CHAIN"
-	ReasonP9EDNS0PrivateOption  = "REASON_P9_EDNS0_PRIVATE"
-	ReasonP10TTLStegoIntraA     = "REASON_P10_TTL_STEGO"
-	ReasonP11LengthTupleStego   = "REASON_P11_LENGTH_TUPLE"
-	ReasonP12Base58Case         = "REASON_P12_BASE58_CASE"
-	ReasonP13ANYWildcard        = "REASON_P13_ANY_WILDCARD"
+	ReasonNone                     = "REASON_NONE"
+	ReasonM01LongLabel             = "REASON_M01_LONG_LABEL"
+	ReasonM02HighEntropy           = "REASON_M02_HIGH_ENTROPY"
+	ReasonM03Burst                 = "REASON_M03_HIGH_FREQ_BURST"
+	ReasonM04DGAConsonantNX        = "REASON_M04_DGA_CONSONANT_NX"
+	ReasonP1DownlinkExfil          = "REASON_P1_DOWNLINK_EXFIL"
+	ReasonP2DenseEncoding          = "REASON_P2_DENSE_ENCODING"
+	ReasonP3BeaconMarkov           = "REASON_P3_BEACON_MARKOV"
+	ReasonP4MultiParentSharding    = "REASON_P4_MULTIPARENT_SHARDING"
+	ReasonP5AXFRBulk               = "REASON_P5_AXFR_BULK"
+	ReasonP6DynamicUpdate          = "REASON_P6_DYNAMIC_UPDATE"
+	ReasonP7SRVC2Endpoint          = "REASON_P7_SRV_C2"
+	ReasonP8CNameChain             = "REASON_P8_CNAME_CHAIN"
+	ReasonP9EDNS0PrivateOption     = "REASON_P9_EDNS0_PRIVATE"
+	ReasonP10TTLStegoIntraA        = "REASON_P10_TTL_STEGO"
+	ReasonP11LengthTupleStego      = "REASON_P11_LENGTH_TUPLE"
+	ReasonP12Base58Case            = "REASON_P12_BASE58_CASE"
+	ReasonP13ANYWildcard           = "REASON_P13_ANY_WILDCARD"
+	ReasonP14NegativeAnswerPayload = "REASON_P14_NXDOMAIN_ANSWER_PAYLOAD"
+	ReasonP15RDataRenewal          = "REASON_P15_RDATA_RENEWAL"
 )
 
 type StreamEvalPoint struct {
@@ -70,6 +72,7 @@ type StreamingDNS18State struct {
 	p4ApexHashes   [32]uint64
 	p4Count        uint8
 	apexSlots      [64]apexStreamSlot
+	rdataRenewal   RenouvellementRDataTracker
 }
 
 func fnv64BytesStream(b []byte) uint64 {
@@ -118,26 +121,59 @@ func equalFoldLiteralASCII(label []byte, attendu string) bool {
 
 func isAllowedRFCUnderscoreLabel(label []byte) bool {
 	switch len(label) {
+	case 3:
+		return equalFoldLiteralASCII(label, "_gc")
 	case 4:
 		return equalFoldLiteralASCII(label, "_spf") ||
 			equalFoldLiteralASCII(label, "_tcp") ||
 			equalFoldLiteralASCII(label, "_udp") ||
 			equalFoldLiteralASCII(label, "_tls") ||
-			equalFoldLiteralASCII(label, "_sip")
+			equalFoldLiteralASCII(label, "_sip") ||
+			equalFoldLiteralASCII(label, "_dns") ||
+			equalFoldLiteralASCII(label, "_ntp") ||
+			equalFoldLiteralASCII(label, "_ssh")
 	case 5:
 		return equalFoldLiteralASCII(label, "_dane") ||
 			equalFoldLiteralASCII(label, "_quic") ||
 			equalFoldLiteralASCII(label, "_http") ||
 			equalFoldLiteralASCII(label, "_ldap") ||
-			equalFoldLiteralASCII(label, "_xmpp")
+			equalFoldLiteralASCII(label, "_xmpp") ||
+			equalFoldLiteralASCII(label, "_sips") ||
+			equalFoldLiteralASCII(label, "_imap") ||
+			equalFoldLiteralASCII(label, "_pop3") ||
+			equalFoldLiteralASCII(label, "_turn") ||
+			equalFoldLiteralASCII(label, "_stun") ||
+			equalFoldLiteralASCII(label, "_sctp")
 	case 6:
-		return equalFoldLiteralASCII(label, "_dmarc")
+		return equalFoldLiteralASCII(label, "_dmarc") ||
+			equalFoldLiteralASCII(label, "_https") ||
+			equalFoldLiteralASCII(label, "_imaps") ||
+			equalFoldLiteralASCII(label, "_pop3s") ||
+			equalFoldLiteralASCII(label, "_ldaps") ||
+			equalFoldLiteralASCII(label, "_turns") ||
+			equalFoldLiteralASCII(label, "_stuns") ||
+			equalFoldLiteralASCII(label, "_msdcs") ||
+			equalFoldLiteralASCII(label, "_sites")
+	case 7:
+		return equalFoldLiteralASCII(label, "_caldav") ||
+			equalFoldLiteralASCII(label, "_matrix")
 	case 8:
-		return equalFoldLiteralASCII(label, "_mta-sts")
+		return equalFoldLiteralASCII(label, "_mta-sts") ||
+			equalFoldLiteralASCII(label, "_caldavs") ||
+			equalFoldLiteralASCII(label, "_carddav") ||
+			equalFoldLiteralASCII(label, "_kpasswd")
 	case 9:
-		return equalFoldLiteralASCII(label, "_kerberos")
+		return equalFoldLiteralASCII(label, "_kerberos") ||
+			equalFoldLiteralASCII(label, "_carddavs")
 	case 10:
 		return equalFoldLiteralASCII(label, "_domainkey")
+	case 11:
+		return equalFoldLiteralASCII(label, "_submission")
+	case 12:
+		return equalFoldLiteralASCII(label, "_xmpp-server") ||
+			equalFoldLiteralASCII(label, "_xmpp-client")
+	case 13:
+		return equalFoldLiteralASCII(label, "_autodiscover")
 	case 15:
 		return equalFoldLiteralASCII(label, "_acme-challenge")
 	default:
@@ -304,15 +340,51 @@ func (st *StreamingDNS18State) slotForApex(apexHash uint64) *apexStreamSlot {
 	return slot
 }
 
+func hasNegativeAnswerPayloadP14(summary *parsedWireSummary) bool {
+	if summary.anCount > uint16(summary.answerCount) ||
+		summary.nsCount > uint16(summary.authorityCount) ||
+		summary.arCount > uint16(summary.additionalCount) {
+		return true
+	}
+	for indice := 0; indice < summary.answerCount; indice++ {
+		switch summary.answers[indice].rrType {
+		case 5, 39, 46:
+		default:
+			return true
+		}
+	}
+	for indice := 0; indice < summary.authorityCount; indice++ {
+		switch summary.authorities[indice].rrType {
+		case 6, 46, 47, 50:
+		default:
+			return true
+		}
+	}
+	for indice := 0; indice < summary.additionalCount; indice++ {
+		enregistrement := &summary.additionals[indice]
+		switch enregistrement.rrType {
+		case 41:
+			if (enregistrement.ttl >> 24) != 0 {
+				return true
+			}
+		case 24, 46, 47, 50, 250:
+		default:
+			return true
+		}
+	}
+	return false
+}
+
 // ObserveAndClassify18 évalue en 0 B/op un paquet DNS wire selon la cascade à 4 niveaux
-// (BENIGN + M-01..M-04 + P1..P13).
+// (BENIGN + M-01..M-04 + P1..P15).
 func (st *StreamingDNS18State) ObserveAndClassify18(wirePacket []byte, tsNs int64, clientIP [16]byte, subdomain, parentApex []byte, qtype uint16, snap DNSEpisodeSnapshot, p3 EpisodeP3Features) (string, string, bool) {
-	if qtype != 33 && isRFCUnderscoreBytes(subdomain) {
+	isResp := len(wirePacket) >= 4 && (binary.BigEndian.Uint16(wirePacket[2:4])&0x8000) != 0
+	estUnderscoreRFC := isRFCUnderscoreBytes(subdomain)
+	if !isResp && qtype != 33 && estUnderscoreRFC {
 		return "BENIGN", ReasonNone, true
 	}
 
 	summary := summarizeWirePacket(wirePacket)
-	isResp := len(wirePacket) >= 4 && (binary.BigEndian.Uint16(wirePacket[2:4])&0x8000) != 0
 
 	// --- NIVEAU 1 : En-têtes et OPCODE/QTYPE structurels exclusifs ---
 	if summary.opcode == 5 && summary.nsCount >= 1 {
@@ -362,8 +434,11 @@ func (st *StreamingDNS18State) ObserveAndClassify18(wirePacket []byte, tsNs int6
 		return "BENIGN", ReasonNone, true
 	}
 
-	// --- NIVEAU 2 : Porteurs RDATA et sections Additionals/Answers typées ---
+	// --- NIVEAU 2 : Porteurs RDATA et sections Additionals/Answers/Authorities typées ---
 	if isResp {
+		if summary.opcode == 0 && summary.rcode == 3 && hasNegativeAnswerPayloadP14(&summary) {
+			return "P14", ReasonP14NegativeAnswerPayload, true
+		}
 		for a := 0; a < summary.additionalCount; a++ {
 			rr := &summary.additionals[a]
 			if rr.rrType == 41 && hasPrivateOrSuspiciousEDNSOption(rr.rdata) {
@@ -380,7 +455,9 @@ func (st *StreamingDNS18State) ObserveAndClassify18(wirePacket []byte, tsNs int6
 				return "P7", ReasonP7SRVC2Endpoint, true
 			}
 		}
-		return "BENIGN", ReasonNone, true
+		if !isResp {
+			return "BENIGN", ReasonNone, true
+		}
 	}
 	if isResp {
 		cnameCount := 0
@@ -400,8 +477,15 @@ func (st *StreamingDNS18State) ObserveAndClassify18(wirePacket []byte, tsNs int6
 		if hasIntraRRsetATTLStego(&summary) {
 			return "P10", ReasonP10TTLStegoIntraA, true
 		}
-		if (qtype == 10 || qtype == 16) && summary.answerCount > 0 && summary.answers[0].rdLength >= 180 {
+		declenchementP15, _ := st.rdataRenewal.ObserveResponse(tsNs, clientIP, parentApex, qtype, wirePacket)
+		if (qtype == 10 || (qtype == 16 && !estUnderscoreRFC)) && summary.answerCount > 0 && summary.answers[0].rdLength >= 180 {
 			return "P1", ReasonP1DownlinkExfil, true
+		}
+		if declenchementP15 {
+			return "P15", ReasonP15RDataRenewal, true
+		}
+		if qtype == 33 || estUnderscoreRFC {
+			return "BENIGN", ReasonNone, true
 		}
 	}
 	if snap.DownlinkRatio > 2.0 && snap.MeanRDataEntropy > 4.0 {

@@ -400,11 +400,13 @@ func (t *TableProfilsCinetiques) ObserverEpisode(
 
 				bitQ := uint16(1) << uint(q)
 				ignoreParAbstention := abstentionTemporelle && ((MasqueQuotientsSensiblesCPU & bitQ) != 0)
+				estDescriptif := (MasqueQuotientsDescriptifs & bitQ) != 0
 				absPct := varPct
 				if absPct < 0 {
 					absPct = -absPct
 				}
 				if !ignoreParAbstention &&
+					!estDescriptif &&
 					scoreMilli >= t.cfg.SeuilScoreRobusteMilli &&
 					absPct >= t.cfg.SeuilHausseRelativePct {
 					diag.MasqueQuotientsAlerte |= bitQ
@@ -471,19 +473,33 @@ func determinerOrientation(
 
 	ep := diag.Episode
 	preuveHostileIntrinseque := ep.CodeRaisonDNS != 0 || ep.PortSuspect != 0
+	confinementActif := !enAmorcage && ep.ConfinementResolveur
+	haussePartResolveurConfinee := !enAmorcage &&
+		(diag.MasqueQuotientsAlerte&(1<<IndicePartResolveurPermille)) != 0 &&
+		diag.VariationsPct[IndicePartResolveurPermille] >= cfg.SeuilHausseRelativePct &&
+		ep.ConnexionsHorsResolveur == 0 &&
+		!ep.EcouteDNSClairLocale
+
 	indiceReseauSuspect := preuveHostileIntrinseque ||
+		confinementActif ||
+		haussePartResolveurConfinee ||
 		ep.ConnexionSansDNS ||
 		(ep.EstValide(IndiceEgressSurLecturePermille) && ep.Valeurs[IndiceEgressSurLecturePermille] >= cfg.SeuilEgressPermille)
 
 	// Archétype B prioritaire : une preuve réseau/DNS intrinsèque s'applique dès le
-	// premier épisode (même en amorçage), et toute activité suspecte couplée à une
-	// hausse mémoire/CPU/egress prime sur la contention CPU.
+	// premier épisode (même en amorçage), le confinement exclusif vers un résolveur
+	// chiffré sans écoute DNS claire locale bascule hors amorçage, et toute activité
+	// suspecte couplée à une hausse mémoire/CPU/egress prime sur la contention CPU.
 	alerteCPUouRAMouEgress := (diag.MasqueQuotientsAlerte & ((1 << IndiceNsCPUParKioLogique) |
 		(1 << IndiceKioPicRSSParFil) |
 		(1 << IndiceEgressSurLecturePermille) |
-		(1 << IndiceConnexionsParMilleDNS))) != 0
+		(1 << IndiceConnexionsParMilleDNS) |
+		(1 << IndicePartResolveurPermille))) != 0
 
-	if preuveHostileIntrinseque || (!enAmorcage && indiceReseauSuspect && alerteCPUouRAMouEgress) {
+	if preuveHostileIntrinseque ||
+		confinementActif ||
+		haussePartResolveurConfinee ||
+		(!enAmorcage && indiceReseauSuspect && alerteCPUouRAMouEgress) {
 		return OrientationCompromissionReseau
 	}
 
@@ -514,11 +530,14 @@ func determinerOrientation(
 	}
 
 	// Un sommeil pur sans la moindre opération E/S disque, les fluctuations sous-unitaires
-	// de dilatation hors-CPU (< 1000 permille) et la contention exogène de file CPU ne
-	// constituent pas un écart structurel logique.
-	masqueNonStructurel := masqueContentionExogene
+	// de dilatation hors-CPU (< 1000 permille), la contention exogène de file CPU, une baisse
+	// de la part résolveur ou un forwarder DNS local ne constituent pas un écart structurel.
+	masqueNonStructurel := masqueContentionExogene | MasqueQuotientsDescriptifs
 	if !ep.ActiviteDisquePresente() || ep.Valeurs[IndiceDilatationHorsCPU] < 1000 {
 		masqueNonStructurel |= 1 << IndiceDilatationHorsCPU
+	}
+	if ep.EcouteDNSClairLocale || diag.VariationsPct[IndicePartResolveurPermille] <= 0 {
+		masqueNonStructurel |= 1 << IndicePartResolveurPermille
 	}
 	alertesIntrinseques := diag.MasqueQuotientsAlerte &^ masqueNonStructurel
 	if alertesIntrinseques != 0 {
@@ -566,6 +585,8 @@ func FormaterDifferentielEpisode(
 	curseur = appendPourcentSigne(curseur, diag.VariationsPct[IndiceDilatationHorsCPU])
 	curseur = append(curseur, "|EGRESS_PERMILLE="...)
 	curseur = strconv.AppendInt(curseur, diag.Episode.Valeurs[IndiceEgressSurLecturePermille], 10)
+	curseur = append(curseur, "|RESOLVEUR_PERMILLE="...)
+	curseur = strconv.AppendInt(curseur, diag.Episode.Valeurs[IndicePartResolveurPermille], 10)
 	curseur = append(curseur, "|PSI_CPU_PERMILLE="...)
 	curseur = strconv.AppendUint(curseur, uint64(diag.Episode.PressionCPUPermille), 10)
 	curseur = append(curseur, "|DERIVE_PAS="...)
@@ -580,6 +601,8 @@ func FormaterDifferentielEpisode(
 		curseur = strconv.AppendUint(curseur, uint64(diag.Episode.PortSuspect), 10)
 	} else if diag.Episode.ConnexionSansDNS {
 		curseur = append(curseur, "DIRECT_SANS_DNS"...)
+	} else if diag.Episode.ConfinementResolveur {
+		curseur = append(curseur, "RESOLVEUR_CONFINE"...)
 	} else {
 		curseur = append(curseur, "AUCUNE"...)
 	}
@@ -721,7 +744,7 @@ func FormaterBriefCausalSLMAvecConfig(
 	// Capteur 5 : activité socket sortante et inspection filaire DNS attribuée au processus.
 	curseur = append(curseur, "\nnetwork_channel: "...)
 	egressImportant := ep.EstValide(IndiceEgressSurLecturePermille) && ep.Valeurs[IndiceEgressSurLecturePermille] >= seuilEgress
-	if ep.PortSuspect > 0 || ep.CodeRaisonDNS > 0 || ep.ConnexionSansDNS || egressImportant {
+	if ep.PortSuspect > 0 || ep.CodeRaisonDNS > 0 || ep.ConnexionSansDNS || ep.ConfinementResolveur || egressImportant {
 		curseur = append(curseur, "ANOMALOUS_SOCKET ("...)
 		if ep.PortSuspect > 0 {
 			if ep.ProtocoleSuspectUDP {
@@ -732,6 +755,8 @@ func FormaterBriefCausalSLMAvecConfig(
 			curseur = strconv.AppendUint(curseur, uint64(ep.PortSuspect), 10)
 		} else if ep.ConnexionSansDNS {
 			curseur = append(curseur, "DIRECT_IP_NO_DNS"...)
+		} else if ep.ConfinementResolveur {
+			curseur = append(curseur, "ENCRYPTED_RESOLVER_CONFINED"...)
 		} else {
 			curseur = append(curseur, "HIGH_EGRESS"...)
 		}
