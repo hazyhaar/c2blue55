@@ -1,4 +1,4 @@
-# c2blue55 — Moteur CPU-Natif de Détection de Menaces et Surveillance d'Agents IA
+# c2blue55 — Moteur CPU-Natif de Détection de Menaces Hôte & DNS
 
 [![Go Version](https://img.shields.io/badge/go-1.27+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -9,285 +9,215 @@
 
 [English documentation available here](README.md)
 
-**c2blue55** est un moteur autonome de détection de menaces à deux couches CPU-natif et de surveillance d'agents IA, conçu pour le **Wittgenstein AI Tournament** (Hackers-Arise).
+**c2blue55** est un moteur autonome de détection de menaces hôte/réseau et de supervision d'appels d'outils d'agents IA, écrit intégralement en **Go 1.27 pur** (`GOAMD64=v3` / noyaux vectoriels AVX2 optionnels via `GOEXPERIMENT=simd` transpilés mécaniquement depuis le C99 par `sgoiter`, zéro CGo, zéro Wasm, zéro GPU). Conçu initialement pour le **Wittgenstein AI Tournament** (Hackers-Arise) puis étendu en `v8.2` face aux tunnels DNS modernes en clair et chiffrés, il articule quatre plans vérifiables :
 
-Développé strictement en **Go 1.27 pur** (`GOAMD64=v3` / AVX2, zéro CGo, zéro Wasm, zéro dépendance GPU), il offre des temps de décision à l'échelle de la microseconde, zéro allocation sur le tas (`0 B/op`) sur les chemins critiques d'inspection, des disquettes de connaissances vectorielles projetées en mémoire (`.c2book`), une arène atomique seqlock pour charges longues et des chaînes de causalité forensique signées par Ed25519.
+1. **Cascade synchrone à la microseconde sans allocation (`0 B/op`) :** évalue les lignes de commande, les paquets DNS et les appels d'outils en ~1 à 16 µs de latence moyenne mesurée en microbenchmark par cœur grâce à des bases de connaissances projetées en mémoire vive en lecture seule (`.c2book`), un tampon circulaire sans verrou de 4 Mo (`ArenaPool`) et des projections binaires de Hadamard / `RaBitQ` (quantification vectorielle binaire aléatoire à 1 bit par dimension) sur 512 bits.
+2. **Grammaire filaire DNS à état (`M-01..M-04`, `P1..P15`) :** combine en `0 B/op` quatre détecteurs de rafales et d'encodages de requêtes (`M-01..M-04`) et quinze règles d'état et de grammaire protocolaire sur les questions et les réponses du serveur (`P1..P15`), détectant les charges dissimulées dans de fausses réponses négatives `NXDOMAIN` (`Soar`, `P14`) et le renouvellement continu des réponses `SRV`/`TXT`/`MX`/`NS`/`CAA` (`VayDNS`, `P15`), tout en dépouillant les préfixes de service RFC légitimes (`_ldap._tcp`, `_sip._tls`).
+3. **Classification sans clé des résolveurs chiffrés (`DoQ`, `DoH2`, `DoH3`) :** distingue sans déchiffrement TLS les tunnels C2 persistants ou multivoies (`Slipstream`, `VayDNS`, `dnstt`) du DNS récursif ordinaire et de la navigation HTTP/3 massive (`c2forge encrypted-eval -hote`), complétée sous Linux par l'attribution des sockets par processus (`part_resolveur_permille`, fraction en millièmes des octets réseau d'un processus confinée aux résolveurs DNS/DoQ/DoH).
+4. **Reçus forensiques Ed25519 :** génère à la demande une preuve binaire signée de 230 octets (`ForensicProof`) permettant de rejouer et vérifier le verdict bit à bit après rotation des tampons mémoire.
 
 ---
 
 ## 1. Architecture & Pipeline de Détection en Cascade
 
-Le moteur synchrone unifie trois sous-systèmes opérationnels distincts dans un espace métrique partagé à 512 dimensions et un pipeline de décision en cascade :
+Plutôt que d'exécuter un modèle coûteux sur chaque événement bénin, le moteur projette trois sources de télémétrie dans un espace commun à 512 dimensions et adapte le coût CPU au degré d'ambiguïté :
 
-1. **SubProc (Exécution de Processus) :** Binaires légitimes détournés (LOLBAS), commandes PowerShell obfusquées, reverse shells et tentatives d'élévation de privilèges (analyse des lignes de commande sans suivi d'arbre de processus ni ascendance PPID).
-2. **SubNet (Télémétrie Réseau) :** Tunnels DNS, détection de motifs non-LDH et requêtes DGA (le suivi des intervalles temporels de balisage/beaconing relève du pipeline télémétrique des démons et non de la cascade synchrone).
-3. **SubMCP (Surveillance d'Agents IA) :** Interface architecturale pour les appels d'outils d'agents IA, les injections de prompts et les évasions de contexte (non évaluée dans le banc de mesure rapporté).
+1. **SubProc (Exécution de Processus) :** détecte le détournement d'utilitaires système légitimes (*Living-Off-The-Land Binaries*, `LOLBAS`), les scripts PowerShell/shell obfusqués et les *reverse shells* à partir de la ligne de commande et du contexte de session OS (sans dépendre d'un arbre complet de filiation `PPID`).
+2. **SubNet (Télémétrie Réseau & DNS) :** détecte les tunnels DNS en clair, les caractères Base64 illégaux hors standard `LDH` (`+`, `/`, `=`), les domaines générés algorithmiquement (`DGA`) et les anomalies de réponses DNS (la périodicité de balisage et la cinétique `DoQ`/`DoH` sont traitées par les analyseurs de flux à état).
+3. **SubMCP (Supervision d'Agents IA) :** interface d'inspection des arguments d'outils *Model Context Protocol* (`MCP`), injections de prompts et sorties de périmètre (`cmd/c2blue-mcp-guard` ; hors périmètre des tableaux de banc DNS/shells ci-dessous).
 
 ```
-       Événement de Télémétrie (Processus / Requête DNS / Appel d'Outil Agent)
+        Événement de Télémétrie (Processus / Paquet DNS / Appel d'Outil Agent)
                                           │
                                           ▼
-       ┌────────────────────────────────────────────────────────┐
-       │   Arène Atomique Seqlock 4 Mo (ArenaPool)              │
-       │   - 1 024 fentes circulaires (4 Ko max par charge)     │
-       │   - Verrou seqlock lecteur-écrivain (atomic.Uint64)    │
-       │   - Quarantaine fail-closed en cas de rotation         │
-       └────────────────────────────┬───────────────────────────┘
+        ┌────────────────────────────────────────────────────────┐
+        │   Arène Atomique Seqlock 4 Mo (ArenaPool)              │
+        │   - 1 024 fentes circulaires (jusqu'à 4 096 o/charge)  │
+        │   - Compteur d'époque pair/impair sans verrou (Uint64) │
+        │   - Quarantaine fail-closed si l'écrivain rattrape     │
+        └────────────────────────────┬───────────────────────────┘
                                     │
                                     ▼
-       ┌────────────────────────────────────────────────────────┐
-       │ Étage 0 (L0) : Filtre Réflexe Zéro-Alloc & Motifs Exacts│
-       │ - Analyse O(K·n) de sous-chaînes et mots-clés hostiles │
-       │ - Blocage instantané des signatures malveillantes      │
-       │ - Parseur DNS RFC 1035 sans copie et sécheresse voyelle│
-       └──────────────┬───────────────────────────┬─────────────┘
-                      │ Malveillant               │ Ambigu
-                      ▼                           ▼
-                 [BLOCAGE L0]     ┌───────────────────────────────────┐
-                                  │ Extracteur de Traits 512D (FE)    │
-                                  │ - N-grammes 4 096 o sans arrêt NUL│
-                                  │ - Entropie, longueurs, tags type  │
-                                  │ - QuantizeFHT512 (Hadamard Rapide)│
-                                  └───────────────┬───────────────────┘
-                                                  │
-                                                  ▼
-       ┌────────────────────────────────────────────────────────┐
-       │ Étage 1 (L1) : Inférence Métrique & Hyperplan Double    │
-       │                                                        │
-       │ 1. L1a : Sonde Conforme RaBitQ au Plus Proche Proto    │
-       │    - Couverture non-paramétrique calibrée (α = 0.05)   │
-       │    - Garde de subordination : nearThreat empêche       │
-       │      le masquage d'attaques proches des centroïdes     │
-       │                                                        │
-       │ 2. L1b : Produit Scalaire INT8 & Veto par Centroïde    │
-       │    - Rayon de veto de Hamming calibré (R_block)        │
-       │    - Produit scalaire saturé zéro-allocation (0 B/op)  │
-       │    - Veto métrique dur contre centroïdes hostiles      │
-       └──────────────┬─────────────────────────────────────────┘
-                      │
-                      ▼
-          [BLOCAGE / PASSAGE / QUARANTAINE]
-                      │
-                      ▼
-       ┌────────────────────────────────────────────────────────┐
-       │ Preuve Forensique Attestée Ed25519 (ForensicProof)     │
-       │ - Horodatage, sous-système, action, verdict, distance  │
-       │ - Empreinte SHA-256 de la charge & signature racine    │
-       │ - Validation par rejeu déterministe du verdict         │
-       └────────────────────────────────────────────────────────┘
+        ┌────────────────────────────────────────────────────────┐
+        │ Étage 0 (L0) : Filtre Réflexe Zéro-Alloc & Motifs Exacts│
+        │ - Recherche de signatures hostiles (~1 µs, 0 B/op)     │
+        │ - Dépouillement préfixes RFC (_ldap._tcp) & test LDH   │
+        │ - Vérification de session interactive authentifiée TTY │
+        └──────────────┬───────────────────────────┬─────────────┘
+                       │ Menace franche            │ Ambigu
+                       ▼                           ▼
+                  [BLOCAGE L0]     ┌───────────────────────────────────┐
+                                   │ Extracteur de Traits 512D (FE)    │
+                                   │ - Balayage 4 096 o insensible NUL │
+                                   │ - Entropie octets & géométrie DNS │
+                                   │ - QuantizeFHT512 -> code 512 bits │
+                                   └───────────────┬───────────────────┘
+                                                   │
+                                                   ▼
+        ┌────────────────────────────────────────────────────────┐
+        │ Étage 1 (L1) : Sonde Binaire RaBitQ & Hyperplan INT8   │
+        │                                                        │
+        │ 1. L1a : Plus Proche Prototype Conforme (POPCNT)       │
+        │    - Passage rapide si conforme au bénin (α = 0,05)    │
+        │    - Garde nearThreat : force L1b près d'une menace    │
+        │                                                        │
+        │ 2. L1b : Produit Scalaire INT8 & Veto par Centroïde    │
+        │    - Blocage dur dans le rayon de Hamming <= 12 bits   │
+        │    - Bande grise (13..24 bits) -> Quarantaine          │
+        └──────────────┬─────────────────────────────────────────┘
+                       │
+                       ▼
+           [BLOCAGE / PASSAGE / QUARANTAINE]
+                       │
+                       ▼
+        ┌────────────────────────────────────────────────────────┐
+        │ Reçu Forensique Signé Ed25519 (ForensicProof, 230 o)   │
+        │ - Lie horodatage, SHA-256 charge & CRC32 du .c2book    │
+        │ - Rejeu déterministe bit à bit (ReplayForensicProof)   │
+        └────────────────────────────────────────────────────────┘
 ```
 
-> **Note de Portée — Composant de Bibliothèque vs Démon Déployé (`cmd/c2agent`) :** La cascade synchrone L0/L1a/L1b (`CascadeEngine`), les disquettes projetées en mémoire (`MountFloppy`, `LoadFloppyMmap`), la règle de domaine apex et le filtrage ontologique de provenance TTY constituent un composant de bibliothèque de haute performance exercé directement par le banc d'évaluation du tournoi (`wittgenstein_bench_test.go`). Dans les exécutables démons autonomes actuellement livrés dans le dépôt (`cmd/c2agent`, `cmd/c2blue-mcp-guard` et `pipeline.go`), la détection s'appuie sur d'autres composants modulaires du moteur (tels que le `Codebook`, `GrayZoneDecider`, les oracles serveur et le routage direct de réputation DNS) et n'instancie pas `CascadeEngine`. Par ailleurs, dans les déploiements de démon, les événements placés en `Quarantaine` peuvent être optionnellement escaladés vers un modèle de langage local (SLM) en Go pur (`c2slm`, exécutant Qwen2.5-0.5B-Instruct en GGUF Q4_K_M). Les métriques de banc présentées en section 3 caractérisent la cascade CPU de bibliothèque sans mobiliser la couche L2.
+> **Note de Portée — Cascade de Bibliothèque vs Démons Autonomes (`cmd/c2agent`) :** `CascadeEngine`, les disquettes binaires `.c2book` embarquées (`LoadFloppyMmap`), la règle de domaine apex et le filtre de session `TTY` constituent le cœur de bibliothèque évalué par `wittgenstein_bench_test.go` et `cmd/c2forge` (`lab-eval`, `dns-delta`). Les démons autonomes (`cmd/c2agent`, `cmd/c2blue-mcp-guard`, `cmd/c2multiagent`) assemblent `Codebook`, `GrayZoneDecider`, `Pipeline` et `ServerOracle`, et arbitrent en production les cas gris via l'encodeur vectoriel en passe unique `PureGoEncoderArbitrator` (`c2slm/engine.DecisionHead`, micro-noyau AVX2 `c2_tensor_logit_gather_softmax` en `0 B/op`, poids compilés en `.rodata`, **aucun téléchargement de modèle `.gguf` requis à l'exécution**). Les mesures de la section 3 portent sur la cascade CPU déterministe seule.
 
 ---
 
-## 2. Composants Durcis du Système
+## 2. Composants Clés du Système
 
-### A. Disquettes de Connaissances Vectorielles (`.c2book` / `C2FLOP1`)
-Les bases de connaissances sont distribuées sous forme de fichiers binaires autonomes projetés en mémoire vive en lecture seule (`syscall.Mmap`, `PROT_READ`, `MAP_SHARED`) :
-- **En-tête Binaire (64 octets) :** Magie `C2FLOP1\0`, version, identifiant de famille, dimension vectorielle (512), nombre d'entrées, nombre de mots-clés, classes de décision, prototypes et rayon de blocage calibré.
-- **Sceau d'Intégrité & Authentification :** Les bases de connaissances portent un sceau d'intégrité **HMAC-SHA256** couvrant les 32 premiers octets d'en-tête et l'intégralité du corps, contrôlé conjointement avec le **CRC32C Castagnoli** pour détecter toute altération ou corruption accidentelle. Toute modification de paramètre (tel que `BlockRadius`) invalide le sceau (`ErrFloppySeal`). Dès lors qu'une disquette est scellée (`FloppyFlagSealed`), `LoadFloppyMmap` exige strictement la fourniture d'une clé HMAC ; tout chargement d'une disquette scellée sans clé ou avec une clé vide est immédiatement rejeté avec `ErrFloppyUnsealed`. Inversement, le chargement d'une disquette non scellée avec une clé HMAC est rejeté avec `ErrFloppyUnsealed`, tandis que le chargement d'une disquette non scellée sans clé est accepté avec la seule vérification CRC32C Castagnoli, sans authentification cryptographique (dans ce dépôt, `LoadFloppyMmap` est appelé par `c2forge lab-eval` / `dns-delta` et les suites de tests, tandis que les démons autonomes `c2agent` et `c2blue-mcp-guard` utilisent des codebooks et oracles serveur distincts). Pour la reproductibilité immédiate de l'évaluation du tournoi Wittgenstein, `WittgensteinFloppyKey(family)` journalise un avertissement de sécurité et se replie sur des clés publiques de démonstration lorsque les variables d'environnement (`C2BLUE_HMAC_KEY_*`) sont absentes. En déploiement de production, définir `C2BLUE_REQUIRE_SECURE_KEYS=1` (ou `C2BLUE_PRODUCTION=1`) impose la fourniture stricte de clés secrètes à deux niveaux : `WittgensteinFloppyKey` refuse tout repli sur les clés de démonstration (en renvoyant `nil`), et le chargeur binaire (`decodeFloppy`) refuse catégoriquement toute disquette non scellée (`FloppyFlagSealed` absent) avec `ErrFloppyUnsealed`. Ceci ferme la brèche où le simple effacement du drapeau de sceau dans l'en-tête (qui n'est pas couvert par la somme de contrôle CRC32C du corps) permettrait de charger une disquette non scellée sans authentification lorsqu'une clé nulle est fournie.
-- **Commutation Atomique à Chaud (`FloppySlot`) :** Remplacement des disquettes en temps constant $O(1)$ sans verrou via pointeurs atomiques RCU (`atomic.Pointer[FloppyDisk]`).
-- **Disquettes d'Évaluation Pré-compilées :** Trois fichiers `.c2book` canoniques sont fournis pré-compilés dans `testdata/wittgenstein/floppies/` pour une reproductibilité immédiate sans exiger les jeux d'apprentissage bruts privés :
-  - `floppy_lolbas.c2book` (Sous-système 1 : Processus & LOLBAS)
-  - `floppy_dns_c2.c2book` (Sous-système 2 : Réseau & DNS C2)
-  - `floppy_agent_mcp.c2book` (Sous-système 3 : Agents IA & Appels d'Outils)
-  L'outil `c2forge` permet la régénération complète lorsque les jeux d'entraînement sont fournis.
+### A. Disquettes de Connaissances Projetées en Mémoire (`.c2book` / `C2FLOP1`)
+Les paramètres compilés (mots-clés, prototypes binaires 512 bits, poids INT8 et rayons de blocage) sont stockés dans des fichiers binaires plats `.c2book` projetés en lecture seule dans l'espace d'adressage (`syscall.Mmap`, `PROT_READ`, `MAP_SHARED`) :
+- **En-tête `FloppyHeader` de 64 octets (`C2FLOP1\0`) :** les octets `0..32` portent la signature magique, la version, la famille de sous-système, la dimension (`512`), les compteurs et `BlockRadius` ; les octets `32..64` portent le sceau `Seal` de 32 octets.
+- **Scellement Cryptographique & Refus d'Altération :** toute disquette scellée (`FloppyFlagSealed`) vérifie conjointement une somme **CRC32C Castagnoli** et un sceau **HMAC-SHA256** de 32 octets (`32..64`) calculé sur le préfixe d'en-tête (`0..32`) et le corps (`ErrFloppySeal` dès le moindre bit modifié). Charger une disquette scellée sans clé HMAC, ou fournir une clé à une disquette non scellée, échoue immédiatement (`ErrFloppyUnsealed`). Pour permettre la reproduction immédiate des bancs publics après clonage, `WittgensteinFloppyKey(family)` journalise un avertissement et utilise des clés publiques de démonstration lorsque `C2BLUE_HMAC_KEY_*` est absent ; en production, `C2BLUE_REQUIRE_SECURE_KEYS=1` (ou `C2BLUE_PRODUCTION=1`) supprime ce repli (`nil`) et oblige `decodeFloppy` à rejeter toute image non scellée (`ErrFloppyUnsealed`).
+- **Remplacement Atomique à Chaud (`FloppySlot`) :** permutation en temps constant $O(1)$ sans verrou via `atomic.Pointer[FloppyDisk]`.
+- **Disquettes Pré-compilées Fournies :** `floppy_lolbas.c2book`, `floppy_dns_c2.c2book` et `floppy_agent_mcp.c2book` sous `testdata/wittgenstein/floppies/`.
 
-### B. Arène Atomique Seqlock pour Charges Utiles (`ArenaPool`)
-Les charges utiles volumineuses (jusqu'à 4 096 octets) contournent les structures fixes sans allocation sur le tas via un tampon circulaire :
-- **Concurrence sans Verrou :** Seqlock atomique 64 bits par entrée sur 1 024 pages (4 Mo au total). Les lecteurs comparent les compteurs d'époque avant et après copie pour détecter les écrasements concurrents.
-- **Quarantaine Fail-Closed :** Si un écrivain rapide recycle une fente en cours de lecture, `ResolvePayload` rend `nil` avec une erreur typée (`ErrArenaStale`, `ErrArenaTorn`), causant le marquage de l'événement avec `FlagArenaInvalid` et son acheminement vers `VerdictQuarantine`.
+### B. Tampon Circulaire Sans Verrou (`ArenaPool`)
+Les charges utiles jusqu'à `4 096` octets transitent par 1 024 pages statiques (4 Mo) synchronisées par compteur d'époque pair/impair (`seqlock`) en `0 B/op`. Si une rafale d'écriture rattrape un lecteur, `ResolvePayload` renvoie `ErrArenaStale` / `ErrArenaTorn`, positionne `FlagArenaInvalid` et impose `VerdictQuarantine`.
 
 ### C. Garde de Subordination Conforme
-Pour parer aux évasions adverses où une charge hostile passerait l'étalonnage L1a tout en conservant une signature d'attaque, L1a est **strictement subordonné** :
-- Si un centroïde hostile connu se situe dans le rayon de blocage calibré (`nearThreat`), la confirmation bénigne de L1a est révoquée, escaladant vers l'évaluation complète de l'hyperplan et du veto par centroïde de L1b.
+L'étage rapide `L1a` est strictement subordonné à la proximité des menaces : dès qu'un événement entre dans le rayon de Hamming `BlockRadius` d'un centroïde hostile (`nearThreat`), `L1a` s'efface au profit de l'évaluation complète `L1b` (hyperplan INT8 et veto).
 
-### D. Attestation Forensique Autonome Ed25519 (`SignForensicProof`)
-Pour l'auditabilité post-incident et la non-répudiation des preuves, le moteur offre une API d'attestation autonome :
-- Déclenchée à la demande par un opérateur, une sonde ou un superviseur d'orchestration, elle génère un reçu binaire canonique indépendant de 230 octets.
-- Signée numériquement avec une clé racine de confiance Ed25519 non nulle (rejette strictement toute clé vide ou de taille invalide).
-- Lie directement dans la preuve les paramètres de l'événement, le condensat SHA-256 de la charge utile et le CRC32 de la disquette active.
-- S'exécute hors du chemin chaud afin de préserver le budget d'inférence en microsecondes sans pénalité de signature par paquet.
-- Valide le rejeu déterministe du verdict (`ReplayForensicProof` confirme la concordance bit-à-bit exacte sur l'action de remédiation, l'étage de décision, la distance de Hamming et le score de confiance contre les champs signés de la preuve) même après recyclage complet des fentes de l'arène.
+### D. Reçus Forensiques Ed25519 (`SignForensicProof`)
+Exécutée hors du chemin critique uniquement sur incident escaladé, `SignForensicProof` signe avec une clé Ed25519 valide un reçu autonome de 230 octets que `ReplayForensicProof` permet de revérifier bit à bit après recyclage de l'arène mémoire.
 
 ---
 
-## 3. Évaluation Empirique & Calibrage du Banc
+## 3. Évaluation Empirique, Tenue sous Charge 60 s & Limites Vérifiées
 
-Les métriques d'évaluation combinent des lignes de commande de reverse shells réels dédupliquées (`reverse_shells.jsonl`), un jeu compilé de requêtes DNS de 4 000 tunnels et 1 000 domaines bénins (`validate.csv`), des commandes d'administration système rédigées d'après la documentation technique, et des variantes d'attaques générées synthétiquement par substitution paramétrique. Comme documenté dans la réserve D, plusieurs règles structurelles ciblées ont été calibrées sur ces jeux lors du développement du moteur :
+### A. Banc LOLBAS & Reverse Shells (Fenêtre `4 096` Octets)
+- **Corpus :** 136 lignes de commande réelles dédupliquées (`reverse_shells.jsonl`) séparées sans chevauchement de gabarit en 95 échantillons d'entraînement et **41 shells d'évaluation**.
+- **Reverse Shells Tenus à l'Écart (`N=41` — `100,00 %` interceptés, `0/41` passé) :**
+  - **Blocage Net (`Block`) :** **80,49 %** (`33/41`, IC Wilson 95 % `[65,99 %, 89,77 %]` — `20` en L0, `13` en L1b)
+  - **Quarantaine Fail-Safe :** **19,51 %** (`8/41`, IC Wilson 95 % `[10,23 %, 34,01 %]` — `8` en L1b ; soit `51,2 %` d'interception apprise au-delà des mots-clés L0)
+  - **Manqués (`Pass`) :** **0,00 %** (`0/41`, IC Wilson 95 % `[0,00 %, 8,57 %]`)
+- **Mutations Paramétriques IP/Port (`N=111` via `ipPortVariant`) :** **80,18 % Blocage** (`89/111`, IC Wilson 95 % `[71,81 %, 86,53 %]`), **19,82 % Quarantaine** (`22/111`, `[13,47 %, 28,19 %]`), **0,00 % Passage** (`0/111`, `[0,00 %, 3,35 %]`).
+- **Commandes d'Administration Système (`N=42`, coreutils/systemd/docker/kubectl/apt ; lot apparié `N=83` taux majoritaire `0,5060`) :**
+  - **Sous Session Interactive Authentifiée (`TTY`, vérification en temps constant `EvaluateOntology`) :** **100,00 % Passage** (`42/42`, `[91,62 %, 100,00 %]`), **0,00 % Quarantaine**, **0,00 % Faux Blocage** (`ROC AUC = 0,9919` sur les `83` commandes shells + admin).
+  - **Chaîne Brute Sans Contexte d'Hôte (`Headless`) :** **30,95 % Passage** (`13/42`, `[19,07 %, 46,03 %]`), **69,05 % Quarantaine** (`29/42`, `[53,97 %, 80,93 %]`), **0,00 % Faux Blocage** (`0/42`, `[0,00 %, 8,38 %]`, `ROC AUC = 0,9013` ; `1/103` = `0,97 %` `[0,17 %, 5,30 %]` faux blocage sur `Get-Counter` et `69/103` = `66,99 %` `[57,44 %, 75,32 %]` quarantaines dans la partition d'entraînement).
 
-### A. Évaluation LOLBAS & Reverse Shells
-- **Jeu de données :** 136 lignes de commande réelles dédupliquées issues de traces de capture (`reverse_shells.jsonl`).
-- **Partitionnement :** 95 échantillons d'apprentissage ; **41 échantillons d'évaluation** (partitionnés sans aucun chevauchement de gabarit avec l'apprentissage), évalués sur la fenêtre intégrale de 4 096 octets insensible aux octets NUL.
-- **Résultats de Détection (41 shells d'évaluation, N=41 — 100,00 % interceptés, 0/41 passés) :**
-  - **Taux de Blocage Net :** **80.49 %** (33/41, IC Wilson 95 % [65.99 %, 89.77 %])
-  - **Taux de Quarantaine Fail-Safe :** **19.51 %** (8/41, IC Wilson 95 % [10.23 %, 34.01 %])
-  - **Taux de Passage (Manqué) :** **0.00 %** (0/41, IC Wilson 95 % [0.00 %, 8.57 %])
-  - **Décomposition de la Décision :** 20 menaces bloquées par mots-clés/réflexes L0, **13 bloquées + 8 mises en quarantaine par la tête INT8 / centroïdes appris L1b** (51.2 % d'interception apprise au-delà du simple mot-clé).
-- **Robustesse aux Mutations Paramétriques (N=111) :** Évalué sur 111 variantes générées synthétiquement par substitution d'adresses IP et de ports (incluant le remplacement de la constante 4444) sur les gabarits de charges utiles via l'expression régulière `ipPortVariant`. Aucun chemin de shell, commande ou argument d'exécution n'est modifié : **80.18 % de Blocage Net** (89/111, IC 95 % [71.81 %, 86.53 %] : 48 L0 + 41 L1b), **19.82 % de Quarantaine** (22/111, IC 95 % [13.47 %, 28.19 %] : 22 L1b), **0.00 % de Passage** (0/111, IC 95 % [0.00 %, 3.35 %] ; **100.00 % d'interception**).
-- **Commandes d'Administration Système (N=42) :** Évalué sur 42 lignes de commande d'administration rédigées d'après la documentation des outils (coreutils, systemd, docker, kubectl, apt ; ne constitue pas une capture d'un parc en production) :
-  - **En Session Interactive Authentifiée (`DeriveCascadeContext` / TTY) :**
-    - **Taux de Passage :** **100.00 %** (42/42 acceptées, IC Wilson 95 % [91.62 %, 100.00 %])
-    - **Taux de Quarantaine :** **0.00 %** (0/42, IC Wilson 95 % [0.00 %, 8.38 %])
-    - **Taux de Faux Positif de Blocage :** **0.00 %** (0/42 bloqué, IC Wilson 95 % [0.00 %, 8.38 %])
-  - **Ligne de Base Sans Provenance (Flux Brut Headless) :**
-    - **Taux de Passage :** **30.95 %** (13/42, IC Wilson 95 % [19.07 %, 46.03 %])
-    - **Taux de Quarantaine :** **69.05 %** (29/42 quarantaine de sécurité fail-safe, IC Wilson 95 % [53.97 %, 80.93 %])
-    - **Taux de Faux Positif de Blocage :** **0.00 %** (0/42, IC Wilson 95 % [0.00 %, 8.38 %])
+### B. Banc Netrack DNS C2 (`validate.csv`, `N=5 000`, Taux Majoritaire `0,8000`, `ROC AUC = 1,0000`)
+- **Requêtes de Tunnels C2 (`N=4 000` — `100,00 %` interceptées) :** **99,35 % Blocage Net** (`3 974/4 000`, `[99,05 %, 99,56 %]` : `2 957` en L0 via `hidemyself.org` + `dnsHasEncodingChars` ; `1 017` en L1b) et **0,65 % Quarantaine** (`26/4 000`, `[0,44 %, 0,95 %]` `tuns.org` en L1b), **0,00 % Passage** (`0/4 000`, `[0,00 %, 0,10 %]`).
+- **Domaines Bénins (`N=1 000`) :** **100,00 % Passage** (`1 000/1 000`, `[99,62 %, 100,00 %]` : `856` L1a + `144` L1b), **0,00 % Faux Blocage** (`[0,00 %, 0,38 %]`).
 
-### B. Banc Netrack DNS C2
-- **Jeu de données :** 4 000 requêtes de tunnels C2 réels (`validate.csv`) contre 1 000 domaines bénins réels.
-- **Détection C2 Malveillant (N=4 000 domaines — 100,00 % interceptés, 0/4 000 passés) :**
-  - **Taux de Blocage Net :** **99.35 %** (3 974/4 000, IC Wilson 95 % [99.05 %, 99.56 %])
-  - **Taux de Quarantaine Fail-Safe :** **0.65 %** (26/4 000, IC Wilson 95 % [0.44 %, 0.95 %])
-  - **Taux de Passage (Manqué) :** **0.00 %** (0/4 000, IC Wilson 95 % [0.00 %, 0.10 %])
-  - **Décomposition :** 2 957 bloqués en L0 par l'effet cumulé du mot-clé de suffixe de tunnel connu (`hidemyself.org`, couvrant 2 000 requêtes) et du filtre réflexe de caractères d'encodage non-LDH (`dnsHasEncodingChars`, bloquant tout caractère `+`, `/` ou `=` n'importe où dans le QNAME, couvrant 957 requêtes `example.org`) ; **1 017 bloqués + 26 mis en quarantaine en L1b** (`43/43` requêtes `example.org` restantes bloquées ; `974/1 000` requêtes `tuns.org` bloquées et `26/1 000` mises en quarantaine).
-- **Spécificité Bénigne (N=1 000 domaines) :**
-  - **Taux de Passage :** **100.00 %** (1 000/1 000, IC Wilson 95 % [99.62 %, 100.00 %] : 856 L1a + 144 L1b)
-  - **Taux de Faux Positif de Blocage :** **0.00 %** (0/1 000, IC Wilson 95 % [0.00 %, 0.38 %])
+### C. Latence Unitaire & Mise sous Charge Continue de 60 Secondes (`Intel Core i9-14900K`)
+Latences unitaires (`Go 1.27`, Linux `6.14`, `GOAMD64=v3`) :
 
-### C. Cadence, Latence Matérielle & Variabilité de Plateforme (Processeur CPU Pur)
-Mesuré sur processeur physique (**Intel Core i9-14900K**, Linux 6.14, Go 1.27.0, `GOAMD64=v3`) :
+| Opération | Plafond Référence | Avec `GOEXPERIMENT=simd` | Débit par Cœur | Allocations Tas |
+| :--- | :---: | :---: | :---: | :---: |
+| **Filtre Réflexe de Sous-Chaîne L0** | `1,12 µs/op` | **`0,97 µs/op`** | $\approx 1{,}03\text{ M ops/s}$ | **`0 B/op (0 alloc)`** |
+| **Cascade Complète (Commande Bénigne)** | `8,63 µs/op` | **`6,68 µs/op`** | $\approx 150\,000\text{ ops/s}$ | **`0 B/op (0 alloc)`** |
+| **Cascade Complète (Requête DNS)** | `11,68 µs/op` | **`9,61 µs/op`** | $\approx 104\,000\text{ ops/s}$ | **`0 B/op (0 alloc)`** |
+| **Cascade Complète (Charge Longue en Arène, L1b)** | `16,32 µs/op` | **`11,94 µs/op`** | $\approx 84\,000\text{ ops/s}$ | **`0 B/op (0 alloc)`** |
 
-| Opération | Latence par Opération (i9-14900K Référence) | Débit par Cœur | Allocations Tas |
-| :--- | :---: | :---: | :---: |
-| **Filtre Réflexe de Sous-Chaîne L0** | **1.12 µs/op** | $\approx 895\,000\text{ ops/s}$ | **0 B/op (0 alloc)** |
-| **Cascade Complète (Commande Bénigne)** | **8.63 µs/op** | $\approx 115\,800\text{ ops/s}$ | **0 B/op (0 alloc)** |
-| **Cascade Complète (Requête DNS)** | **11.68 µs/op** | $\approx 85\,600\text{ ops/s}$ | **0 B/op (0 alloc)** |
-| **Cascade Complète (Charge Longue en Arène, L1b)** | **16.32 µs/op** | $\approx 61\,300\text{ ops/s}$ | **0 B/op (0 alloc)** |
+Tenue sous **charge soutenue de 60 secondes** (`GOEXPERIMENT=simd`, étude comparative complète dans [`docs/dns_detection_solutions_benchmark.md`](docs/dns_detection_solutions_benchmark.md)) :
+- **Socket UDP/53 Temps Réel (`60,00 s`) :** à **`2 000 pkt/s`** (`120 000` paquets), `0` perte, `0,79 s` CPU (`1,31 %` d'un cœur), **`7,62 Mio` MaxRSS**, `0,0 Mio` d'écriture disque. À **`44 997 pkt/s`** (`2 700 014` paquets), **`0` perte**, `10,24 s` CPU (`17,07 %` d'un cœur ; **`3,42 µs/msg`** temps mural de boucle, **`3,79 µs/msg`** CPU total processus appels système inclus), **`7,39 Mio` MaxRSS**, `0,0 Mio` d'écriture disque.
+- **Rejeu PCAP Multi-Protocoles (`normal-60s.pcap` `147 020` pkts / `22,15 Mo` & `extreme-60s.pcap` `3 011 298` pkts / `325,11 Mo`) :** `c2blue55` traite le palier Normal en **`0,65 s` (`226 267 pkt/s`)** et le palier Extrême en **`13,86 s` (`217 298 pkt/s`, `0,21x` le temps réel, `332,7 Mio` RSS, `0,12 Mio` écrit sur disque, `0` perte)**, obtenant **`TP = 6/14` (`FN = 8`, taux majoritaire `0,7200`)** en Normal et **`TP = 13/23` (`FN = 10`, taux majoritaire `0,6102`)** en Extrême sur les flux chiffrés `DoQ`/`DoH2`/`DoH3`/`H3` avec **`0/36` faux positif (`TN = 36/36`, `ROC AUC = 1,0000`)**.
 
-*Note sur la Variabilité des Plateformes :* Des vérifications indépendantes sur des configurations matérielles et serveurs alternatifs mesurent des latences environ 1.5x à 2x supérieures (typiquement ~1.7 à 2.7 µs pour la couche 0, et 15 à 20 µs pour la cascade complète), demeurant confortablement dans l'enveloppe opérationnelle de 10 à 25 µs.
+### D. Réserves Méthodologiques & Limites Falsifiables Mesurées
+1. **Règles Calibrées en Développement :** l'exception de domaine apex, l'exemption de quarantaine sous `TTY` et le découpage `netcat` ont été conçus après examen des erreurs sur les bancs du tournoi ; la généralisation hors-distribution se juge sur les bancs externes `netrack/learn`, `L1-bis` (tunnels modernes `Slipstream`, `VayDNS`, `NoizDNS` et `Soar`) et la charge `argencon` 60 s ci-dessous.
+2. **Calibration Locale Indispensable sur Zones DNS Étrangères (`27,6 %` FP sans `dns-delta`) :** sur le corpus externe `netrack/learn` (`wittgenstein/netrack_lab`, `5` PCAP), la disquette générique sépare les quatre tunnels (`dns2tcp` `4 537/4 537`, `dnscapy` `13 759/13 760` + `1` Q, `tuns` `63 108/63 108` à `AUC = 1,000` ; `iodine` `6 053/6 119` `Block` strict + `19` Q, `47` `Pass` FN à `AUC = 0,9922`, taux majoritaire `0,5858`), mais génère **`27,6 %` (`2 385/8 654` `Block` strict ; `30,5 %` en incluant `255` quarantaines, `6 014` `Pass` TN)** de faux positifs sur des domaines d'entreprise inconnus (`netrack-plain-2018`) tant qu'une passe locale `c2forge dns-delta` n'a pas été exécutée.
+3. **Faux Positifs du Compteur `P4` sous Navigation Multi-Domaines (`215/240` FP) :** sous charge 60 s mêlant des dizaines de domaines Internet réels (`argencon`) par client, le compteur sans décroissance temporelle ni filtre d'entropie `REASON_P4_MULTIPARENT_SHARDING` de `ObserveAndClassify18` (qui déclenche dès `>= 4` domaines parents interrogés avec un label alphanumérique de `10..32` caractères) marque `215/240` clients bénins en Normal (`TP=24, FP=215, TN=25, FN=3`, taux majoritaire `0,8989`, `AUC = 0,8947`) et `216/240` en Extrême (`TP=33, FP=216, TN=24, FN=3`, taux majoritaire `0,8696`, `AUC = 0,9208`). Sur un résolveur récursif multi-domaines, `P4` doit être désactivé ou conditionné à l'entropie.
+4. **Masquage Filaire par Co-Multiplexage HTTP/3 (`doh3-shared-conn-vaydns-transit.pcap`) :** lorsqu'un tunnel `VayDNS` de `32 Kio` (`21 683` o = `21,7 ko` montants QUIC nets) partage la même connexion QUIC qu'un téléchargement HTTP/3 de `3 291 563` o (`3,29 Mo` / `3,14 Mio` descendants QUIC ; `3,35 Mo` / `3,20 Mio` filaires sur `:9444`), l'asymétrie descendante (`6,45`, régime `R0b` de téléchargement web massif) masque le tunnel au classifieur cinétique sans clé de `c2blue55` : sur la paire de contrôle `:9444` (`N = 2`, taux majoritaire `0,5000`), **`TP = 0/1, FP = 0/1, TN = 1/1, FN = 1/1` (`ROC AUC = 0,5000` ; `AUC = 0,4545` sur `N = 12` face aux `11` témoins bénins, taux majoritaire `0,9167`)** — ce qui requiert l'attribution par processus sur l'hôte Linux (`part_resolveur_permille`, qui démasque un binaire C2 autonome mais pas un tunnel exécuté à l'intérieur d'un navigateur actif).
+5. **Domaines DGA Mono-Label & Session TTY Compromise :** les domaines `DGA` sans sous-domaine reposent sur la tête `INT8` dédiée, et un attaquant opérant déjà dans un shell interactif `TTY` authentifié depuis `/home/...` ou `/opt/` échappe à la bande `13..24` sauf détection par `L0`, `R_block <= 12` ou `predClass == 1`.
 
-### D. Réserves Méthodologiques, Analyse Opérationnelle & Limites Réelles
-
-1. **Réglage a Posteriori & Réserve sur les Jeux d'Évaluation :**
-   Les règles structurelles ciblées — précisément la règle de domaine apex (où la proximité d'un centroïde bloque par défaut sauf si la tête INT8 certifie expressément la bénignité et la conformité), la désactivation de la quarantaine sous session TTY (où l'autorisation ontologique désactive inconditionnellement la bande suspecte 13–24, ne laissant que les prédictions hostiles INT8 pour bloquer ou isoler) et le découpage L0 des permutations netcat — ont été conçues après l'examen direct des échecs observés sur les bancs de test (les 8 domaines dictionnaires concaténés bloqués, les 9 commandes d'administration headless initialement en quarantaine sous le prototype à préfixe de 96 octets, et les 6 variantes d'options netcat). Ces jeux ont ainsi fonctionné comme des partitions de calibration/développement résiduelles. Les scores parfaits de 100 % et 0 % mesurent l'ajustement empirique à ces cas limites identifiés et non une généralisation stricte hors-distribution, qui nécessitera une évaluation sur des données de production complètement inédites.
-2. **Faux Positifs Résiduels sur les Commandes d'Administration Brutes :**
-   L'évaluation de lignes de commande en isolation textuelle sans contexte de provenance présente une friction réelle. Sur la partition d'apprentissage bénigne de 103 commandes évaluée sans provenance sur la fenêtre complète de 4 096 octets, le moteur sans contexte enregistre 69 quarantaines (66.99 %) et **1 faux positif de blocage net** (0.97 %) sur une commande d'administration légitime (`Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 2 -MaxSamples 5`). Le taux de 0 % de faux positif de blocage n'est donc pas une propriété inconditionnelle du classifieur de texte brut ; il dépend strictement du contexte de provenance de l'hôte.
-3. **Angle Mort DGA dans la Discrimination des Domaines Apex :**
-   L'exception de domaine apex neutralise le blocage par centroïde en l'absence de sous-domaine profond, en s'appuyant sur l'axiome qu'un tunnel d'exfiltration DNS exploite un canal d'encodage logé dans les étiquettes de sous-domaines. Si ce filtrage élimine efficacement les faux positifs sur les domaines dictionnaires (ex. `sickbeard.com`), il affaiblit la détection directe par centroïde des domaines C2 générés algorithmiquement (**DGA**), qui sont précisément des domaines de second niveau (apex) sans sous-domaine profond. Les menaces DGA dépourvues de sous-domaines reposent ainsi intégralement sur la tête de décision INT8 ou nécessitent un étage DGA dédié en amont.
-4. **Surface d'Évasion en Contexte TTY, Usurpation de Provenance & Classification Générique de Sous-Système :**
-   La neutralisation de la bande suspecte (distance de Hamming de 13 à 24) en session interactive élimine la friction opérationnelle pour les administrateurs légitimes. L'évaluation ontologique ne rend un verdict d'autorisation (`OntoVerdictAllow`) que lorsque des conditions strictes sont réunies cumulativement : (1) une session interactive authentifiée (présence avérée d'un TTY, UID de connexion et absence d'élévation setuid : `EUID == UID`), (2) l'exécution d'une cible classifiée `TgtBinSystem`, et (3) l'absence totale d'indicateurs de processus hostiles (aucun déguisement `kworker`, aucune exécution anonyme `memfd_create`, aucun binaire supprimé du disque et aucune page mémoire `W+X` inscriptible et exécutable). Lorsqu'elles sont satisfaites, `OntoVerdictAllow` désactive inconditionnellement la bande de quarantaine suspecte (distance de Hamming de 13 à 24 bits).
-   Néanmoins, cela ouvre une surface d'évasion importante : `deriveCascadeOntoKey` attribue inconditionnellement `TgtBinSystem` à tout événement provenant du sous-système de processus (`Subsystem == SubProc`), sans examiner les chemins du système de fichiers. Seuls les répertoires temporaires sont écartés, indirectement, par `DeriveOntoContext` (qui pose `CtxTmpResidence` si le chemin contient `/tmp/`, `/var/tmp/` ou `/dev/shm/`). Par conséquent, les binaires situés dans les répertoires personnels utilisateurs (`/home/...`), dans `/opt/` ou dans `/usr/local/` sont qualifiés de `TgtBinSystem` et bénéficient également de l'axiome de bénignité en session TTY. Un attaquant opérant au sein d'une session interactive authentifiée (ex. identifiants SSH dérobés) exécutant un binaire depuis un répertoire utilisateur sans drapeaux anormaux est donc totalement exempté de la mise en quarantaine dans la bande 13–24. La détection repose alors exclusivement sur le franchissement du rayon de blocage strict ($\le 12$) ou sur une classification hostile explicite (`predClass == 1`) par la tête INT8. Si une charge inconnue hostile se situe dans la bande 13–24 et reçoit une prédiction de classe 0 (bénigne, même non conforme), elle passe sans quarantaine. Par ailleurs, le banc d'essai applique une provenance `/usr/bin/bash` générique à l'ensemble du corpus d'administration, qui contient des commandes PowerShell, ce qui constitue une simplification de laboratoire devant être remplacée en production par la télémétrie native du noyau (auditd / ETW).
-5. **Caractère Paramétrique des Variantes de Mutation :**
-   Les 111 variantes de mutation sont issues de substitutions synthétiques d'adresses IP et de numéros de port (incluant le remplacement de la constante 4444) sur les gabarits de reverse shells du corpus via l'expression régulière `ipPortVariant`. Aucun chemin de shell, commande ou argument d'exécution n'est modifié. Elles ne constituent pas 111 familles d'attaques sauvages distinctes.
-
-### E. Banc de Laboratoire Fermé sur Infrastructure Privée (2026-10-27)
-
-Les jeux publics ci-dessus ont été complétés par un banc fermé sur maillage privé : un serveur autoritaire pour une zone dédiée (`cmd/dnslab-auth`, lié à une adresse privée de maillage, port 53 non exposé sur Internet), un émetteur de campagnes sur un second hôte (`cmd/c2dnslab-emit` : rejeu de noms sous la zone, poignée de main `iodine`), des captures horaires de paquets et des journaux typés. Les captures sont ingérées par `IngestRedhostLabRun`, évaluées avec exclusion de la famille testée hors de l'apprentissage (`EvaluateDNSLabFamilies`), et les vues manquées sont recompilées dans une disquette N+1 par `RecompileDNSTunnelDelta` sous le prédicat de preuve `ProvePattern` (évasion comptée sur N, `FN = 0` sur N+1, zéro augmentation des faux positifs bénins).
-
-- **Famille tenue à l'écart `redhost-replay`** (1 328 questions, 3 campagnes) : TP 1 254, FN 74, AUC 0,7945 face à un jeu bénin de laboratoire de 69 questions (45 FP : les 20 sondes à forme de tunnel, bloquées par la tête tunnel, plus les 25 requêtes vers `hazyhaar.fr` / `www.hazyhaar.fr` bloquées par la tête DGA ; 24 TN sur `pound2pound.fr` / `lab.pound2pound.fr` ; exactitude 0,9148 à ce point de fonctionnement, sous le taux de classe majoritaire 0,9506).
-- **Évasions fermées dans l'échantillon par recompilation différentielle** (`c2forge dns-delta`, code de sortie 0 ; N+1 recompilée depuis les vues manquées d'une campagne et remesurée sur cette même campagne) : poignée de main `iodine`, FN 5 → 0 (+4 centroïdes) ; nom mono-label `canary.lab.pound2pound.fr`, FN 74 → 0 (+1 centroïde) ; FP bénins 20 → 20 dans les deux cas. Hors échantillon : 598 labels `tuns.org` réels rejoués sous la zone, jamais appris, tous bloqués par la disquette de base (code de sortie 3, déjà couvert). Par nom distinct : 605 des 606 noms hostiles bloqués.
-- **Ablation de projecteur appris** (`internal/projlearn`, noyaux transpilés depuis C99) : AUC tenue à l'écart de 0,7585 contre 0,9932 / 0,9449 pour la projection fixe ; non retenu.
-- **Non mesuré à ce stade :** généralisation d'un centroïde appris sur 5 questions `iodine` à un autre client ou une autre version ; bruit Internet ouvert ; campagnes systématiques de variation d'alphabet, de longueur et de cadence (`GenerateVariationNames` est livré et testé).
+### E. Banc de Laboratoire Fermé sur Maillage WireGuard (`2026-10-27` au `2026-11-01`)
+Un laboratoire privé isolé (`cmd/dnslab-auth` + `cmd/c2dnslab-emit`, port 53 jamais exposé sur Internet) valide la tenue hors-apprentissage (`EvaluateDNSLabFamilies`) et la recompilation différentielle (`c2forge dns-delta` / `ProvePattern`) : sur `redhost-replay` tenu à l'écart (`1 328` requêtes sur `3` campagnes face à `69` sondes/bénins labo : `TP = 1 254, FP = 45, TN = 24, FN = 74, AUC = 0,7945`, exactitude `0,9148` sous le taux majoritaire `0,9506`), la recompilation différentielle ferme la poignée de main `iodine` (`FN 5 -> 0`, `+4` centroïdes) et le label court `canary` (`FN 74 -> 0`, `+1` centroïde) à faux positifs constants (`20 -> 20`), bloque immédiatement `598` labels `tuns.org` jamais vus (code `3`), et écarte après ablation le projecteur appris (`AUC = 0,7585` contre `0,9932 / 0,9449` pour Hadamard fixe).
 
 ---
 
 ## 4. Compilation & Utilisation
 
 ### Prérequis
-- Go 1.27.0 ou supérieur.
-- Linux x86_64 (`GOAMD64=v3` recommandé).
+- Go `1.27.0+` sous `Linux x86_64` (`GOAMD64=v3` recommandé ; `GOEXPERIMENT=simd` active les noyaux vectoriels AVX2).
 
-### Compilation de l'Outil de Forge
+### Compilation & Commandes `c2forge`
 ```bash
 GOEXPERIMENT=simd go build -ldflags="-s -w" -o bin/c2forge ./cmd/c2forge
-```
 
-### Forgerie des Bases de Connaissances
-Générer les trois fichiers `.c2book` depuis les données d'apprentissage :
-```bash
-./bin/c2forge -wittgenstein-floppies \
-  -wittgenstein-data /chemin/vers/donnees/wittgenstein \
-  -out-dir /chemin/vers/sortie/floppies
-```
+# 1. Forger les disquettes .c2book depuis les corpus bruts
+./bin/c2forge -wittgenstein-floppies -wittgenstein-data /chemin/vers/wittgenstein -out-dir /tmp/floppies
 
-### Évaluation sur Banc de Laboratoire & Transit Chiffré (`lab-eval`, `dns-delta`, `encrypted-eval`)
-```bash
-# Évaluation tenue à l'écart par famille (-tolerant active l'ingestion RFC 1035/2181 des labels binaires hors-LDH)
-./bin/c2forge lab-eval -tolerant -data /chemin/vers/donnees/wittgenstein -lab /chemin/vers/redhost_lab \
-  -out /chemin/vers/floppies -report 07-homologation-laboratoire.json
+# 2. Évaluation hors-échantillon par famille (-tolerant décode les octets binaires Base128 >= 0x80)
+./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/tunnels-20261031 \
+  -out /tmp/floppies-live -report /tmp/live.json
 
-# Recompilation différentielle et preuve de motif (code 0 prouvé, 3 déjà couvert, 4 non prouvé)
-./bin/c2forge dns-delta -base /chemin/vers/floppies/redhost-iodine/floppy_dns_tunnel.c2book \
-  -lab /chemin/vers/redhost_lab -run iodine-20261027T151046Z -benign local-dns-20261027T113715Z \
-  -out iodine-n1.c2book -proof 06-motifs-prouves-iodine.json
+# 3. Calibration locale différentielle (code 0 prouvé, 3 déjà couvert, 4 non prouvé)
+./bin/c2forge dns-delta -base /chemin/vers/floppy_dns_tunnel.c2book -lab /chemin/vers/redhost_lab \
+  -run iodine-20261027T151046Z -benign local-dns-20261027T113715Z -out iodine-n1.c2book -proof proof.json
 
-# Inspection cinétique zéro-allocation sans clé sur captures PCAP DoQ / DoH2 / DoH3 / H3
-./bin/c2forge encrypted-eval -pcap /chemin/vers/capture.pcap -out /tmp/verdict.json
-./bin/c2forge encrypted-eval -manifest /chemin/vers/encrypted_manifest.json -report /tmp/lofo-report.json
-```
+# 4. Inspection autonome sans clé DoQ multivoie (PCAP inclus dans testdata/rat-20261101/)
+./bin/c2forge encrypted-eval -hote -doh-ports 8443,8853,9443,9444 \
+  -pcap testdata/rat-20261101/slipstream-2doq-multipath-transit.pcap
 
-### Exécution des Tests Ciblés
-```bash
-# 1. Tests unitaires et de concurrence du moteur interne
-go test -race -count=1 ./internal/engine/...
-
-# 2. Tests d'intégration de forgerie de disquettes
-go test -race -count=1 ./cmd/c2forge/...
-
-# 3. Tests d'intégration du paquet racine et banc wittgenstein
-go test -race -count=1 .
+# 5. Corpus de laboratoire externe : -pcap -hote inspecte l'agrégation hôte (Hotes),
+#    tandis que -manifest ... -report ... exécute l'évaluation LOFO par conversation
+./bin/c2forge encrypted-eval -hote -doh-ports 8443,8853,9443,9444 \
+  -manifest ../wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/encrypted-manifest-joint35.json \
+  -report /tmp/enc-joint35.json
 ```
 
 ---
 
-## 4b. Clonage, Compilation et Reproduction des Résultats de Laboratoire (ajouté le 2026-10-31)
+## 4b. Reproduction Hors-Ligne Autonome (`verify-standalone.sh`)
 
-Dans l'archive autonome publiée, les trois modules Go partagés (`c2slm`, `c2pkg`, `pkg`) sont matérialisés sous `vendor/` afin de compiler hors ligne avec `-mod=vendor` ; dans un arbre de développement multi-modules où `vendor/` n'est pas suivi par Git, `go.mod` résout les modules voisins via ses directives `replace`. Le script `./scripts/verify-standalone.sh` copie l'arbre dans un répertoire temporaire isolé, génère `vendor/` s'il est absent, retire toutes les directives `replace` de `go.mod`, puis vérifie la compilation et les suites unitaires hors ligne sous `GOPROXY=off GOSUMDB=off -mod=vendor`.
+Dans l'archive autonome publiée, les trois modules Go partagés (`c2slm`, `c2pkg`, `pkg`) sont matérialisés sous `vendor/` ; dans un espace de travail multi-modules local où `vendor/` n'est pas commité, `go.mod` résout les modules frères par directives `replace`. Le script `./scripts/verify-standalone.sh` copie le dépôt dans un répertoire temporaire isolé, exécute `go mod vendor` si nécessaire, retire toutes les directives `replace` de `go.mod`, puis valide la compilation et les tests unitaires hors ligne sous `GOPROXY=off GOSUMDB=off -mod=vendor`.
 
 ```bash
-git clone https://github.com/hazyhaar/c2blue55.git
-cd c2blue55
-go build ./...                      # compilation scalaire portable (Go 1.27+)
-GOEXPERIMENT=simd go build ./...    # noyaux AVX2 ; inférence 4 à 5 fois plus rapide, résultats identiques
-go vet ./...
+GOEXPERIMENT=simd go test -race -count=1 ./socagent ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web \
+  ./internal/dnslab ./internal/icmplab ./internal/goclassifier ./internal/probes/...
 ```
 
-Suite de tests. Les paquets qui ne requièrent aucun fichier externe s'exécutent directement avec `GOEXPERIMENT=simd go test -race -count=1 ./socagent ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web ./internal/dnslab ./internal/icmplab ./internal/goclassifier ./internal/probes/...`. Quatre groupes de tests dans `.`, `./cmd/c2forge`, `./internal/engine`, `./internal/projlearn`, `./internal/cinetique` et `./cmd/c2agent` exigent des pièces externes et échouent explicitement lorsqu'elles sont absentes :
+Les binaires exécutables (`c2agent`, `c2forge`, `c2multiagent`) embarquent directement leurs disquettes vectorielles `.c2book` et la tête de décision `c2slm/engine.DecisionHead` sans aucun poids `.gguf` externe requis à l'exécution. Seuls quatre groupes de **tests comparatifs ou de corpus hors dépôt** exigent une pièce externe et échouent explicitement si elle manque :
 
-| Tests | Pièce requise | Fourniture |
+| Suite de tests | Pièce requise | Fourniture |
 |---|---|---|
-| Chaîne complète `internal/cinetique`, tests SLM de `cmd/c2agent` | Modèle GGUF | télécharger `qwen2.5-0.5b-instruct-q4_k_m.gguf` (Qwen2.5-0.5B-Instruct-GGUF sur Hugging Face) et exporter `C2_TEST_QWEN_GGUF=/chemin/vers/modele.gguf` ; `cmd/c2agent` lit `C2BLUE_MODEL_PATH` à l'exécution |
-| Tests d'apprentissage `internal/projlearn`, `TestLabFamilies_RealRunsHeldOut`, `TestDeltaRecompile_ProofTriplet`, `internal/engine` `TestForgeDNSFloppies_NoCorpusDomainLeak`, `TestDNSLeakFix`, `TestDNSAgent_ColdFamilyGeneralization`, et toute commande `c2forge lab-eval` ci-dessous | `wittgenstein/abusayed_dga_full.csv` (76 Mo, 2,46 M lignes `DGA_family,Domain,Type` ; publié sans licence explicite, donc non redistribué ici) | télécharger `dga_dataset_full.csv` depuis `AbuSayed1/DGA-DATASET` sur Hugging Face et l'enregistrer sous `wittgenstein/abusayed_dga_full.csv` |
-| `internal/engine` `TestProveMotif*6Pieces` | Captures synthétiques de motifs attendues un niveau au-dessus de la racine du dépôt | copier `wittgenstein/redhost_lab/motifs_v5/` vers `../wittgenstein/redhost_lab/motifs_v5/` relativement à la racine du dépôt |
-| `internal/cinetique` `TestBancInvarianceHybrideReel` | Machine au repos (charge système inférieure à 2) | exécuter isolément |
-
-Reproduction des campagnes expérimentales sur captures de laboratoire (`lab-eval` requiert `wittgenstein/abusayed_dga_full.csv` ; `encrypted-eval` fonctionne sans fichier externe) :
-
-```bash
-GOEXPERIMENT=simd go build -o bin/c2forge ./cmd/c2forge
-# tunnels réels iodine / dns2tcp via Unbound (-tolerant ingère les labels binaires Base128 hors-LDH)
-./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/tunnels-20261031 -out /tmp/floppies-live -report /tmp/live.json
-# mêmes tunnels après terminaison DoQ / DoH3
-./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/quic-20261031/terminal -out /tmp/floppies-terminal -report /tmp/terminal.json
-# captures réelles externes (netrack/learn, Apache-2.0 : iodine 6 119/6 119 jugées, ROC AUC 0,9922 ; plain bénin 2 385/8 654 = 27,6 % FP)
-./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/netrack_lab -out /tmp/floppies-netrack -report /tmp/netrack.json
-# inspection cinétique sans clé des flux chiffrés DoQ / DoH2 / DoH3 / H3 (aucun corpus externe requis)
-./bin/c2forge encrypted-eval -pcap wittgenstein/redhost_lab/banc-comparatif-2026-11/dnstt-doq.pcap -out /tmp/dnstt-doq.json
-./bin/c2forge encrypted-eval -pcap wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/vaydns-srv-doh3-transit.pcap -out /tmp/vaydns-doh3.json
-./bin/c2forge encrypted-eval -manifest wittgenstein/redhost_lab/banc-comparatif-2026-11/encrypted-manifest-l1.json -report /tmp/enc-l1.json
-./bin/c2forge encrypted-eval -manifest wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/encrypted-manifest-joint35.json -report /tmp/enc-joint35.json
-# bancs DNS clair/terminal L1 et L1-bis (requiert wittgenstein/abusayed_dga_full.csv)
-./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/banc-comparatif-2026-11 -out /tmp/floppies-l1 -report /tmp/l1-clear.json
-./bin/c2forge lab-eval -tolerant -data wittgenstein -lab wittgenstein/redhost_lab/banc-exotiques-quic-2026-11 -out /tmp/floppies-l1bis -report /tmp/l1bis-clear.json
-```
-
-Chaque ligne de `lab-eval` affiche : famille, campagnes, questions, TP, FP, TN, FN, hostiles en quarantaine, bénins en quarantaine, blocages L0, passages L1a, blocages L1b, taux de classe majoritaire, AUC et indicateur de suffisance d'échantillon. Chaque rapport `encrypted-eval` émet les estimations de régime par conversation (`R0a`, `R0b`, `R1a`, `R1b`) et, en mode `-manifest`, les comptages Leave-One-Family-Out, taux majoritaires, ROC AUC et indicateurs de suffisance.
-
-Provenance et licences des données : `wittgenstein/redhost_lab/` (`banc-comparatif-2026-11`, `banc-exotiques-quic-2026-11`, `tunnels-20261031`, `quic-20261031`) rassemble les captures issues du maillage WireGuard privé du laboratoire (licence MIT) ; `wittgenstein/netrack_dns/` et `wittgenstein/netrack_lab/` proviennent de `github.com/netrack/learn` sous licence Apache-2.0 ; le témoin bénin externe (`cyberjonlab/DNS_exfil`, CC BY-NC-4.0) est référencé par empreinte SHA-256 et non redistribué.
+| Bancs comparatifs Transformer GGUF (`internal/cinetique`, `TestRealSLMArbitrator_*`) | `qwen2.5-0.5b-instruct-q4_k_m.gguf` *(non requis pour exécuter `c2agent`)* | Exporter `C2_TEST_QWEN_GGUF=/chemin/modele.gguf` uniquement pour rejouer ces tests |
+| `internal/projlearn`, `lab-eval`, `TestDNSAgent_ColdFamilyGeneralization` | `wittgenstein/abusayed_dga_full.csv` (76 Mo, 2,46 M lignes, sans licence amont déclarée) | Télécharger `dga_dataset_full.csv` depuis `AbuSayed1/DGA-DATASET` (Hugging Face) |
+| `internal/engine` `TestProveMotif*6Pieces` | `../wittgenstein/redhost_lab/motifs_v5/` | Copier `wittgenstein/redhost_lab/motifs_v5/` un niveau au-dessus du dépôt |
+| `internal/cinetique` `TestBancInvarianceHybrideReel` | Hôte au repos (`charge < 2`) | Exécuter isolément |
 
 ---
 
-## 4c. Durcissements Post-Audit & Portes d'Intégrité (2026-11-01, v8.1)
+## 4c. Durcissements Post-Audit & Portes Fail-Closed (v8.1)
 
-À l'issue d'un audit adversarial complet des 21 paquets Go, les garanties fail-closed suivantes sont appliquées et couvertes par des tests négatifs permanents :
+- **Balayage intégral `4 096` octets insensible aux octets `0x00` (`internal/engine/feature_extractor.go`)** sur toutes les disquettes `.c2book`.
+- **Évaluation non circulaire & portes d'export :** extraction filaire à l'aveugle (`irl_bench_thesaurus.go`), seuil `Recall >= 0,90 && BenignRunBFP == 0` dans `ProvePatternOutOfSample`, preuve `--oos-proof` exigée avant `c2agent record --export-blueteam`.
+- **Garde-fous anti-corruption & bornes filaires :** `ValidateAgainstHoldoutSet` (`ErrHoldoutUnvalidated`), `CusumDriftGuard` (`ErrDriftGuardNaN`), `ParseDNSMessage` (`MaxDNSRDataBytes = 1536`, `ErrRDataTooLong`, `ErrTooManyRRs`), jeton Bearer comparé en temps constant dans `cmd/c2dnslab-emit`, plafond `16 Mio` dans `cmd/c2scanner`.
 
-- **Extraction intégrale sur 4 096 octets insensible aux octets NUL (`internal/engine/feature_extractor.go`) :** `ExtractFeatures512` balaie jusqu'à `MaxPayloadScanBytes = 4096` sans s'interrompre sur un octet `0x00` intérieur ; les trois disquettes `.c2book` pré-compilées (`testdata/wittgenstein/floppies/` et `wittgenstein/floppies/`) sont forgées sur cette représentation à 4 096 octets.
-- **Évaluation non circulaire & preuves hors-échantillon mesurées :** les bancs synthétiques IRL extraient leurs caractéristiques à l'aveugle sans consulter la vérité terrain (`irl_bench_thesaurus.go`) ; `ProvePatternOutOfSample` exige `Recall >= 0.90` en sus de `BenignRunBFP == 0` ; `EvaluateConfusion18x18AndAblation` et les preuves de motifs en 6 pièces exécutent effectivement le détecteur historique `N` ; `c2agent record --export-blueteam` requiert un rapport `--oos-proof <chemin>` validé avant tout export Sigma/Suricata.
-- **Validation sur jeu tenu à l'écart & verrou anti-dérive `NaN`/`±Inf` :** `ValidateAgainstHoldoutSet` refuse tout jeu `holdoutRef` nul ou vide (`ErrHoldoutUnvalidated`) et contrôle les collisions de Hamming face à `maxAllowedRegression` ; `CusumDriftGuard` rejette tout vecteur contenant `NaN` ou `±Inf` (`ErrDriftGuardNaN`) sans altérer la référence active ; `BuildBaselineFromSilo` rend `ErrOracleCorrupt` lorsque toutes les tranches du silo échouent à l'authentification.
-- **Bornes fail-closed des parseurs, sondes, SOC et outils CLI :** `ParseDNSMessage` porte `MaxDNSRDataBytes = 1536` et rend `ErrRDataTooLong` / `ErrTooManyRRs` au lieu de tronquer silencieusement ; `ReadPCAPDNSMessages` rejette tout en-tête UDP `< 8` octets ; `dnslab.BuildResponse` borne les apex SOA de 253 octets sans panique ; `internal/probes/ring.go` conserve les réponses DNS `srcPort == 53` ; `policy.IsProtectedPath` impose une frontière de segment `/` ; `socagent.ComposeV7` encode les 16 bits complets de séquence et `RemediationFor` exige au moins un fait attesté ; `cmd/c2dnslab-emit` impose une authentification HTTP Bearer à temps constant (`-api-token` / `C2DNSLAB_API_TOKEN`) et applique `maxQPS` ; `cmd/c2scanner` rejette tout fichier `> 16 Mio` (`ErrScanFileTooLarge`) ; `cmd/c2forge` échoue dès le premier fichier illisible.
+---
+
+## 4d. Extensions des Quotients Cinétiques et de la Grammaire Filaire (2026-11-01, v8.2)
+
+La version `v8.2` étend la détection en `0 B/op` face aux tunnels DNS à faible nombre de requêtes et aux transports chiffrés :
+
+- **Grammaire Filaire des Réponses DNS en Clair (`P14`, `P15`, `StripLeadingRFCUnderscoreLabels`, `REASON_DNS_PARSE_ERROR`) :**
+  - **Réponses Négatives `NXDOMAIN` Porteuses de Charge (`REASON_P14_NXDOMAIN_ANSWER_PAYLOAD`) :** reconstitue le code `RCODE` étendu sur 12 bits (`Header RCODE | (EDNS0 ExtRCODE << 4)` afin de ne jamais confondre `BADMODE=19` [`19 & 0x0f == 3`] avec `NXDOMAIN=3` ni `BADVERS=16` [`16 & 0x0f == 0`] avec `NOERROR=0`) et signale toute réponse `ExtRCODE == 3` dont la section `Answer` porte un enregistrement hors `{CNAME, DNAME, RRSIG}`, isolant **`40/40`** trames `Soar` (`soar-signed-nxdomain-cache-auth.pcap`) avec **`0/200`** faux positif bénin.
+  - **Renouvellement Commutatif des Jeux de Réponses (`REASON_P15_RDATA_RENEWAL`) :** table associative fixe `256x4` LRU en `0 B/op` (anneau de `16` fentes, fenêtre `10` min) sommant modulo $2^{64}$ les condensats canoniques `FNV-1a` + `SplitMix64` des enregistrements `Answer` (`NS`/`MX`/`TXT`/`SRV`/`CAA`, `>= 8` réponses, `>= 750` permille d'empreintes distinctes, `RDLength` moyen `>= 128` o), détectant **`99/99`** flux `VayDNS` `CAA` et déclenchant dès la 8e réponse sur `vaydns-mx-clear.pcap` avec **`0/200`** faux positif.
+  - **Normalisation des Préfixes de Service RFC (`StripLeadingRFCUnderscoreLabels`) :** dépouille en `0 B/op` jusqu'à deux étiquettes de service RFC initiales (`_ldap`, `_tcp`, `_sip`, `_tls`, `_msdcs`, etc.), abaissant les faux positifs `SRV` bénins de `50/50` à **`0/50`** tout en bloquant **`349/366`** requêtes `vaydns-srv-clear.pcap`.
+  - **Escalade Fermée au Décodage (`REASON_DNS_PARSE_ERROR`) :** tout message DNS malformé ou sur-rembourré (`> 16` enregistrements/section ou `RDLENGTH > 1 536`) escalade vers `DecisionEscalateSLM` en `0 B/op` sans passage silencieux.
+- **Agrégation Multivoie Chiffrée sans Clé (`FinalizeWithHosts`, `-hote -doh-ports 8443,8853,9443,9444`) :**
+  - Agrège par client normalisé (`IPv4 /32`, `IPv6 /64` face à la rotation RFC 8981) les sessions simultanées vers plusieurs résolveurs `DoQ`/`DoH` sans muter le `KineticVector` à 9 dimensions. Recombine le tunnel `Slipstream` réparti sur 2 résolveurs DoQ (`4,08` + `3,51` -> persistance hôte `4,77 >= 4,30`, `R1a`), atteignant `13/13` de rappel / `0/6` FP (`AUC = 1,000`, calibré en échantillon) sur `L1` (`19` PCAP), et hors-échantillon sur `L1-bis` (`16` PCAP `transit_wg0`) : `TP=3/3` sur `Slipstream`, `TP=5/5` sur `VayDNS` en canaux dédiés/origines séparées (`TP=5/6, FN=1/6` en incluant la capture co-multiplexée `doh3-shared-conn-vaydns-transit.pcap`), et `TP=0/1, FN=1/1` sur `NoizDNS` court `transit_wg0` (`TP=1/2, AUC=0,9615` avec `noizdns-var1540-doq-terminal.pcap`), à **`0/12` faux positif bénin (`TN=12/12`)** sur `joint35` (`35` PCAP `transit_wg0`).
+- **Quotients Cinétiques par Processus Hôte Linux (`internal/cinetique`) :**
+  - Étend `QuotientsEpisode` à `12` quotients en virgule fixe (`0 B/op` en régime établi grâce au cache `256x4` devant `NETLINK_INET_DIAG`), ajoutant **`part_resolveur_permille`** (indice `10`, plancher `16 384` octets, activant `ConfinementResolveur` pour les binaires C2 autonomes dès `>= 500` permille lorsque `ConnexionsHorsResolveur == 0 && !EcouteDNSClairLocale`, ce qui exempte `unbound`/`systemd-resolved` ; un tunnel logé à l'intérieur d'un navigateur actif avec `ConnexionsHorsResolveur > 0` reste hors de sa portée) et **`absorption_reseau_permille`** (indice `11`, descriptif au-delà de `1 Mio` entrant).
 
 ---
 
@@ -296,65 +226,50 @@ Provenance et licences des données : `wittgenstein/redhost_lab/` (`banc-compara
 ```
 c2blue55/
 ├── cmd/
-│   ├── c2agent/               # Démon agent de point de terminaison autonome avec SLM pur Go optionnel
-│   ├── c2blue-arena-web/      # Visualiseur web temps réel de l'arène seqlock et de la télémétrie
-│   ├── c2blue-mcp-guard/      # Gardien mandataire MCP : inspection temps réel des outils d'agents IA
-│   ├── c2cinetique/           # Outil CLI de télémétrie cinétique autonome
+│   ├── c2agent/               # Démon autonome (.c2book embarqués + tête vectorielle c2slm 0 B/op)
+│   ├── c2blue-arena-web/      # Visualiseur web temps réel de l'arène ArenaPool et de la télémétrie
+│   ├── c2blue-mcp-guard/      # Mandataire MCP inspectant les appels d'outils d'agents IA
+│   ├── c2cinetique/           # Outil CLI autonome de télémétrie cinétique par processus Linux
 │   ├── c2dnslab-emit/         # Émetteur de campagnes DNS sur banc fermé (authentifié Bearer)
-│   ├── c2forge/               # Utilitaire CLI : forgerie, lab-eval, dns-delta, encrypted-eval
-│   │   ├── floppy_builder.go  # Apprentissage empirique et génération de disquettes
-│   │   ├── main.go            # Point d'entrée et aiguillage des sous-commandes
-│   │   └── pyramid.go         # Compilation différentielle hiérarchique
+│   ├── c2forge/               # CLI : forgerie .c2book, lab-eval, dns-delta, encrypted-eval
 │   ├── c2icmplab-emit/        # Émetteur ICMP Echo sur banc fermé
-│   ├── c2icmplab-respond/     # Répondeur ICMP Echo à transformation sur banc fermé
-│   ├── c2multiagent/          # Banc d'évaluation multi-sous-systèmes sur corpus réels
+│   ├── c2icmplab-respond/     # Répondeur ICMP Echo sur banc fermé
+│   ├── c2multiagent/          # Exécuteur de bancs multi-sous-systèmes
 │   ├── c2scanner/             # Analyseur statique et binaire d'artefacts (refus > 16 Mio)
 │   └── dnslab-auth/           # Serveur DNS autoritaire de laboratoire
 ├── internal/
-│   ├── cinetique/             # Traits de ratios cinétiques et arbitre formulaire SLM pur Go
+│   ├── cinetique/             # 12 quotients cinétiques hôtes, cache socket 256x4 et arbitre SLM
 │   ├── dnslab/                # Orchestration de campagnes DNS et PatternCatalog29
-│   ├── engine/                # Moteur algorithmique bas niveau
-│   │   ├── arena_pool.go      # Tampon circulaire atomique seqlock 4 Ko (zéro race)
-│   │   ├── delta_catalog.go   # Catalogue LSM et indexation différentielle
-│   │   ├── drift_guard.go     # Détecteur statistique autonome de dérive pour la recertification hors-ligne
-│   │   ├── feature_extractor.go # Extraction 512D sans allocation sur 4 096 octets (insensible aux NUL)
-│   │   ├── floppy_engine.go   # Chargeur mmap .c2book, HMAC-SHA256, slot RCU
-│   │   ├── forensic_proof.go  # Chaîne de signature et vérification Ed25519
-│   │   ├── inference_cascade.go # Orchestrateur de cascade double couche et NonLDHBurstGuard
-│   │   ├── pyramid_engine.go  # Arbre pyramidal et fusion LSM
-│   │   ├── rabitq512.go       # Adaptateur de Transformée de Hadamard Rapide 512 bits & quantification
-│   │   ├── server_oracle.go   # Autorité et consensus serveur
-│   │   └── wittgenstein_corpus.go # Chargeurs et séparateurs de données réelles
-│   ├── goclassifier/          # Noyau FHT512, sonde conforme RaBitQ embarquée et licence MIT
+│   ├── engine/                # Cascade 0 B/op, mmap .c2book, grammaire DNS P1..P15, Ed25519
+│   ├── goclassifier/          # Noyau FHT512 & sonde conforme RaBitQ autonome (MIT)
 │   ├── icmplab/               # Suivi de parité ICMP Echo et réponses non sollicitées
-│   ├── probes/                # Sondes Linux hôte (cn_proc, fanotify, inet_diag, anneau UDP/53)
+│   ├── probes/                # Sondes hôtes Linux (cn_proc, fanotify, inet_diag, anneau UDP/53)
 │   └── projlearn/             # Noyaux d'ablation de projecteur appris transpilés depuis C99
-├── docs/                      # Monographies d'architecture et feuilles de route
-│   ├── inter_channel_c2_roadmap.md # Feuille de route télémétrique C2 inter-canaux
-│   └── why_micro_optimization_is_a_security_choice.md # Monographie technique sur la sécurité sans allocation
-├── socagent/                  # Connecteur d'ingestion et dispatch SOC dédié
-├── testdata/                  # Jeux de données réels et disquettes pré-compilées embarqués
-│   └── wittgenstein/          # Jeux d'évaluation (LOLBAS, validate.csv DNS C2, disquettes .c2book scellées)
-├── wittgenstein/              # Captures PCAP de laboratoire (redhost_lab/, netrack_lab/, netrack_dns/)
-├── c2blue55.go                # API publique du module et configuration
-├── encrypted_wire_decode.go   # Décodeur filaire zéro-allocation PCAP / DoQ / DoH2 / DoH3 / H3
-├── encrypted_wire_eval.go     # Vecteur cinétique 9D sans clé, régimes R0a..R1b et évaluateur LOFO
-├── encrypted_wire_lab.go      # Chargeur de manifestes et exécuteur PCAP autonome encrypted-eval
-├── router.go                  # Multiplexage des sous-systèmes (SubProc, SubNet, SubMCP)
-├── lsm_receiver.go            # Récepteur d'ingestion continue de télémétrie
-├── subsystems.go              # Définitions du protocole des sous-systèmes
-├── wittgenstein_bench_test.go # Banc de mesure complet sur les jeux d'évaluation
-├── LICENSE                    # Licence MIT
-├── README.md                  # Documentation canonique en anglais
-└── README.fr.md               # Documentation canonique en français
+├── docs/                      # Monographies d'architecture, benchmarks comparatifs et feuilles de route
+│   ├── dns_detection_solutions_benchmark.fr.md   # Benchmark 7 piles DNS clair/chiffré & charge 60s (FR)
+│   ├── dns_detection_solutions_benchmark.fr.docx # Édition Word du benchmark comparatif 7 piles (FR)
+│   ├── dns_detection_solutions_benchmark.md      # Benchmark 7 piles DNS clair/chiffré & charge 60s (EN)
+│   ├── dns_detection_solutions_benchmark.docx    # Édition Word du benchmark comparatif 7 piles (EN)
+│   ├── inter_channel_c2_roadmap.md               # Feuille de route C2 inter-canaux (IC-01..06)
+│   ├── why_micro_optimization_is_a_security_choice.fr.md   # Monographie architecture & 0 B/op (FR)
+│   ├── why_micro_optimization_is_a_security_choice.fr.docx # Édition Word de la monographie (FR)
+│   ├── why_micro_optimization_is_a_security_choice.md      # Monographie architecture & 0 B/op (EN)
+│   └── why_micro_optimization_is_a_security_choice.docx    # Édition Word de la monographie (EN)
+├── socagent/                  # Ingestion télémétrique et aiguillage SOC
+├── testdata/wittgenstein/     # Corpus d'évaluation et disquettes .c2book scellées
+├── wittgenstein/              # Captures PCAP de laboratoire (redhost_lab/, netrack_lab/)
+├── encrypted_wire_*.go        # Décodeur filaire 0 B/op DoQ / DoH2 / DoH3 / H3 & agrégateur hôte
+├── README.md                  # Documentation en anglais
+└── README.fr.md               # Documentation en français
 ```
 
 ---
 
 ## 6. Publications & Monographies
 
-- [**Pourquoi la micro-optimisation est un choix fondamental de sécurité**](docs/why_micro_optimization_is_a_security_choice.md) : Monographie technique sur le déterminisme architectural, l'ingestion sans allocation et les décisions de remédiation à faible latence.
-- [**Feuille de route C2 inter-canaux**](docs/inter_channel_c2_roadmap.md) : Notes de conception sur la corrélation cinétique multi-canaux.
+- [**Benchmark comparatif de 7 piles Open-Source DNS & Résolveurs Chiffrés (`v8.2`, FR)**](docs/dns_detection_solutions_benchmark.fr.md) ([édition Word FR](docs/dns_detection_solutions_benchmark.fr.docx) · [English edition](docs/dns_detection_solutions_benchmark.md) · [Word EN](docs/dns_detection_solutions_benchmark.docx)) : Évaluation reproductible de compétence, de généralisation hors-échantillon (`Slipstream`, `VayDNS`, `NoizDNS`, `Soar`) et de tenue sous charge soutenue de 60 s comparant `Suricata 8.0.8 + ET Open`, `Zeek 9.0.1 + hhzzk`, `RITA v5.1.2 + ClickHouse`, `TShark 4.4.19 / FoxIO JA4+`, `CIC DoHlyzer`, `Stratosphere Slips v1.1.24` et `c2blue55 v8.2`, accompagnée de 24 signalements techniques amont vérifiés (`[1]..[24]` : `20` issues GitHub publiées en ligne, dont les `4` issues explicatives Slips `#2159..#2162`, et `4` fiches préparées pour les traqueurs tiers Redmine/GitLab/Discourse).
+- [**Pourquoi la micro-optimisation est un choix fondamental de sécurité (FR)**](docs/why_micro_optimization_is_a_security_choice.fr.md) ([édition Word FR](docs/why_micro_optimization_is_a_security_choice.fr.docx) · [English edition](docs/why_micro_optimization_is_a_security_choice.md)) : Monographie technique sur le déterminisme architectural, le chemin critique sans allocation, la tenue sous charge et les limites de détection falsifiables.
+- [**Feuille de route C2 inter-canaux (`IC-01..IC-06`)**](docs/inter_channel_c2_roadmap.md) : Invariants d'ingénierie en `0 B/op` pour les canaux cachés ICMP, HTTP/HTTPS à gigue, NTP, SMB/RPC, IPC local et MQTT/QUIC.
 
 ---
 
