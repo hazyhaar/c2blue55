@@ -9,9 +9,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
+	"math/bits"
 	"sync"
 	"time"
 )
+
+// DefaultHammingThreshold fixe le rayon de collision Hamming maximal (< 200 bits sur 512)
+// utilisé lors de l'évaluation de non-régression sur le jeu tenu à l'écart.
+const DefaultHammingThreshold = 200
 
 var (
 	ErrQuarantineFull      = errors.New("quarantine: sas d'attente sature")
@@ -120,6 +126,14 @@ func (qc *QuarantineChamber) Len() int {
 	return len(qc.incidents)
 }
 
+func bitcodeHammingDistance(a, b *[codebookWords]uint64) int {
+	dist := 0
+	for w := range codebookWords {
+		dist += bits.OnesCount64(a[w] ^ b[w])
+	}
+	return dist
+}
+
 // ValidateAgainstHoldoutSet vérifie que l'ajout des nouveaux candidats ne dégrade pas le rappel
 // ni la précision sur le jeu de référence tenu à l'écart.
 func (qc *QuarantineChamber) ValidateAgainstHoldoutSet(holdoutRef *Codebook, maxAllowedRegression float64) ([]CodebookEntry, error) {
@@ -135,6 +149,9 @@ func (qc *QuarantineChamber) ValidateAgainstSealedHoldout(holdoutRef *Codebook, 
 	defer qc.mu.Unlock()
 
 	if len(qc.incidents) == 0 {
+		if holdoutRef == nil || holdoutRef.Len() == 0 || maxAllowedRegression < 0 || math.IsNaN(maxAllowedRegression) {
+			return nil, ErrHoldoutUnvalidated
+		}
 		return nil, nil
 	}
 
@@ -149,13 +166,35 @@ func (qc *QuarantineChamber) ValidateAgainstSealedHoldout(holdoutRef *Codebook, 
 		}
 	}
 
-	// 2. Évaluation de non-régression
+	if holdoutRef == nil || holdoutRef.Len() == 0 || maxAllowedRegression < 0 || math.IsNaN(maxAllowedRegression) {
+		return nil, ErrHoldoutUnvalidated
+	}
+
+	// 2. Évaluation de non-régression contre les entrées de référence du holdout
+	refEntries := holdoutRef.Entries()
+	holdoutLen := float64(len(refEntries))
 	var approved []CodebookEntry
+	rejectedCount := 0
 	for _, inc := range qc.incidents {
 		if inc.Verdict != CascadeFastDrop && inc.Verdict != OntoVerdictDeny {
 			continue
 		}
-		// Convertit en entrée CodebookEntry
+		collisions := 0
+		for i := range refEntries {
+			// Une entrée bénigne (ThreatID == 0) ou, en l'absence de sceau, toute entrée du holdout
+			// située dans la sphère de Hamming < DefaultHammingThreshold constitue une collision de régression.
+			if refEntries[i].ThreatID != 0 && expectedSeal != (HoldoutSeal{}) {
+				continue
+			}
+			if bitcodeHammingDistance(&inc.Bitcode, &refEntries[i].Bitcode) < DefaultHammingThreshold {
+				collisions++
+			}
+		}
+		regressionRate := float64(collisions) / holdoutLen
+		if collisions > 0 && regressionRate > maxAllowedRegression {
+			rejectedCount++
+			continue
+		}
 		entry := CodebookEntry{
 			Bitcode:   inc.Bitcode,
 			ThreatID:  inc.ThreatID,
@@ -167,6 +206,9 @@ func (qc *QuarantineChamber) ValidateAgainstSealedHoldout(holdoutRef *Codebook, 
 
 	// Vide le sas après validation
 	qc.incidents = qc.incidents[:0]
+	if rejectedCount > 0 {
+		return approved, ErrHoldoutUnvalidated
+	}
 	return approved, nil
 }
 

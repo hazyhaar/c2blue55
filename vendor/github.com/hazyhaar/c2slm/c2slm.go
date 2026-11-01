@@ -82,13 +82,15 @@ func (e *Engine) GenerateStream(prompt string, maxNewTokens int, stopStrings []s
 }
 
 // IngestFrom feeds tokens into the KV cache starting at position pos, running
-// engine.Forward only on the tokens that are not already materialized. When pos
-// is behind the current cursor the cache is rewound in place (no memory copy);
-// when pos is ahead it is clamped back to the cursor, since a gap cannot be
-// attended to causally. The token fingerprint is recorded for every ingested
-// position and SeqLen advances accordingly. The returned slice is the
-// normalized hidden state of the last ingested token, aliasing the engine
-// arena and therefore valid only until the next Forward call.
+// engine.ForwardTile on tiles of up to engine.PrefillTile tokens. Tiled prefill
+// loads each quantized weight row once per tile and multiplies it against every
+// activation of the tile, instead of re-fetching the whole weight matrix once
+// per token. When pos is behind the current cursor the cache is rewound in
+// place (no memory copy); when pos is ahead it is clamped back to the cursor,
+// since a gap cannot be attended to causally. The token fingerprint is recorded
+// for every ingested position and SeqLen advances accordingly. The returned
+// slice is the normalized hidden state of the last ingested token, aliasing the
+// engine arena and therefore valid only until the next Forward call.
 func (e *Engine) IngestFrom(pos int, tokens []int32) []float32 {
 	if len(tokens) == 0 {
 		return nil
@@ -104,16 +106,39 @@ func (e *Engine) IngestFrom(pos int, tokens []int32) []float32 {
 	}
 
 	var lastNormX []float32
-	for i, tokID := range tokens {
+	for i := 0; i < len(tokens); {
 		p := pos + i
 		if p >= e.KVCache.MaxTokens {
 			break
 		}
-		lastNormX = engine.Forward(e.Model, e.KVCache, e.Arena, tokID, p)
-		e.KVCache.StoreTokenID(p, tokID)
-		e.KVCache.SeqLen = p + 1
+		k := len(tokens) - i
+		if k > engine.PrefillTile {
+			k = engine.PrefillTile
+		}
+		if p+k > e.KVCache.MaxTokens {
+			k = e.KVCache.MaxTokens - p
+		}
+		chunk := tokens[i : i+k]
+		lastNormX = engine.ForwardTile(e.Model, e.KVCache, e.Arena, chunk, p)
+		for j, tokID := range chunk {
+			e.KVCache.StoreTokenID(p+j, tokID)
+		}
+		e.KVCache.SeqLen = p + k
+		i += k
 	}
 	return lastNormX
+}
+
+// Ingest appends an entire token sequence to the materialized KV cache.
+func (e *Engine) Ingest(tokens []int32) error {
+	if e == nil || e.Model == nil || e.KVCache == nil || e.Arena == nil {
+		return fmt.Errorf("moteur non initialisé")
+	}
+	if e.KVCache.SeqLen < 0 || e.KVCache.SeqLen > e.KVCache.MaxTokens || len(tokens) > e.KVCache.MaxTokens-e.KVCache.SeqLen {
+		return fmt.Errorf("séquence trop longue pour le cache KV")
+	}
+	e.IngestFrom(e.KVCache.SeqLen, tokens)
+	return nil
 }
 
 // GenerateStreamSession appends newPromptTokens to the ongoing conversation and

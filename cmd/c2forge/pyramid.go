@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // parseHMACKey lit la clé d'authentification des fichiers .c2oracle, .c2delta

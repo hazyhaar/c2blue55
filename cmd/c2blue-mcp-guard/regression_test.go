@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 func TestGuardExecutableDefaultCatalog(t *testing.T) {
 	if mode := os.Getenv("C2BLUE_GUARD_TEST_CHILD"); mode != "" {
 		if mode == "full" {
-			for i := 0; i < 32; i++ {
+			for i := range 32 {
 				if err := c2blue55.RegisterToolGrammar(fmt.Sprintf("full_%d", i), []byte("sample"), 1, 64); err != nil {
 					panic(err)
 				}
@@ -107,7 +107,7 @@ func TestFragmentedBackendSerializesWholeLines(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range bytes.Split(bytes.TrimSpace(output.Bytes()), []byte{'\n'}) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(output.Bytes()), []byte{'\n'}) {
 		if !json.Valid(line) {
 			t.Fatalf("interleaved line: %s", line)
 		}

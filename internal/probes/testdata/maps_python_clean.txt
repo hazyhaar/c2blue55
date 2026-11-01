@@ -1,0 +1,44 @@
+00400000-00420000 r--p 00000000 103:06 27528737                          /usr/bin/python3.12
+00420000-00703000 r-xp 00020000 103:06 27528737                          /usr/bin/python3.12
+00703000-00a28000 r--p 00303000 103:06 27528737                          /usr/bin/python3.12
+00a28000-00a29000 r--p 00627000 103:06 27528737                          /usr/bin/python3.12
+00a29000-00ba7000 rw-p 00628000 103:06 27528737                          /usr/bin/python3.12
+00ba7000-00bab000 rw-p 00000000 00:00 0 
+34812000-3490f000 rw-p 00000000 00:00 0                                  [heap]
+72f425900000-72f425a00000 rw-p 00000000 00:00 0 
+72f425a00000-72f425f66000 r--p 00000000 103:06 27525553                  /usr/lib/locale/locale-archive
+72f426000000-72f426028000 r--p 00000000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+72f426028000-72f4261b1000 r-xp 00028000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+72f4261b1000-72f426200000 r--p 001b1000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+72f426200000-72f426204000 r--p 001ff000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+72f426204000-72f426206000 rw-p 00203000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+72f426206000-72f426213000 rw-p 00000000 00:00 0 
+72f42621b000-72f42637f000 rw-p 00000000 00:00 0 
+72f42637f000-72f426383000 r--p 00000000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+72f426383000-72f4263a0000 r-xp 00004000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+72f4263a0000-72f4263a8000 r--p 00021000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+72f4263a8000-72f4263aa000 r--p 00028000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+72f4263aa000-72f4263ab000 rw-p 0002a000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+72f4263ab000-72f4263ad000 r--p 00000000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+72f4263ad000-72f4263bf000 r-xp 00002000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+72f4263bf000-72f4263c5000 r--p 00014000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+72f4263c5000-72f4263c6000 r--p 0001a000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+72f4263c6000-72f4263c7000 rw-p 0001b000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+72f4263c7000-72f4263d7000 r--p 00000000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+72f4263d7000-72f426456000 r-xp 00010000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+72f426456000-72f4264ae000 r--p 0008f000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+72f4264ae000-72f4264af000 r--p 000e7000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+72f4264af000-72f4264b0000 rw-p 000e8000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+72f4264c9000-72f4264cd000 rw-p 00000000 00:00 0 
+72f4264cd000-72f4264d4000 r--s 00000000 103:06 27557633                  /usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache
+72f4264d4000-72f4264d6000 rw-p 00000000 00:00 0 
+72f4264d6000-72f4264d8000 r--p 00000000 00:00 0                          [vvar]
+72f4264d8000-72f4264da000 r--p 00000000 00:00 0                          [vvar_vclock]
+72f4264da000-72f4264dc000 r-xp 00000000 00:00 0                          [vdso]
+72f4264dc000-72f4264dd000 r--p 00000000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+72f4264dd000-72f426508000 r-xp 00001000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+72f426508000-72f426512000 r--p 0002c000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+72f426512000-72f426514000 r--p 00036000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+72f426514000-72f426516000 rw-p 00038000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7ffe9a934000-7ffe9a956000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

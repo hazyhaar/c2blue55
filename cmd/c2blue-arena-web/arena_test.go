@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 func TestRealMetricsDashboard(t *testing.T) {
@@ -42,7 +42,7 @@ func TestRealMetricsDashboard(t *testing.T) {
 
 	a := newArena()
 	t.Cleanup(a.close)
-	srv := httptest.NewServer(a.handler())
+	srv := httptest.NewServer(a.httpHandler())
 	t.Cleanup(srv.Close)
 	client := srv.Client()
 

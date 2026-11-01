@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 )
 
-func validEnvelope(data []byte) bool {
+func validEnvelope(rawJSON []byte) bool {
 	var object map[string]json.RawMessage
-	if json.Unmarshal(data, &object) != nil || object == nil {
+	if json.Unmarshal(rawJSON, &object) != nil || object == nil {
 		return false
 	}
 	var version string
@@ -44,8 +44,8 @@ func validEnvelope(data []byte) bool {
 }
 
 // Reject duplicate decoded keys at every depth, including tool arguments.
-func uniqueJSON(data []byte) bool {
-	d := json.NewDecoder(bytes.NewReader(data))
+func uniqueJSON(rawJSON []byte) bool {
+	d := json.NewDecoder(bytes.NewReader(rawJSON))
 	d.UseNumber()
 	var value func(int) bool
 	value = func(depth int) bool {

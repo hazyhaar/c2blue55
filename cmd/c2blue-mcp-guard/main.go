@@ -18,8 +18,8 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/socagent"
+	"github.com/hazyhaar/c2blue55"
+	"github.com/hazyhaar/c2blue55/socagent"
 )
 
 const maxScanLine = 1 << 20
@@ -46,6 +46,7 @@ func FilterLine(line []byte) (forward bool, vetoResponse []byte, incident *socag
 	decoder := json.NewDecoder(bytes.NewReader(args))
 	decoder.UseNumber()
 	if err := decoder.Decode(&arguments); err != nil {
+		fmt.Fprintf(os.Stderr, "mcp-guard: invalid arguments json: %v\n", err)
 		return false, encodeVeto(idRaw, name, 0), nil
 	}
 	args, _ = json.Marshal(arguments)
@@ -250,7 +251,7 @@ func encodeVeto(idRaw, tool []byte, djs uint32) []byte {
 
 func appendJSONString(dst, s []byte) []byte {
 	dst = append(dst, '"')
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		c := s[i]
 		switch c {
 		case '"', '\\':
@@ -453,6 +454,7 @@ func parseString(b []byte, i int) (inner []byte, next int, ok bool) {
 		if c == '"' {
 			var decoded string
 			if err := json.Unmarshal(b[start-1:i+1], &decoded); err != nil {
+				fmt.Fprintf(os.Stderr, "mcp-guard: invalid string json: %v\n", err)
 				return nil, i, false
 			}
 			return []byte(decoded), i + 1, true

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # verify-standalone.sh — Oracle mécanique d'autonomie et de reproductibilité pour c2blue55.
-# Prouve qu'un clone isolé compile et passe ses tests sans monorepo ni accès réseau.
+# Prouve qu'une copie isolée matérialisant vendor/ et purgée de toute directive replace
+# compile et passe ses suites autonomes sans accès réseau ni résolution sur l'hôte.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,32 +14,76 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> Copie de l'arbre dans un répertoire isolé: ${TMP_DIR}"
-cp -r "${REPO_DIR}/." "${TMP_DIR}/"
+python3 - "${REPO_DIR}" "${TMP_DIR}" <<'PY'
+import os, shutil, sys
+src, dst = sys.argv[1], sys.argv[2]
+for name in os.listdir(src):
+    if name == ".git":
+        continue
+    s = os.path.join(src, name)
+    d = os.path.join(dst, name)
+    if os.path.isdir(s) and not os.path.islink(s):
+        shutil.copytree(s, d, symlinks=True)
+    else:
+        shutil.copy2(s, d, follow_symlinks=False)
+PY
 
 cd "${TMP_DIR}"
+git init -q
 
-echo "==> 1. Compilation autonome pure Go (GOWORK=off, GOPROXY=off)..."
-GOWORK=off GOPROXY=off go build -buildvcs=false ./...
+if [ ! -d vendor ]; then
+    echo "==> 0. Matérialisation de vendor/ dans la copie isolée..."
+    GOEXPERIMENT=simd go mod vendor
+fi
 
-echo "==> 2. Analyse statique (go vet)..."
-GOWORK=off GOPROXY=off go vet ./...
+echo "==> 0b. Retrait des directives replace de go.mod et normalisation de vendor/modules.txt..."
+python3 - <<'PY'
+import json, pathlib, subprocess
 
-echo "==> 3. Tests unitaires goclassifier..."
-GOWORK=off GOPROXY=off go test -race -count=1 ./internal/goclassifier
+meta = json.loads(subprocess.check_output(["go", "mod", "edit", "-json"]).decode("utf-8"))
+for rep in meta.get("Replace") or []:
+    old = rep["Old"]["Path"]
+    ver = rep["Old"].get("Version", "")
+    spec = f"{old}@{ver}" if ver else old
+    subprocess.check_call(["go", "mod", "edit", f"-dropreplace={spec}"])
 
-echo "==> 4. Tests unitaires internal/engine..."
-GOWORK=off GOPROXY=off go test -race -count=1 ./internal/engine
+meta_after = json.loads(subprocess.check_output(["go", "mod", "edit", "-json"]).decode("utf-8"))
+if meta_after.get("Replace"):
+    raise SystemExit(f"directives replace résiduelles dans go.mod: {meta_after['Replace']}")
 
-echo "==> 5. Banc et tests d'intégration du paquet racine..."
-GOWORK=off GOPROXY=off go test -race -count=1 .
+mod_txt = pathlib.Path("vendor/modules.txt")
+cleaned_lines = []
+for line in mod_txt.read_text(encoding="utf-8").splitlines():
+    if line.startswith("# ") and " => " in line:
+        left = line.split(" => ", 1)[0]
+        parts = left.split()
+        if len(parts) == 2:
+            continue
+        line = left
+    cleaned_lines.append(line)
+mod_txt.write_text("\n".join(cleaned_lines) + "\n", encoding="utf-8")
+PY
 
-echo "==> 6. Tests forgerie c2forge..."
-GOWORK=off GOPROXY=off go test -race -count=1 ./cmd/c2forge
+echo "==> 1. Compilation autonome hors ligne (GOPROXY=off, GOSUMDB=off, -mod=vendor)..."
+GOPROXY=off GOSUMDB=off GOEXPERIMENT=simd go build -mod=vendor -buildvcs=false ./...
 
-echo "==> 7. Tests outils annexes (guard, web, socagent)..."
-GOWORK=off GOPROXY=off go test -race -count=1 ./cmd/c2blue-mcp-guard ./cmd/c2blue-arena-web ./socagent
+echo "==> 2. Analyse statique hors ligne (go vet -mod=vendor)..."
+GOPROXY=off GOSUMDB=off GOEXPERIMENT=simd go vet -mod=vendor ./...
 
-echo "==> 8. Tests démon c2agent (pure Go, CGO_ENABLED=0)..."
-GOWORK=off GOPROXY=off CGO_ENABLED=0 GOAMD64=v3 go test -count=1 ./cmd/c2agent
+echo "==> 3. Tests unitaires autonomes sans corpus externe..."
+SUITES=(
+    ./internal/goclassifier
+    ./internal/icmplab
+    ./internal/probes
+    ./cmd/c2blue-mcp-guard
+    ./cmd/c2blue-arena-web
+    ./cmd/c2scanner
+    ./cmd/c2multiagent
+    ./socagent
+)
+if [ -d "wittgenstein/redhost_lab" ]; then
+    SUITES+=(./internal/dnslab)
+fi
+GOPROXY=off GOSUMDB=off GOEXPERIMENT=simd go test -mod=vendor -race -count=1 "${SUITES[@]}"
 
-echo "==> [SUCCÈS] c2blue55 est 100% autonome et reproductible."
+echo "==> [SUCCÈS] c2blue55 compile et passe ses suites autonomes hors ligne en mode vendor sans replace."

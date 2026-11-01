@@ -320,7 +320,7 @@ func LoadPyramidHMAC(r io.Reader, machineID uint64, key []byte) (*Pyramid, error
 	br := bufio.NewReaderSize(r, 1<<16)
 	var hb [PyramidHeaderSize]byte
 	if _, err := io.ReadFull(br, hb[:]); err != nil {
-		return nil, ErrPyramidCorrupt
+		return nil, fmt.Errorf("%w: %w", ErrPyramidCorrupt, err)
 	}
 	var hdr PyramidHeader
 	DecodePyramidHeader(&hb, &hdr)
@@ -337,7 +337,7 @@ func LoadPyramidHMAC(r io.Reader, machineID uint64, key []byte) (*Pyramid, error
 	var pb [PyramidPrototypeSize]byte
 	for i := uint32(0); i < hdr.PrototypeCount; i++ {
 		if _, err := io.ReadFull(br, pb[:]); err != nil {
-			return nil, ErrPyramidCorrupt
+			return nil, fmt.Errorf("%w: %w", ErrPyramidCorrupt, err)
 		}
 		var p PyramidPrototype
 		DecodePyramidPrototype(&pb, &p)

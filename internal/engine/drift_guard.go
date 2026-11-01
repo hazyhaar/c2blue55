@@ -54,15 +54,22 @@ func NewCusumDriftGuard(cfg DriftGuardConfig) *CusumDriftGuard {
 // Retourne vrai si l'adaptation est acceptée, ou faux si elle est rejetée pour cause
 // de tentative d'empoisonnement graduel (CUSUM ou épuisement du budget de dérive).
 func (g *CusumDriftGuard) CheckUpdate(newCentroid []float32) (accepted bool, reason string) {
-	if len(newCentroid) < EmbeddingDim {
-		return false, "vecteur de centroïde de dimension insuffisante"
-	}
-
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	if len(newCentroid) != EmbeddingDim {
+		g.alertCount++
+		return false, "non-finite or invalid vector"
+	}
+	for _, coord := range newCentroid {
+		if math.IsNaN(float64(coord)) || math.IsInf(float64(coord), 0) {
+			g.alertCount++
+			return false, "non-finite or invalid vector"
+		}
+	}
+
 	if !g.hasBaseline {
-		for i := 0; i < EmbeddingDim; i++ {
+		for i := range EmbeddingDim {
 			g.lastCentroid[i] = newCentroid[i]
 		}
 		g.hasBaseline = true
@@ -71,7 +78,7 @@ func (g *CusumDriftGuard) CheckUpdate(newCentroid []float32) (accepted bool, rea
 
 	// 1. Calcul du déplacement euclidien instantané ||mu_t - mu_{t-1}||
 	var distSq float64
-	for i := 0; i < EmbeddingDim; i++ {
+	for i := range EmbeddingDim {
 		diff := float64(newCentroid[i] - g.lastCentroid[i])
 		distSq += diff * diff
 	}
@@ -105,7 +112,7 @@ func (g *CusumDriftGuard) CheckUpdate(newCentroid []float32) (accepted bool, rea
 	// Mise à jour de l'état nominal
 	g.cumulDrift += stepDist
 	g.cusumPos = newCusumPos
-	for i := 0; i < EmbeddingDim; i++ {
+	for i := range EmbeddingDim {
 		g.lastCentroid[i] = newCentroid[i]
 	}
 

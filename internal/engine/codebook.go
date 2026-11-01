@@ -330,7 +330,7 @@ func decodeCodebookHeader(src *[codebookHeaderSize]byte, hdr *CodebookHeader) {
 
 // encodeCodebookEntry sérialise le bitcode puis les trois métadonnées.
 func encodeCodebookEntry(dst *[codebookEntrySize]byte, e *CodebookEntry) {
-	for k := 0; k < codebookWords; k++ {
+	for k := range codebookWords {
 		binary.LittleEndian.PutUint64(dst[k*8:k*8+8], e.Bitcode[k])
 	}
 	binary.LittleEndian.PutUint32(dst[64:68], e.ThreatID)
@@ -340,7 +340,7 @@ func encodeCodebookEntry(dst *[codebookEntrySize]byte, e *CodebookEntry) {
 
 // decodeCodebookEntry reconstruit l'entrée depuis sa forme little-endian.
 func decodeCodebookEntry(src *[codebookEntrySize]byte, e *CodebookEntry) {
-	for k := 0; k < codebookWords; k++ {
+	for k := range codebookWords {
 		e.Bitcode[k] = binary.LittleEndian.Uint64(src[k*8 : k*8+8])
 	}
 	e.ThreatID = binary.LittleEndian.Uint32(src[64:68])

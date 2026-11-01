@@ -6,15 +6,15 @@ import (
 	"errors"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 const lsmTs = uint64(1789732800) * 1_000_000_000
 
 func lsmExec(comm, parent, path string, uid, euid uint32, binary []byte) LSMEvent {
 	ev := LSMEvent{Hook: LSMHookBprmCheck, WallNs: lsmTs, PID: 4242, PPID: 1, UID: uid, EUID: euid,
-		Flags: LSMFlagHashValid, CgroupID: 0x1a2b}
-	ev.BinaryHash = sha256.Sum256(binary)
+		Flags: LSMFlagHashValid, CgroupID: 0x1a2b,
+		BinaryHash: sha256.Sum256(binary)}
 	copy(ev.Comm[:], comm)
 	copy(ev.ParentComm[:], parent)
 	copy(ev.Path[:], path)

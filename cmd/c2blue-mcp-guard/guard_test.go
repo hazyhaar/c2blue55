@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 const b64Dense = `H4sICAAAAAAAAA+1Uy2rDMBD8F4m9xLIkW7Z8yKEldA9tD33YQ2QjIVmyZUluQv69K+m2hBJaQqEH3oVd7c7uzM5qJ0nS5Jw5Z5xL0iYkZcY5yTnlnHHOGWecS84F51xwLjjnnHPOS6+8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8Cq+CG+GNcCq8=`
@@ -73,9 +73,9 @@ func assertVetoRPC(t *testing.T, raw []byte, wantID int, wantTool string) {
 		JSONRPC string          `json:"jsonrpc"`
 		ID      json.RawMessage `json:"id"`
 		Error   struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-			Data    struct {
+			Code         int    `json:"code"`
+			Message      string `json:"message"`
+			ErrorPayload struct {
 				Tool  string `json:"tool"`
 				DjsQ8 uint32 `json:"djs_q8"`
 			} `json:"data"`
@@ -93,8 +93,8 @@ func assertVetoRPC(t *testing.T, raw []byte, wantID int, wantTool string) {
 	if !bytes.Contains([]byte(resp.Error.Message), []byte("C2BLUE_VETO")) {
 		t.Fatalf("message=%q", resp.Error.Message)
 	}
-	if resp.Error.Data.Tool != wantTool {
-		t.Fatalf("tool=%q want %q", resp.Error.Data.Tool, wantTool)
+	if resp.Error.ErrorPayload.Tool != wantTool {
+		t.Fatalf("tool=%q want %q", resp.Error.ErrorPayload.Tool, wantTool)
 	}
 	var id int
 	if err := json.Unmarshal(resp.ID, &id); err != nil || id != wantID {

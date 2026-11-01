@@ -4,7 +4,7 @@
 package c2blue55
 
 import (
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // Constantes canoniques des sous-systèmes de capture d'observation.

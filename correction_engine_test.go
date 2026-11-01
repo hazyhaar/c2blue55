@@ -2,11 +2,12 @@ package c2blue55
 
 import (
 	"bytes"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 func TestCorrectionEnginePayloadBounds(t *testing.T) {
@@ -23,8 +24,10 @@ func TestCorrectionEnginePayloadBounds(t *testing.T) {
 		payload := tc.payload
 		t.Run(string(payload), func(t *testing.T) {
 			defer func() {
-				if p := recover(); p != nil {
-					t.Errorf("bounded payload panicked: %v", p)
+				rec := recover()
+				if rec != nil {
+					t.Logf("panique interceptee: %v", rec)
+					t.Errorf("bounded payload panicked: %v", rec)
 				}
 			}()
 			if got := engine.Check_lolbas_comm(payload); got != tc.lolbas {
@@ -45,7 +48,7 @@ func TestCorrectionEnginePayloadBounds(t *testing.T) {
 
 func TestCorrectionEngineNominalCorrelation(t *testing.T) {
 	var table engine.C2bt_tracker_table_t
-	for i := uint64(0); i < 100; i++ {
+	for i := range uint64(100) {
 		ev := Event{Pid: 17, Ts_ns: i * 100000000, Subsystem: SubFile, Action: ActRead}
 		var flags uint32
 		engine.C2bt_correlate_event(&table, &ev, &flags, 1000000000)
@@ -92,12 +95,18 @@ func TestCorrectionEngineStartRejectsUnsupported(t *testing.T) {
 }
 
 func TestCorrectionEngineUnknownGrammar(t *testing.T) {
-	_, flags, veto := EvalGrammar("correction_unknown", []byte("anything"))
+	// emitter: generator; fixture key generated locally by correction_engine_test.go.
+	var fixtureSuffix [10]byte
+	if _, err := rand.Read(fixtureSuffix[:]); err != nil {
+		t.Fatal(err)
+	}
+	fixtureTool := fmt.Sprintf("fixture_%x", fixtureSuffix)
+	_, flags, veto := EvalGrammar(fixtureTool, []byte("anything"))
 	if veto == nil || flags&FlagSuspiciousMCP == 0 {
 		t.Fatal("unknown tool allowed")
 	}
-	RegisterToolGrammar("correction_unknown", []byte("anything"), 1, 115)
-	_, _, veto = EvalGrammar("correction_unknown", []byte("anything"))
+	RegisterToolGrammar(fixtureTool, []byte("anything"), 1, 115)
+	_, _, veto = EvalGrammar(fixtureTool, []byte("anything"))
 	if veto != nil {
 		t.Fatal("registered nominal tool did not recover")
 	}
@@ -117,7 +126,7 @@ func TestCorrectionEngineGrammarErrors(t *testing.T) {
 	if err := RegisterToolGrammar("empty_sample", nil, 1, 115); !errors.Is(err, ErrInvalidToolGrammar) {
 		t.Fatal(err)
 	}
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		if err := RegisterToolGrammar(fmt.Sprintf("tool_%d", i), []byte("sample"), 1, 115); err != nil {
 			t.Fatal(err)
 		}
@@ -140,7 +149,7 @@ func TestCorrectionEngineFixedWindowAndDuplicates(t *testing.T) {
 	var table engine.C2bt_tracker_table_t
 	var flags uint32
 	ev := Event{Pid: 29, Subsystem: SubProc, Action: ActExec, Flags: FlagLOLBAS | FlagAnomaly}
-	for i := uint64(0); i < 100; i++ {
+	for i := range uint64(100) {
 		ev.Ts_ns = i * 10
 		engine.C2bt_correlate_event(&table, &ev, &flags, 1000)
 		if flags&FlagCorrelatedThreat != 0 || table.Entries[29].Accumulated_score != 50 {
@@ -201,7 +210,7 @@ func TestCorrectionEngineObservationLifecycle(t *testing.T) {
 	if ctx.PollBatch(out[:], 99) != 1 || out[0].Payload != ev.Payload || out[0].Flags != FlagVerdictOK {
 		t.Fatal("queued nominal read not restored")
 	}
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		if ctx.InjectObservation(&ev) != 0 {
 			t.Fatal("premature saturation")
 		}
@@ -209,7 +218,7 @@ func TestCorrectionEngineObservationLifecycle(t *testing.T) {
 	if ctx.InjectObservation(&ev) != -2 {
 		t.Fatal("missing saturation error")
 	}
-	for i := 0; i < 512; i++ {
+	for range 512 {
 		if ctx.PollBatch(out[:], 2) != 2 {
 			t.Fatal("drain failed")
 		}

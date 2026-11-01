@@ -3,8 +3,8 @@ package c2blue55_test
 import (
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/socagent"
+	"github.com/hazyhaar/c2blue55"
+	"github.com/hazyhaar/c2blue55/socagent"
 )
 
 func TestCorrectionEngineReturnedCorrelationAdmitsDossier(t *testing.T) {

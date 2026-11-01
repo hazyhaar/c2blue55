@@ -35,7 +35,6 @@ const (
 	routerRingCount = 4
 )
 
-
 // SubRing est une file circulaire SPSC verrouillage-libre de 256 événements.
 // Le rembourrage place head, tail, drops et slots sur des lignes de cache
 // disjointes.
@@ -86,11 +85,8 @@ func (r *SubRing) PopBatch(out []Event, maxEvents int) int {
 	if available == 0 {
 		return 0
 	}
-	n := int(available)
-	if n > maxEvents {
-		n = maxEvents
-	}
-	for i := 0; i < n; i++ {
+	n := min(int(available), maxEvents)
+	for i := range n {
 		out[i] = r.slots[(tail+uint64(i))&subRingMask]
 	}
 	r.tail.Store(tail + uint64(n))
@@ -232,7 +228,7 @@ func (r *SubRing) Consume(worker Worker, stop <-chan struct{}) {
 			runtime.Gosched()
 			continue
 		}
-		for i := 0; i < n; i++ {
+		for i := range n {
 			worker.Handle(&local[i])
 		}
 	}

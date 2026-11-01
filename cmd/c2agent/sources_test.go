@@ -6,17 +6,17 @@ import (
 	"path/filepath"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 func TestSourceConfigurationRejectThenLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sources.json")
-	for _, data := range []string{`[{"Name":"test","URI":"http://example.org"}]`, `[{"Unknown":true}]`, `[] []`, `not-json`} {
-		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+	for _, rawSourceJSON := range []string{`[{"Name":"test","URI":"http://example.org"}]`, `[{"Unknown":true}]`, `[] []`, `not-json`} {
+		if err := os.WriteFile(path, []byte(rawSourceJSON), 0600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := loadSources(path); err == nil {
-			t.Fatalf("accepted %s", data)
+			t.Fatalf("accepted %s", rawSourceJSON)
 		}
 		want := []c2blue55.ReputationSource{{Name: "local-test", URI: "file:///devhoros/private-test-feed", Classification: c2blue55.RepClassBlockC2, MatchKind: c2blue55.MatchExact}}
 		valid, err := json.Marshal(want)

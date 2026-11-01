@@ -21,7 +21,7 @@ import (
 	"sync"
 	"syscall"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // SiloConfig configure le collecteur journalier d'oracle serveur.
@@ -441,13 +441,13 @@ func oracleDayFileName(machineID uint64, day uint32) string {
 }
 
 // storedDayFilesLocked liste les tranches du répertoire, par jour croissant.
-func (s *DailyOracleSilo) storedDayFilesLocked() []oracleDayFile {
+func (s *DailyOracleSilo) storedDayFilesLocked() ([]oracleDayFile, error) {
 	pattern := fmt.Sprintf("oracle_%016x_*.c2oracle", s.cfg.MachineID)
 	matches, err := filepath.Glob(filepath.Join(s.cfg.StorageDir, pattern))
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("liste des tranches d'oracle: %w", err)
 	}
-	return oracleDayFiles(matches, s.cfg.MachineID)
+	return oracleDayFiles(matches, s.cfg.MachineID), nil
 }
 
 // relinkSuccessorsLocked repropage le chaînage après le scellement du jour
@@ -461,7 +461,11 @@ func (s *DailyOracleSilo) storedDayFilesLocked() []oracleDayFile {
 // pour ne pas effacer la trace d'une altération : la propagation s'arrête,
 // l'alerte est journalisée et VerifyOracleChain signalera la rupture.
 func (s *DailyOracleSilo) relinkSuccessorsLocked(day uint32, seal [32]byte) error {
-	for _, f := range s.storedDayFilesLocked() {
+	files, err := s.storedDayFilesLocked()
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
 		if f.epochDay <= day {
 			continue
 		}
@@ -498,7 +502,10 @@ func (s *DailyOracleSilo) relinkSuccessorsLocked(day uint32, seal [32]byte) erro
 // nul, ce que VerifyOracleChain signale, et la rupture est journalisée.
 func (s *DailyOracleSilo) prevDaySealLocked(day uint32) ([32]byte, error) {
 	var prev *oracleDayFile
-	files := s.storedDayFilesLocked()
+	files, err := s.storedDayFilesLocked()
+	if err != nil {
+		return [32]byte{}, err
+	}
 	for i := range files {
 		if files[i].epochDay < day {
 			prev = &files[i]
@@ -554,7 +561,11 @@ func (s *DailyOracleSilo) VerifyOracleChain() ([]OracleChainBreak, error) {
 	var breaks []OracleChainBreak
 	var prevSeal [32]byte
 	havePrev := false
-	for _, f := range s.storedDayFilesLocked() {
+	files, err := s.storedDayFilesLocked()
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range files {
 		hdr, _, err := loadOracleDayFile(f.path, s.cfg.HMACKey)
 		if err == nil && hdr.Version != engine.OracleVersion {
 			continue
@@ -864,6 +875,7 @@ func (s *DailyOracleSilo) loadBaselineDaysLocked(maxDays int) ([]baselineDay, er
 		files = files[len(files)-maxDays:]
 	}
 	days := make([]baselineDay, 0, len(files))
+	var lastErr error
 	for _, day := range files {
 		hdr, entries, lerr := loadOracleDayFile(day.path, s.cfg.HMACKey)
 		if errors.Is(lerr, engine.ErrOracleSeal) {
@@ -871,6 +883,7 @@ func (s *DailyOracleSilo) loadBaselineDaysLocked(maxDays int) ([]baselineDay, er
 				"chemin", day.path)
 		}
 		if lerr != nil {
+			lastErr = lerr
 			continue // Fichier corrompu, incomplet ou non authentifié ignoré pour l'oracle
 		}
 		if hdr.MachineID != s.cfg.MachineID || hdr.Version != engine.OracleVersion || hdr.EpochDay != day.epochDay {
@@ -887,6 +900,12 @@ func (s *DailyOracleSilo) loadBaselineDaysLocked(maxDays int) ([]baselineDay, er
 			weight = float64(hdr.ObservedCount) / float64(hdr.VectorCount)
 		}
 		days = append(days, baselineDay{epochDay: day.epochDay, entries: entries, weight: weight})
+	}
+	if len(files) > 0 && len(days) == 0 {
+		if lastErr != nil {
+			return nil, fmt.Errorf("c2oracle: aucune tranche valide dans la fenetre (%d tranches illisibles ou ecartees): %w", len(files), errors.Join(engine.ErrOracleCorrupt, lastErr))
+		}
+		return nil, fmt.Errorf("c2oracle: aucune tranche valide dans la fenetre (%d tranches illisibles ou ecartees): %w", len(files), engine.ErrOracleCorrupt)
 	}
 	return days, nil
 }
@@ -990,7 +1009,7 @@ func (ing *LogStreamIngester) IngestReader(r io.Reader, logSource string) (int, 
 	// Augmente la capacité maximale de ligne pour tolérer les longues lignes de log
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	count := 0
+	ingestedCount := 0
 	var lastTs uint64
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -1005,12 +1024,12 @@ func (ing *LogStreamIngester) IngestReader(r io.Reader, logSource string) (int, 
 		lastTs = snap.TimestampSec
 
 		if err := ing.silo.IngestSnapshot(&snap); err != nil {
-			return count, err
+			return ingestedCount, err
 		}
-		count++
+		ingestedCount++
 	}
 
-	return count, scanner.Err()
+	return ingestedCount, scanner.Err()
 }
 
 // ParseLogLine analyse une ligne de journal réel et construit l'instantané

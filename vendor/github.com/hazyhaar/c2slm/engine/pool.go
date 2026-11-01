@@ -3,6 +3,7 @@ package engine
 import (
 	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hazyhaar/c2slm/gguf"
 	"github.com/hazyhaar/c2slm/tensor"
@@ -18,6 +19,7 @@ type WorkerPool struct {
 	startChans []chan struct{}
 	doneWg     sync.WaitGroup
 	quitChan   chan struct{}
+	dispatches atomic.Uint64
 
 	// Flat task fields (strictly 0 allocation during dispatch)
 	y      []float32
@@ -27,6 +29,8 @@ type WorkerPool struct {
 	rows   int
 	cols   int
 	qtype  gguf.GGMLType
+	n4Mode bool
+	n4Bits int
 
 	// Attention task fields, also flat and 0 allocation during dispatch.
 	attnMode    bool
@@ -40,6 +44,22 @@ type WorkerPool struct {
 	attnQ       []float32
 	attnOut     []float32
 	attnScratch []float32
+
+	// Tiled GEMV task fields: each worker owns a disjoint row range and loops
+	// over the K activation rows, reusing the decoded weight row. Flat and 0
+	// allocation during dispatch.
+	tiledMode      bool
+	tiledY         []float32
+	tiledYStride   int
+	tiledWeight    []byte
+	tiledX         []float32
+	tiledXStride   int
+	tiledQ8K       []byte
+	tiledQ8KStride int
+	tiledRows      int
+	tiledCols      int
+	tiledK         int
+	tiledType      gguf.GGMLType
 }
 
 // NewWorkerPool initializes persistent workers
@@ -75,6 +95,9 @@ func (p *WorkerPool) Close() {
 		// already closed
 	default:
 		close(p.quitChan)
+		for _, canal := range p.startChans {
+			close(canal)
+		}
 	}
 }
 
@@ -83,14 +106,41 @@ func (p *WorkerPool) NumWorkers() int {
 	return p.numWorkers
 }
 
+// DispatchCount returns the number of collective worker wakeups.
+func (p *WorkerPool) DispatchCount() uint64 { return p.dispatches.Load() }
+
 func (p *WorkerPool) workerLoop(workerID int) {
 	for {
+		// Attente bloquante d'origine (aucune allocation par réveil mesurée sur main) ;
+		// l'attente active de V4 allouait et dormait par microseconde.
 		select {
 		case <-p.quitChan:
 			return
-		case <-p.startChans[workerID]:
+		case _, ouvert := <-p.startChans[workerID]:
+			if !ouvert {
+				return
+			}
+		}
+		{
 			if p.attnMode {
 				p.runAttnHeads(workerID)
+				p.doneWg.Done()
+				continue
+			}
+
+			if p.tiledMode {
+				p.runTiledRows(workerID)
+				p.doneWg.Done()
+				continue
+			}
+			if p.n4Mode {
+				debut := workerID * (p.rows / 4) / p.numWorkers
+				fin := (workerID + 1) * (p.rows / 4) / p.numWorkers
+				if p.n4Bits == 5 {
+					tensor.GEMVN5Q8KRange(p.y, p.weight, p.q8k, debut, fin, p.cols)
+				} else {
+					tensor.GEMVN4Q8KRange(p.y, p.weight, p.q8k, debut, fin, p.cols)
+				}
 				p.doneWg.Done()
 				continue
 			}
@@ -116,6 +166,29 @@ func (p *WorkerPool) workerLoop(workerID int) {
 			p.doneWg.Done()
 		}
 	}
+}
+
+// ParallelGEMVN4 quantizes once and distributes disjoint quadruplets.
+func (p *WorkerPool) ParallelGEMVN4(y []float32, poids []byte, x []float32, rows, cols, bits int) {
+	tensor.QuantizeRowQ8_K(x, p.q8k, cols)
+	if p.numWorkers <= 1 || rows/4 < 64 {
+		if bits == 5 {
+			tensor.GEMVN5Q8KRange(y, poids, p.q8k, 0, rows/4, cols)
+		} else {
+			tensor.GEMVN4Q8KRange(y, poids, p.q8k, 0, rows/4, cols)
+		}
+		return
+	}
+	p.y, p.weight, p.rows, p.cols = y, poids, rows, cols
+	p.n4Bits = bits
+	p.n4Mode = true
+	p.doneWg.Add(p.numWorkers)
+	p.dispatches.Add(1)
+	for i := 0; i < p.numWorkers; i++ {
+		p.startChans[i] <- struct{}{}
+	}
+	p.doneWg.Wait()
+	p.n4Mode = false
 }
 
 // ParallelGEMV executes GEMV across workers with 0 heap allocation
@@ -147,10 +220,87 @@ func (p *WorkerPool) ParallelGEMV(y []float32, weight []byte, x []float32, rows,
 	p.qtype = qtype
 
 	p.doneWg.Add(p.numWorkers)
+	p.dispatches.Add(1)
 	for i := 0; i < p.numWorkers; i++ {
 		p.startChans[i] <- struct{}{}
 	}
 	p.doneWg.Wait()
+}
+
+// ParallelGEMVTiled executes a tiled GEMV Y = W * X across the persistent
+// workers with 0 heap allocation. The K activation rows are laid out
+// back-to-back in x with stride xStride, and the K output rows are laid out in
+// y with stride yStride. Each worker owns a disjoint weight-row range and, for
+// every row, loops over the K activations so the decoded weight row is reused K
+// times from L1 instead of being re-fetched from memory once per token. For
+// K-quantized weights the activation rows are quantized to Q8_K once, before the
+// dispatch, into the caller-supplied q8k buffer.
+func (p *WorkerPool) ParallelGEMVTiled(y []float32, yStride int, weight []byte, x []float32, xStride, rows, cols, k int, qtype gguf.GGMLType, q8k []byte, q8kStride int) {
+	if qtype == gguf.GGMLTypeQ4_K || qtype == gguf.GGMLTypeQ6_K {
+		tensor.QuantizeRowsQ8_K(x, xStride, q8k, q8kStride, k, cols)
+	}
+
+	if p.numWorkers <= 1 || rows < 256 {
+		// Single-threaded path for small projections (ex: KV heads), avoiding
+		// goroutine wakeups while still reusing each weight row across K tokens.
+		switch qtype {
+		case gguf.GGMLTypeQ8_0:
+			tensor.GEMVTiledQ8_0Range(y, yStride, weight, x, xStride, 0, rows, cols, k)
+		case gguf.GGMLTypeQ5_0:
+			tensor.GEMVTiledQ5_0Range(y, yStride, weight, x, xStride, 0, rows, cols, k)
+		case gguf.GGMLTypeQ6_K:
+			tensor.GEMVTiledQ6_K_Q8_KRange(y, yStride, weight, q8k, q8kStride, 0, rows, cols, k)
+		case gguf.GGMLTypeQ4_K:
+			tensor.GEMVTiledQ4_K_Q8_KRange(y, yStride, weight, q8k, q8kStride, 0, rows, cols, k)
+		}
+		return
+	}
+
+	p.tiledY = y
+	p.tiledYStride = yStride
+	p.tiledWeight = weight
+	p.tiledX = x
+	p.tiledXStride = xStride
+	p.tiledQ8K = q8k
+	p.tiledQ8KStride = q8kStride
+	p.tiledRows = rows
+	p.tiledCols = cols
+	p.tiledK = k
+	p.tiledType = qtype
+	p.tiledMode = true
+
+	p.doneWg.Add(p.numWorkers)
+	p.dispatches.Add(1)
+	for i := 0; i < p.numWorkers; i++ {
+		p.startChans[i] <- struct{}{}
+	}
+	p.doneWg.Wait()
+
+	p.tiledMode = false
+}
+
+// runTiledRows computes the disjoint weight-row range owned by one worker,
+// looping over the K activations for each row.
+func (p *WorkerPool) runTiledRows(workerID int) {
+	startRow := (workerID * p.tiledRows) / p.numWorkers
+	endRow := ((workerID + 1) * p.tiledRows) / p.numWorkers
+	if startRow >= p.tiledRows {
+		return
+	}
+	if endRow > p.tiledRows {
+		endRow = p.tiledRows
+	}
+
+	switch p.tiledType {
+	case gguf.GGMLTypeQ8_0:
+		tensor.GEMVTiledQ8_0Range(p.tiledY, p.tiledYStride, p.tiledWeight, p.tiledX, p.tiledXStride, startRow, endRow, p.tiledCols, p.tiledK)
+	case gguf.GGMLTypeQ5_0:
+		tensor.GEMVTiledQ5_0Range(p.tiledY, p.tiledYStride, p.tiledWeight, p.tiledX, p.tiledXStride, startRow, endRow, p.tiledCols, p.tiledK)
+	case gguf.GGMLTypeQ6_K:
+		tensor.GEMVTiledQ6_K_Q8_KRange(p.tiledY, p.tiledYStride, p.tiledWeight, p.tiledQ8K, p.tiledQ8KStride, startRow, endRow, p.tiledCols, p.tiledK)
+	case gguf.GGMLTypeQ4_K:
+		tensor.GEMVTiledQ4_K_Q8_KRange(p.tiledY, p.tiledYStride, p.tiledWeight, p.tiledQ8K, p.tiledQ8KStride, startRow, endRow, p.tiledCols, p.tiledK)
+	}
 }
 
 // runAttnHeads computes the disjoint head range owned by one worker. Each head
@@ -199,6 +349,7 @@ func (p *WorkerPool) ParallelAttention(scratch []float32, cache *KVCache, layer,
 	p.attnMode = true
 
 	p.doneWg.Add(p.numWorkers)
+	p.dispatches.Add(1)
 	for i := 0; i < p.numWorkers; i++ {
 		p.startChans[i] <- struct{}{}
 	}

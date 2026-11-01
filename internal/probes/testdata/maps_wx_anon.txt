@@ -1,0 +1,24 @@
+5f6bc4caa000-5f6bc4cab000 r--p 00000000 103:06 21286495                  /tmp/wp_wx_c
+5f6bc4cab000-5f6bc4cac000 r-xp 00001000 103:06 21286495                  /tmp/wp_wx_c
+5f6bc4cac000-5f6bc4cad000 r--p 00002000 103:06 21286495                  /tmp/wp_wx_c
+5f6bc4cad000-5f6bc4cae000 r--p 00002000 103:06 21286495                  /tmp/wp_wx_c
+5f6bc4cae000-5f6bc4caf000 rw-p 00003000 103:06 21286495                  /tmp/wp_wx_c
+7fc843800000-7fc843828000 r--p 00000000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+7fc843828000-7fc8439b1000 r-xp 00028000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+7fc8439b1000-7fc843a00000 r--p 001b1000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+7fc843a00000-7fc843a04000 r--p 001ff000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+7fc843a04000-7fc843a06000 rw-p 00203000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+7fc843a06000-7fc843a13000 rw-p 00000000 00:00 0 
+7fc843a72000-7fc843a75000 rw-p 00000000 00:00 0 
+7fc843a89000-7fc843a99000 rwxp 00000000 00:00 0 
+7fc843a99000-7fc843a9b000 rw-p 00000000 00:00 0 
+7fc843a9b000-7fc843a9d000 r--p 00000000 00:00 0                          [vvar]
+7fc843a9d000-7fc843a9f000 r--p 00000000 00:00 0                          [vvar_vclock]
+7fc843a9f000-7fc843aa1000 r-xp 00000000 00:00 0                          [vdso]
+7fc843aa1000-7fc843aa2000 r--p 00000000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7fc843aa2000-7fc843acd000 r-xp 00001000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7fc843acd000-7fc843ad7000 r--p 0002c000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7fc843ad7000-7fc843ad9000 r--p 00036000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7fc843ad9000-7fc843adb000 rw-p 00038000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7fff3ff42000-7fff3ff64000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

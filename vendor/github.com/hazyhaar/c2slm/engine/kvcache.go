@@ -124,6 +124,14 @@ func (c *KVCache) StoreTokenID(pos int, tokenID int32) {
 	c.TokenIDs[pos] = tokenID
 }
 
+// TokenID returns the stored token at a materialized position.
+func (c *KVCache) TokenID(pos int) int32 {
+	if pos < 0 || pos >= c.SeqLen {
+		return -1
+	}
+	return c.TokenIDs[pos]
+}
+
 func (c *KVCache) getOffset(isV bool, layer, kvHead, pos int) int {
 	// Strides
 	headStride := c.HeadDim

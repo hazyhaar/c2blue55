@@ -212,7 +212,7 @@ func indexOfStr(b []byte, s string) int {
 	}
 	for i := 0; i <= len(b)-n; i++ {
 		match := true
-		for j := 0; j < n; j++ {
+		for j := range n {
 			if b[i+j] != s[j] {
 				match = false
 				break

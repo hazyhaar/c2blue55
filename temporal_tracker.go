@@ -28,17 +28,17 @@ type DomainTrack struct {
 	DomainLen        uint8
 	Timestamps       [HistoryWindowSize]uint32 // Timestamps Unix en secondes
 	Head             uint8                     // Pointeur circulaire d'écriture
-	Count            uint16                    // Nombre total de requêtes enregistrées
+	QueryCount       uint16                    // Nombre total de requêtes enregistrées
 	LastSeen         uint32
 	SubdomainBloom   [SubdomainBloomWords]uint64 // Filtre Bloom 256 bits pour les sous-domaines uniques
 	UniqueSubdomains uint16
 }
 
 // resetWindow purge la fenêtre temporelle d'un slot tout en conservant son identité.
-// Les timestamps résiduels deviennent inatteignables puisque Count repart à zéro.
+// Les timestamps résiduels deviennent inatteignables puisque QueryCount repart à zéro.
 func (d *DomainTrack) resetWindow() {
 	d.Head = 0
-	d.Count = 0
+	d.QueryCount = 0
 	d.LastSeen = 0
 	d.SubdomainBloom = [SubdomainBloomWords]uint64{}
 	d.UniqueSubdomains = 0
@@ -75,7 +75,7 @@ func NewTemporalTracker() *TemporalTracker {
 // RecordQuery aggregates its caller-supplied domain key, without client identity
 // or public-suffix resolution. Evictions explicitly bound the retained history.
 // Retourne le profil temporel calculé (jitter, sous-domaines uniques, requêtes récentes).
-func (tr *TemporalTracker) RecordQuery(parentDomain string, subdomain string, nowSec uint32) (jitterPct uint16, uniqueSubs uint16, count uint16) {
+func (tr *TemporalTracker) RecordQuery(parentDomain string, subdomain string, nowSec uint32) (jitterPct uint16, uniqueSubs uint16, queryCount uint16) {
 	if len(parentDomain) == 0 || len(parentDomain) > 253 {
 		return 100, 0, 0
 	}
@@ -89,7 +89,7 @@ func (tr *TemporalTracker) RecordQuery(parentDomain string, subdomain string, no
 	var slot, recyclable *DomainTrack
 	victim := &tr.slots[slotIdx]
 	step := int((mix64(h) & 0x7) | 1)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		candidate := &tr.slots[(slotIdx+i*step)%MaxTrackedDomains]
 		if candidate.DomainLen != 0 && candidate.DomainHash == h && stringEqualBytes(parentDomain, candidate.Domain[:candidate.DomainLen]) {
 			slot = candidate
@@ -114,15 +114,15 @@ func (tr *TemporalTracker) RecordQuery(parentDomain string, subdomain string, no
 
 	// Péremption : le même domaine réapparaît après plus d'une heure d'inactivité.
 	// Les anciens timestamps sont purgés pour ne pas biaiser le jitter avec des deltas périmés.
-	if slot.Count > 0 && (nowSec < slot.LastSeen || nowSec-slot.LastSeen >= MaxInactivitySec) {
+	if slot.QueryCount > 0 && (nowSec < slot.LastSeen || nowSec-slot.LastSeen >= MaxInactivitySec) {
 		slot.resetWindow()
 	}
 
 	// Enregistrement du timestamp
 	slot.Timestamps[slot.Head] = nowSec
 	slot.Head = (slot.Head + 1) % HistoryWindowSize
-	if slot.Count < HistoryWindowSize {
-		slot.Count++
+	if slot.QueryCount < HistoryWindowSize {
+		slot.QueryCount++
 	}
 	slot.LastSeen = nowSec
 
@@ -147,17 +147,17 @@ func (tr *TemporalTracker) RecordQuery(parentDomain string, subdomain string, no
 	// Calcul du Jitter (Coefficient de variation des intervalles d'arrivée)
 	// Un jitter très faible (< 20%) indique un battement de cœur C2 régulier automatique.
 	jitter := uint16(100)
-	if slot.Count >= 4 {
+	if slot.QueryCount >= 4 {
 		jitter = calculateJitter(slot)
 	}
 
-	return jitter, slot.UniqueSubdomains, slot.Count
+	return jitter, slot.UniqueSubdomains, slot.QueryCount
 }
 
 // calculateJitter calcule le coefficient de variation (écart-type / moyenne en pourcentage)
 // des intervalles temporels entre requêtes successives.
 func calculateJitter(slot *DomainTrack) uint16 {
-	n := int(slot.Count)
+	n := int(slot.QueryCount)
 	if n < 4 {
 		return 100
 	}
@@ -165,7 +165,7 @@ func calculateJitter(slot *DomainTrack) uint16 {
 	// Reconstitution chronologique des timestamps
 	var sortedTs [HistoryWindowSize]uint32
 	head := int(slot.Head)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		idx := (head - n + i + HistoryWindowSize) % HistoryWindowSize
 		sortedTs[i] = slot.Timestamps[idx]
 	}
@@ -173,7 +173,7 @@ func calculateJitter(slot *DomainTrack) uint16 {
 	// Calcul des deltas (inter-arrival times)
 	deltasCount := n - 1
 	var sumDelta float64
-	for i := 0; i < deltasCount; i++ {
+	for i := range deltasCount {
 		var diff uint32
 		if sortedTs[i+1] >= sortedTs[i] {
 			diff = sortedTs[i+1] - sortedTs[i]
@@ -188,7 +188,7 @@ func calculateJitter(slot *DomainTrack) uint16 {
 	}
 
 	var sumSqDiff float64
-	for i := 0; i < deltasCount; i++ {
+	for i := range deltasCount {
 		var diff float64
 		if sortedTs[i+1] >= sortedTs[i] {
 			diff = float64(sortedTs[i+1] - sortedTs[i])

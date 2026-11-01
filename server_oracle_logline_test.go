@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // fixNow fige l'instant de référence de l'inférence d'année syslog BSD.

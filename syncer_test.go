@@ -191,13 +191,37 @@ func TestReputationSyncer_PeriodicCancellation(t *testing.T) {
 	initTbl, _ := NewReputationTable(initSnap)
 	ar := NewAtomicReputation(initTbl)
 
+	var passesSync atomic.Int64
 	syncer := NewReputationSyncer(SyncerConfig{
-		SyncInterval: 10 * time.Millisecond,
+		SyncInterval: 5 * time.Millisecond,
+		OnSyncError: func(error) {
+			passesSync.Add(1)
+		},
 	}, ar)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	syncer.StartPeriodic(ctx)
-	time.Sleep(25 * time.Millisecond)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for passesSync.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if passesSync.Load() < 2 {
+		cancel()
+		t.Fatalf("synchronisation periodique non declenchee: passes=%d", passesSync.Load())
+	}
 	cancel()
-	time.Sleep(10 * time.Millisecond)
+
+	stabilise := false
+	stopDeadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(stopDeadline) {
+		passesAvant := passesSync.Load()
+		time.Sleep(15 * time.Millisecond)
+		if passesSync.Load() == passesAvant {
+			stabilise = true
+			break
+		}
+	}
+	if !stabilise {
+		t.Fatalf("synchronisation periodique encore active apres annulation: passes=%d", passesSync.Load())
+	}
 }

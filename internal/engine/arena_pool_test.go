@@ -61,7 +61,7 @@ func TestArenaPool_StoreAndResolve(t *testing.T) {
 
 	// 4. Une charge plus courte déposée ensuite sur une page déjà utilisée
 	// doit se relire exactement, sans les octets résiduels de la précédente.
-	for i := 0; i < ArenaCapacity-1; i++ {
+	for range ArenaCapacity - 1 {
 		var filler Probe_event_t
 		pool.StorePayload(&filler, bytes.Repeat([]byte{'#'}, PageSize))
 	}
@@ -81,7 +81,7 @@ func TestArenaPool_StaleAfterRotation(t *testing.T) {
 	var page [PageSize]byte
 	var ev Probe_event_t
 	pool.StorePayload(&ev, bytes.Repeat([]byte{'Q'}, 300))
-	for i := 0; i < ArenaCapacity; i++ {
+	for range ArenaCapacity {
 		var w Probe_event_t
 		pool.StorePayload(&w, bytes.Repeat([]byte{'W'}, 300))
 	}
@@ -124,10 +124,10 @@ func TestArenaPool_ConcurrentWritersNoTornRead(t *testing.T) {
 
 		var wg sync.WaitGroup
 		var writersDone atomic.Bool
-		for w := 0; w < 2; w++ {
+		for w := range 2 {
 			wg.Go(func() {
 				other := bytes.Repeat([]byte{byte('a' + w)}, PageSize)
-				for i := 0; i < 3*ArenaCapacity; i++ {
+				for range 3 * ArenaCapacity {
 					var e Probe_event_t
 					pool.StorePayload(&e, other)
 				}
@@ -156,15 +156,15 @@ func TestArenaPool_FeatureExtraction_LongPayload(t *testing.T) {
 	pool := DefaultArenaPool()
 
 	// Création d'une charge longue de 1024 octets
-	data := make([]byte, 1024)
-	for i := range data {
-		data[i] = byte('A' + (i % 26))
+	longPayload := make([]byte, 1024)
+	for i := range longPayload {
+		longPayload[i] = byte('A' + (i % 26))
 	}
 
 	var ev Probe_event_t
 	ev.Subsystem = 4 // MCP
 	ev.Action = 4    // ToolCall
-	pool.StorePayload(&ev, data)
+	pool.StorePayload(&ev, longPayload)
 
 	var dst [EmbeddingDim]float32
 	extractor := NewFeatureExtractor()
@@ -195,14 +195,14 @@ func TestArenaPool_FeatureExtraction_LongPayload(t *testing.T) {
 func TestArenaPool_ZeroAlloc(t *testing.T) {
 	pool := DefaultArenaPool()
 	var ev Probe_event_t
-	data := make([]byte, 256)
-	for i := range data {
-		data[i] = byte(i)
+	benchPayload := make([]byte, 256)
+	for i := range benchPayload {
+		benchPayload[i] = byte(i)
 	}
 	var page [PageSize]byte
 
 	allocs := testing.AllocsPerRun(1000, func() {
-		pool.StorePayload(&ev, data)
+		pool.StorePayload(&ev, benchPayload)
 		_, _ = pool.ResolvePayload(&ev, &page)
 	})
 	if allocs != 0 {
@@ -214,13 +214,13 @@ func TestArenaPool_ZeroAlloc(t *testing.T) {
 // sur la page complétée de zéros, que le rejeu forensique recalcule.
 func TestArenaPool_PageCRCMatchesKernel(t *testing.T) {
 	for _, n := range []int{97, 120, 1000, 4095, PageSize} {
-		data := make([]byte, n)
-		for i := range data {
-			data[i] = byte(i*31 + 7)
+		pageBytes := make([]byte, n)
+		for i := range pageBytes {
+			pageBytes[i] = byte(i*31 + 7)
 		}
 		var img [PageSize]byte
-		copy(img[:], data)
-		if got, want := arenaPageCRC32C(data), c2archtsim.C2archtsim_page4k_crc32c(img[:]); got != want {
+		copy(img[:], pageBytes)
+		if got, want := arenaPageCRC32C(pageBytes), c2archtsim.C2archtsim_page4k_crc32c(img[:]); got != want {
 			t.Fatalf("n=%d : CRC en flux 0x%08X, noyau 0x%08X", n, got, want)
 		}
 	}

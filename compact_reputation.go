@@ -58,7 +58,7 @@ type CompactHeader struct {
 
 // ReputationTable encapsule un instantané binaire compact en mémoire contiguë.
 type ReputationTable struct {
-	data        []byte
+	rawBytes    []byte
 	numEntries  int
 	entriesData []byte
 	stringBlock []byte
@@ -73,9 +73,9 @@ type MatchResult struct {
 }
 
 // FNV1a64 calcule le hachage FNV-1a 64 bits d'une tranche d'octets.
-func FNV1a64(data []byte) uint64 {
+func FNV1a64(payload []byte) uint64 {
 	var h uint64 = 14695981039346656037
-	for _, b := range data {
+	for _, b := range payload {
 		h ^= uint64(b)
 		h *= 1099511628211
 	}
@@ -124,7 +124,7 @@ func NewReputationTable(raw []byte) (*ReputationTable, error) {
 	// intégralement contenu dans le bloc de chaînes. L'arithmétique est menée en
 	// uint64 pour interdire tout repli (wrap-around) lors de la somme Offset+Length.
 	var previousHash uint64
-	for i := 0; i < numEntries; i++ {
+	for i := range numEntries {
 		off := i * 16
 		entryOffset := binary.LittleEndian.Uint32(entriesData[off+8 : off+12])
 		entryLength := entriesData[off+12]
@@ -142,7 +142,7 @@ func NewReputationTable(raw []byte) (*ReputationTable, error) {
 	}
 
 	return &ReputationTable{
-		data:        raw,
+		rawBytes:    raw,
 		numEntries:  numEntries,
 		entriesData: entriesData,
 		stringBlock: stringBlock,

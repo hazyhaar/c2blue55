@@ -2,6 +2,7 @@
 package engine
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -166,10 +167,24 @@ func TestQuarantineChamberAndHoldout(t *testing.T) {
 		t.Fatalf("qc.Len() = %d, attendu 1", qc.Len())
 	}
 
-	// Validation de non-régression
-	approved, err := qc.ValidateAgainstHoldoutSet(nil, 0.0)
+	// Validation de non-régression : un holdout nil doit être rejeté sans vider le sas.
+	if _, errNil := qc.ValidateAgainstHoldoutSet(nil, 0.0); !errors.Is(errNil, ErrHoldoutUnvalidated) {
+		t.Fatalf("ValidateAgainstHoldoutSet(nil): err = %v, attendu ErrHoldoutUnvalidated", errNil)
+	}
+	if qc.Len() != 1 {
+		t.Fatalf("qc.Len() apres rejet nil = %d, attendu 1", qc.Len())
+	}
+
+	var holdoutBits [codebookWords]uint64
+	for idxMot := range holdoutBits {
+		holdoutBits[idxMot] = ^uint64(0)
+	}
+	holdoutRef := NewCodebook([]CodebookEntry{
+		{Bitcode: holdoutBits, ThreatID: 0, Subsystem: 1, Severity: 1},
+	})
+	approved, err := qc.ValidateAgainstHoldoutSet(holdoutRef, 0.0)
 	if err != nil {
-		t.Fatalf("ValidateAgainstHoldoutSet: %v", err)
+		t.Fatalf("ValidateAgainstHoldoutSet(holdoutRef): %v", err)
 	}
 	if len(approved) != 1 {
 		t.Fatalf("len(approved) = %d, attendu 1", len(approved))
@@ -225,7 +240,7 @@ func TestGrayZoneDualTokenBucket_Isolation(t *testing.T) {
 	sourceVictim := uint64(2002)
 
 	// La source bruyante consomme ses 5 jetons unitaires
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		res := decider.DecideWithSource(&grayQuery, cb, kAmbiguous, sourceNoisy)
 		if res.Verdict != CascadeEscalate {
 			t.Fatalf("iter %d source bruyante: attendu CascadeEscalate, obtenu %d", i, res.Verdict)
@@ -391,5 +406,3 @@ func BenchmarkGrayZoneDecideEscalate(b *testing.B) {
 	}
 	_ = res
 }
-
-

@@ -59,9 +59,117 @@ type DNSEvent struct {
 	Subdomain       [256]byte // Toute la longueur DNS autorisee
 	ParentDomainLen uint8
 	ParentDomain    [128]byte // Domaine parent (ex: "sophosxl.com", "evil-c2.net")
+	SLDLen          uint8
+	SLD             [64]byte // Label enregistrable de second niveau (ex: "sophosxl", "bbc")
+	TLDLen          uint8
+	TLD             [64]byte // Suffixe public (ex: "com", "co.uk")
 	LabelCount      uint8
 	MaxLabelLen     uint8
+	HasEncoding     bool
 	ClientIP        [16]byte
+	// Grammar n'est renseigné que par ParseDNSQueryTolerant ; nul (LDH) sinon.
+	Grammar QNameGrammarProfile
+}
+
+// RegistrableSLD retourne le label enregistrable de second niveau sans allocation tas (0 B/op).
+func (e *DNSEvent) RegistrableSLD() string {
+	if e.SLDLen == 0 {
+		return ""
+	}
+	return unsafe.String(&e.SLD[0], e.SLDLen)
+}
+
+// PublicSuffix retourne le suffixe public (TLD ou eTLD) sans allocation tas (0 B/op).
+func (e *DNSEvent) PublicSuffix() string {
+	if e.TLDLen == 0 {
+		return ""
+	}
+	return unsafe.String(&e.TLD[0], e.TLDLen)
+}
+
+// ParseDNSName décode un QNAME textuel (issu de journaux Zeek/Suricata, sondes passives ou redhost)
+// sans allocation sur le tas (0 B/op) et renseigne Subdomain, ParentDomain, RegistrableSLD et PublicSuffix.
+func ParseDNSName(qname []byte, qtype uint16, ev *DNSEvent) (err error) {
+	if ev == nil {
+		return ErrQuestionContract
+	}
+	stamp, client := ev.Timestamp, ev.ClientIP
+	*ev = DNSEvent{Timestamp: stamp, ClientIP: client}
+	defer func() {
+		if err != nil {
+			*ev = DNSEvent{Timestamp: stamp, ClientIP: client}
+		}
+	}()
+
+	if qtype == 0 {
+		return ErrQuestionContract
+	}
+	n := len(qname)
+	if n > 0 && qname[n-1] == '.' {
+		n--
+	}
+	if n == 0 {
+		return ErrQuestionContract
+	}
+	if n > 253 {
+		return ErrNameTooLong
+	}
+
+	labelStart := 0
+	labelCount := 0
+	maxLabelLen := 0
+	totalLabelOffsets := [maxDNSLabels]uint8{}
+
+	for i := range n {
+		b := qname[i]
+		if b == '.' {
+			lLen := i - labelStart
+			if lLen == 0 || lLen > 63 {
+				return ErrInvalidLabel
+			}
+			if labelCount < maxDNSLabels {
+				totalLabelOffsets[labelCount] = uint8(labelStart)
+			}
+			labelCount++
+			if lLen > maxLabelLen {
+				maxLabelLen = lLen
+			}
+			ev.Name[i] = '.'
+			labelStart = i + 1
+			continue
+		}
+		if b >= 'A' && b <= 'Z' {
+			b += 32
+		}
+		if !dnsLabelByte(b) {
+			if !isDNSEncodingByte(b) {
+				return ErrInvalidLabel
+			}
+			ev.HasEncoding = true
+		}
+		ev.Name[i] = b
+	}
+
+	lastLen := n - labelStart
+	if lastLen == 0 || lastLen > 63 {
+		return ErrInvalidLabel
+	}
+	if labelCount < maxDNSLabels {
+		totalLabelOffsets[labelCount] = uint8(labelStart)
+	}
+	labelCount++
+	if lastLen > maxLabelLen {
+		maxLabelLen = lastLen
+	}
+
+	ev.QType = qtype
+	ev.QClass = 1
+	ev.NameLen = uint8(n)
+	ev.LabelCount = uint8(labelCount)
+	ev.MaxLabelLen = uint8(maxLabelLen)
+
+	populateDomainParts(ev, n, labelCount, &totalLabelOffsets)
+	return nil
 }
 
 // FQDN retourne le nom canonique sous forme de chaîne sans allocation tas (0 B/op).
@@ -93,7 +201,19 @@ func (e *DNSEvent) Sub() string {
 // ambiguously flattening arbitrary binary labels. Compression is limited to one hop.
 // Parent is only the last two labels, NOT a public-suffix/registrable domain.
 // Timestamp and ClientIP are caller metadata; no client identity is inferred here.
-func ParseDNSQuery(raw []byte, ev *DNSEvent) (err error) {
+func ParseDNSQuery(raw []byte, ev *DNSEvent) error {
+	return parseDNSQueryWire(raw, ev, false)
+}
+
+// ParseDNSQueryTolerant applique exactement les rejets structurels de
+// ParseDNSQuery (longueur < 12, label > 63, nom > 253, pointeur invalide,
+// chaîné ou bouclé, question hors contrat) mais admet les octets hors LDH d'un
+// cadrage valide et les relève intégralement dans ev.Grammar. Zéro allocation.
+func ParseDNSQueryTolerant(raw []byte, ev *DNSEvent) error {
+	return parseDNSQueryWire(raw, ev, true)
+}
+
+func parseDNSQueryWire(raw []byte, ev *DNSEvent, tolerant bool) (err error) {
 	if ev == nil {
 		return ErrQuestionContract
 	}
@@ -143,6 +263,9 @@ func ParseDNSQuery(raw []byte, ev *DNSEvent) (err error) {
 			if ptrOffset >= len(raw) || ptrOffset < 12 {
 				return ErrInvalidLabel
 			}
+			if ptrOffset == offset-2 {
+				return ErrLoopPointer
+			}
 			pOffset := ptrOffset
 			for {
 				if pOffset >= len(raw) {
@@ -176,17 +299,13 @@ func ParseDNSQuery(raw []byte, ev *DNSEvent) (err error) {
 				if pLen > maxLabelLen {
 					maxLabelLen = pLen
 				}
-				for i := 0; i < pLen; i++ {
-					b := raw[pOffset+i]
-					if b >= 'A' && b <= 'Z' {
-						b += 32 // Normalisation ASCII minuscule in-place
-					}
-					if !dnsLabelByte(b) {
-						return ErrInvalidLabel
-					}
-					ev.Name[outPos] = b
-					outPos++
+				if err := copierLabelQuestion(ev, raw[pOffset:pOffset+pLen], outPos, tolerant); err != nil {
+					return err
 				}
+				if tolerant {
+					observerLabelGrammaire(&ev.Grammar, raw[pOffset:pOffset+pLen], labelCount-1)
+				}
+				outPos += pLen
 				pOffset += pLen
 			}
 			break
@@ -217,17 +336,13 @@ func ParseDNSQuery(raw []byte, ev *DNSEvent) (err error) {
 		}
 		labelCount++
 
-		for i := 0; i < lenByte; i++ {
-			b := raw[offset+i]
-			if b >= 'A' && b <= 'Z' {
-				b += 32 // Normalisation minuscule
-			}
-			if !dnsLabelByte(b) {
-				return ErrInvalidLabel
-			}
-			ev.Name[outPos] = b
-			outPos++
+		if err := copierLabelQuestion(ev, raw[offset:offset+lenByte], outPos, tolerant); err != nil {
+			return err
 		}
+		if tolerant {
+			observerLabelGrammaire(&ev.Grammar, raw[offset:offset+lenByte], labelCount-1)
+		}
+		outPos += lenByte
 		offset += lenByte
 	}
 
@@ -248,31 +363,105 @@ func ParseDNSQuery(raw []byte, ev *DNSEvent) (err error) {
 	ev.NameLen = uint8(outPos)
 	ev.LabelCount = uint8(labelCount)
 	ev.MaxLabelLen = uint8(maxLabelLen)
+	if tolerant {
+		finaliserGrammaire(&ev.Grammar)
+	}
 
-	// Extraction déterministe du Domaine Parent et du Sous-domaine
-	// Ex: "a1b2c3.cloudtelemetry.sophosxl.com" (4 labels)
-	// Parent = "sophosxl.com" (2 derniers labels)
-	// Subdomain = "a1b2c3.cloudtelemetry"
+	populateDomainParts(ev, outPos, labelCount, &totalLabelOffsets)
+	return nil
+}
+
+// copierLabelQuestion recopie un label filaire en minuscules ASCII dans ev.Name
+// à partir de debutSortie. En mode strict, le premier octet hors LDH, '_' et
+// '+/=' rend ErrInvalidLabel, exactement comme la boucle historique.
+func copierLabelQuestion(ev *DNSEvent, labelBrut []byte, debutSortie int, tolerant bool) error {
+	for indice, octet := range labelBrut {
+		if octet >= 'A' && octet <= 'Z' {
+			octet += 32
+		}
+		if !dnsLabelByte(octet) {
+			if isDNSEncodingByte(octet) {
+				ev.HasEncoding = true
+			} else if !tolerant {
+				return ErrInvalidLabel
+			}
+		}
+		ev.Name[debutSortie+indice] = octet
+	}
+	return nil
+}
+
+func populateDomainParts(ev *DNSEvent, outPos, labelCount int, totalLabelOffsets *[maxDNSLabels]uint8) {
 	if labelCount >= 2 && labelCount-2 < maxDNSLabels {
-		parentStartIdx := int(totalLabelOffsets[labelCount-2])
+		tldIdx := labelCount - 1
+		sldIdx := labelCount - 2
+		if labelCount >= 3 && labelCount-3 < maxDNSLabels {
+			twoLvlStart := int(totalLabelOffsets[labelCount-2])
+			if isTwoLevelPublicSuffix(ev.Name[twoLvlStart:outPos]) {
+				tldIdx = labelCount - 2
+				sldIdx = labelCount - 3
+			}
+		}
+
+		parentStartIdx := int(totalLabelOffsets[sldIdx])
+		tldStartIdx := int(totalLabelOffsets[tldIdx])
 		parentLen := outPos - parentStartIdx
-		if parentLen > 0 && parentLen <= 128 {
+		if parentLen > 0 && parentLen <= len(ev.ParentDomain) {
 			copy(ev.ParentDomain[:], ev.Name[parentStartIdx:outPos])
 			ev.ParentDomainLen = uint8(parentLen)
 		}
 
-		subLen := parentStartIdx - 1 // Sans le point séparateur
-		if subLen > 0 && subLen <= len(ev.Subdomain) {
-			copy(ev.Subdomain[:], ev.Name[0:subLen])
-			ev.SubdomainLen = uint8(subLen)
+		if tldStartIdx > parentStartIdx+1 {
+			sldLen := tldStartIdx - 1 - parentStartIdx
+			if sldLen > 0 && sldLen <= len(ev.SLD) {
+				copy(ev.SLD[:], ev.Name[parentStartIdx:tldStartIdx-1])
+				ev.SLDLen = uint8(sldLen)
+			}
+		}
+
+		tldLen := outPos - tldStartIdx
+		if tldLen > 0 && tldLen <= len(ev.TLD) {
+			copy(ev.TLD[:], ev.Name[tldStartIdx:outPos])
+			ev.TLDLen = uint8(tldLen)
+		}
+
+		if parentStartIdx > 1 {
+			subLen := parentStartIdx - 1
+			if subLen > 0 && subLen <= len(ev.Subdomain) {
+				copy(ev.Subdomain[:], ev.Name[0:subLen])
+				ev.SubdomainLen = uint8(subLen)
+			}
 		}
 	} else if labelCount == 1 {
-		copy(ev.ParentDomain[:], ev.Name[:outPos])
-		ev.ParentDomainLen = uint8(outPos)
+		if outPos <= len(ev.ParentDomain) {
+			copy(ev.ParentDomain[:], ev.Name[:outPos])
+			ev.ParentDomainLen = uint8(outPos)
+		}
+		if outPos <= len(ev.SLD) {
+			copy(ev.SLD[:], ev.Name[:outPos])
+			ev.SLDLen = uint8(outPos)
+		}
 		ev.SubdomainLen = 0
 	}
+}
 
-	return nil
+func isTwoLevelPublicSuffix(suffix []byte) bool {
+	switch string(suffix) {
+	case "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk",
+		"com.br", "net.br", "org.br", "gov.br",
+		"com.au", "net.au", "org.au", "edu.au",
+		"co.jp", "ne.jp", "or.jp", "ac.jp",
+		"co.nz", "co.za", "co.in", "co.kr", "co.il", "co.id", "co.th",
+		"com.cn", "net.cn", "org.cn", "com.hk", "com.tw", "com.sg", "com.my",
+		"com.mx", "com.ar", "com.co", "com.pe", "com.tr", "com.ua", "com.pl",
+		"com.eg", "com.sa", "com.ng", "com.pk", "com.vn", "com.ph":
+		return true
+	}
+	return false
+}
+
+func isDNSEncodingByte(b byte) bool {
+	return b == '+' || b == '/' || b == '='
 }
 
 func dnsLabelByte(b byte) bool {

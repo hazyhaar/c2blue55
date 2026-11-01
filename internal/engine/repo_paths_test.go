@@ -54,7 +54,7 @@ func testModuleRoot(t testing.TB) string {
 
 // testWittgensteinDataDir résout l'emplacement des données et disquettes d'évaluation.
 // Il consulte en priorité C2BLUE_DATA_DIR, puis les répertoires testdata/wittgenstein
-// relatifs, puis le chemin historique /devhoros/data/wittgenstein.
+// relatifs, puis le chemin historique /devhoros/c2blue55/wittgenstein.
 func testWittgensteinDataDir(t testing.TB) string {
 	t.Helper()
 	if env := os.Getenv("C2BLUE_DATA_DIR"); env != "" {
@@ -62,6 +62,9 @@ func testWittgensteinDataDir(t testing.TB) string {
 	}
 	root := testModuleRoot(t)
 	candidates := []string{
+		filepath.Join(root, "..", "wittgenstein"),
+		filepath.Join(root, "..", "..", "..", "wittgenstein"),
+		filepath.Join(root, "wittgenstein"),
 		filepath.Join(root, "testdata", "wittgenstein"),
 		filepath.Join(root, "pkg", "c2blue55", "testdata", "wittgenstein"),
 	}

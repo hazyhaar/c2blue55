@@ -1,0 +1,21 @@
+[Unit]
+Description=Capture native du banc serveur DNS et ICMP
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+UMask=0077
+Environment=TZ=UTC
+StateDirectory=c2bench/captures
+StateDirectoryMode=0700
+ExecStart=/usr/bin/tcpdump -i wg0 -nn -s 0 -U -Z root -G 3600 -w /var/lib/c2bench/captures/server-${INVOCATION_ID}-%%Y%%m%%dT%%H%%M%%SZ.pcap "udp port 53 or tcp port 53 or icmp"
+ExecStop=/bin/kill -USR1 $MAINPID
+KillSignal=SIGINT
+KillMode=control-group
+TimeoutStopSec=8s
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

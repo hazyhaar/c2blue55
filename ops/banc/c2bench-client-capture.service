@@ -1,0 +1,21 @@
+[Unit]
+Description=Capture native du banc client DNS et ICMP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+UMask=0077
+Environment=TZ=UTC
+StateDirectory=c2bench/captures
+StateDirectoryMode=0700
+ExecStart=/usr/bin/tcpdump -i any -nn -s 0 -U -Z root -G 3600 -w /var/lib/c2bench/captures/client-${INVOCATION_ID}-%%Y%%m%%dT%%H%%M%%SZ.pcap "udp port 5335 or tcp port 5335 or icmp"
+ExecStop=/bin/kill -USR1 $MAINPID
+KillSignal=SIGINT
+KillMode=control-group
+TimeoutStopSec=8s
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

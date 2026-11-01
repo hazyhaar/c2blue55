@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 	"github.com/hazyhaar/c2slm"
 	"github.com/hazyhaar/c2slm/engine"
 )

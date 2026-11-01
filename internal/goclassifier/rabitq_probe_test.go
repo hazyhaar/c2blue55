@@ -17,7 +17,7 @@ func TestFHT512Orthogonality(t *testing.T) {
 	FHT512(&transformedB)
 
 	var dotOriginal, dotTransformed, normOriginal, normTransformed float32
-	for i := 0; i < RabitqDim; i++ {
+	for i := range RabitqDim {
 		dotOriginal += a[i] * b[i]
 		dotTransformed += transformedA[i] * transformedB[i]
 		normOriginal += a[i] * a[i]
@@ -47,11 +47,11 @@ func TestProjectRabitqDistancePreservation(t *testing.T) {
 	ProjectRabitq(&pb, b)
 
 	var sqOriginal, sqProjected float32
-	for i := 0; i < dim; i++ {
+	for i := range dim {
 		d := a[i] - b[i]
 		sqOriginal += d * d
 	}
-	for i := 0; i < RabitqDim; i++ {
+	for i := range RabitqDim {
 		d := pa[i] - pb[i]
 		sqProjected += d * d
 	}
@@ -63,7 +63,7 @@ func TestProjectRabitqDistancePreservation(t *testing.T) {
 
 func TestQuantizeRabitqKnownVector(t *testing.T) {
 	var v [RabitqDim]float32
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		v[i] = 1
 	}
 	for i := 256; i < RabitqDim; i++ {
@@ -72,7 +72,7 @@ func TestQuantizeRabitqKnownVector(t *testing.T) {
 
 	code := QuantizeRabitq(&v)
 
-	for w := 0; w < 4; w++ {
+	for w := range 4 {
 		if code.Bits[w] != ^uint64(0) {
 			t.Fatalf("word %d = %#x, want all bits set", w, code.Bits[w])
 		}
@@ -94,13 +94,13 @@ func TestQuantizeRabitqKnownVector(t *testing.T) {
 
 func TestHamming512Parity(t *testing.T) {
 	var a, b [RabitqWords]uint64
-	for w := 0; w < RabitqWords; w++ {
+	for w := range RabitqWords {
 		a[w] = uint64(w+1) * 0x9E3779B97F4A7C15
 		b[w] = uint64(w+2) * 0xC2B2AE3D27D4EB4F
 	}
 
 	want := 0
-	for w := 0; w < RabitqWords; w++ {
+	for w := range RabitqWords {
 		x := a[w] ^ b[w]
 		for x != 0 {
 			want += int(x & 1)
@@ -200,7 +200,7 @@ func BenchmarkRabitqProbe512D(b *testing.B) {
 	probe, _ := NewRabitqProbe(2)
 	first := make([]float32, RabitqDim)
 	second := make([]float32, RabitqDim)
-	for i := 0; i < RabitqDim; i++ {
+	for i := range RabitqDim {
 		first[i] = float32((i%13)-6) * 0.25
 		second[i] = float32((i%7)-3) * 0.5
 	}

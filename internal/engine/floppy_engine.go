@@ -18,7 +18,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/goclassifier"
+	"github.com/hazyhaar/c2blue55/internal/goclassifier"
 )
 
 const (
@@ -178,27 +178,27 @@ func LoadFloppyMmap(path string, hmacKey []byte) (*FloppyDisk, error) {
 	}
 
 	// Projection mmap en lecture seule partagée
-	data, err := syscall.Mmap(int(f.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
+	mappedBytes, err := syscall.Mmap(int(f.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
 		f.Close()
 		return nil, fmt.Errorf("c2flop mmap failed: %w", err)
 	}
 
-	disk, err := decodeFloppy(data, hmacKey)
+	disk, err := decodeFloppy(mappedBytes, hmacKey)
 	if err != nil {
-		syscall.Munmap(data)
+		syscall.Munmap(mappedBytes)
 		f.Close()
 		return nil, err
 	}
-	disk.mmapData = data
+	disk.mmapData = mappedBytes
 	disk.file = f
 	return disk, nil
 }
 
 // decodeFloppy valide et décode l'image complète d'une disquette.
-func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
+func decodeFloppy(imageBytes []byte, hmacKey []byte) (*FloppyDisk, error) {
 	var hdr FloppyHeader
-	copy((*[FloppyHeaderSize]byte)(unsafe.Pointer(&hdr))[:], data[:FloppyHeaderSize])
+	copy((*[FloppyHeaderSize]byte)(unsafe.Pointer(&hdr))[:], imageBytes[:FloppyHeaderSize])
 
 	if hdr.Magic != FloppyMagic {
 		return nil, errors.New("c2flop: magie invalide")
@@ -210,7 +210,7 @@ func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
 		return nil, fmt.Errorf("c2flop: dimension %d incompatible", hdr.VectorDim)
 	}
 
-	body := data[FloppyHeaderSize:]
+	body := imageBytes[FloppyHeaderSize:]
 
 	// Contrôle d'intégrité HMAC-SHA256 :
 	// - En mode strict (C2BLUE_REQUIRE_SECURE_KEYS=1 ou C2BLUE_PRODUCTION=1), toute disquette
@@ -232,7 +232,7 @@ func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
 			return nil, ErrFloppyUnsealed
 		}
 		mac := hmac.New(sha256.New, hmacKey)
-		mac.Write(data[:32])
+		mac.Write(imageBytes[:32])
 		mac.Write(body)
 		if !hmac.Equal(mac.Sum(nil), hdr.Seal[:]) {
 			return nil, ErrFloppySeal
@@ -246,69 +246,77 @@ func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
 		return nil, errors.New("c2flop: somme de contrôle CRC32C discordante")
 	}
 
+	const classRecSize = EmbeddingDim + 4 + 4
+	minBodyBytes := uint64(hdr.KwCount)*2 +
+		uint64(hdr.EntryCount)*uint64(codebookEntrySize) +
+		uint64(hdr.HeadClasses)*uint64(classRecSize) +
+		uint64(hdr.ProtoCount)*uint64(floppyProtoRecSize)
+	if minBodyBytes > uint64(len(body)) {
+		return nil, ErrFloppyTruncated
+	}
+
 	disk := &FloppyDisk{Header: hdr}
 	offset := FloppyHeaderSize
 
 	// 1. Mots-clés (KwCount chaînes préfixées par uint16 de longueur)
 	disk.Keywords = make([]string, hdr.KwCount)
 	for i := uint32(0); i < hdr.KwCount; i++ {
-		if offset+2 > len(data) {
+		if offset+2 > len(imageBytes) {
 			return nil, ErrFloppyTruncated
 		}
-		kwLen := int(binary.LittleEndian.Uint16(data[offset : offset+2]))
+		kwLen := int(binary.LittleEndian.Uint16(imageBytes[offset : offset+2]))
 		offset += 2
-		if offset+kwLen > len(data) {
+		if offset+kwLen > len(imageBytes) {
 			return nil, ErrFloppyTruncated
 		}
-		disk.Keywords[i] = string(data[offset : offset+kwLen])
+		disk.Keywords[i] = string(imageBytes[offset : offset+kwLen])
 		offset += kwLen
 	}
 
 	// 2. Centroïdes RaBitQ (EntryCount * 72 octets)
 	entryBytes := int(hdr.EntryCount) * codebookEntrySize
-	if offset+entryBytes > len(data) {
+	if offset+entryBytes > len(imageBytes) {
 		return nil, ErrFloppyTruncated
 	}
 	disk.Entries = make([]CodebookEntry, hdr.EntryCount)
 	for i := uint32(0); i < hdr.EntryCount; i++ {
-		entryData := data[offset+int(i)*codebookEntrySize : offset+(int(i)+1)*codebookEntrySize]
+		entryData := imageBytes[offset+int(i)*codebookEntrySize : offset+(int(i)+1)*codebookEntrySize]
 		decodeCodebookEntry((*[codebookEntrySize]byte)(entryData), &disk.Entries[i])
 	}
 	offset += entryBytes
 
 	// 3. Tête de décision INT8 (HeadClasses * (512 + 4 + 4) = 520 octets)
-	const classRecSize = EmbeddingDim + 4 + 4
 	headBytes := int(hdr.HeadClasses) * classRecSize
-	if offset+headBytes > len(data) {
+	if offset+headBytes > len(imageBytes) {
 		return nil, ErrFloppyTruncated
 	}
 	disk.Head = make([]DecisionClass, hdr.HeadClasses)
 	for i := uint16(0); i < hdr.HeadClasses; i++ {
 		base := offset + int(i)*classRecSize
-		for d := 0; d < EmbeddingDim; d++ {
-			disk.Head[i].Weights[d] = int8(data[base+d])
+		for d := range EmbeddingDim {
+			disk.Head[i].Weights[d] = int8(imageBytes[base+d])
 		}
-		disk.Head[i].Bias = int32(binary.LittleEndian.Uint32(data[base+EmbeddingDim : base+EmbeddingDim+4]))
-		disk.Head[i].QHat = math.Float32frombits(binary.LittleEndian.Uint32(data[base+EmbeddingDim+4 : base+classRecSize]))
+		disk.Head[i].Bias = int32(binary.LittleEndian.Uint32(imageBytes[base+EmbeddingDim : base+EmbeddingDim+4]))
+		disk.Head[i].QHat = math.Float32frombits(binary.LittleEndian.Uint32(imageBytes[base+EmbeddingDim+4 : base+classRecSize]))
 	}
 	offset += headBytes
 
 	// 4. Prototypes d'étalonnage de la sonde conforme L1a
 	protoBytes := int(hdr.ProtoCount) * floppyProtoRecSize
-	if offset+protoBytes > len(data) {
+	if offset+protoBytes > len(imageBytes) {
 		return nil, ErrFloppyTruncated
 	}
 	disk.Prototypes = make([]FloppyPrototype, hdr.ProtoCount)
 	for i := range disk.Prototypes {
 		base := offset + i*floppyProtoRecSize
 		pr := &disk.Prototypes[i]
-		pr.Class = binary.LittleEndian.Uint16(data[base : base+2])
+		pr.Class = binary.LittleEndian.Uint16(imageBytes[base : base+2])
 		if pr.Class > 1 {
 			return nil, fmt.Errorf("c2flop: classe de prototype %d hors {0,1}", pr.Class)
 		}
-		for d := 0; d < EmbeddingDim; d++ {
+		for d := range EmbeddingDim {
 			o := base + 4 + d*4
-			v := math.Float32frombits(binary.LittleEndian.Uint32(data[o : o+4]))
+			v := math.Float32frombits(binary.LittleEndian.Uint32(imageBytes[o : o+4]))
 			if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
 				return nil, fmt.Errorf("c2flop: prototype %d non fini", i)
 			}
@@ -317,7 +325,7 @@ func decodeFloppy(data []byte, hmacKey []byte) (*FloppyDisk, error) {
 	}
 	offset += protoBytes
 
-	if offset != len(data) {
+	if offset != len(imageBytes) {
 		return nil, ErrFloppyTruncated
 	}
 
@@ -378,7 +386,7 @@ func containsSubsliceFold(haystack, needle []byte) bool {
 	}
 	for i := 0; i <= len(haystack)-len(needle); i++ {
 		match := true
-		for j := 0; j < len(needle); j++ {
+		for j := range needle {
 			c1 := haystack[i+j]
 			c2 := needle[j]
 			if c1 != c2 {
@@ -450,9 +458,15 @@ func (d *FloppyDisk) BlockRadius() int {
 // rayon de veto. La recherche bornée abandonne chaque centroïde dès que la
 // distance dépasse le rayon.
 func (d *FloppyDisk) nearThreat(query *[codebookWords]uint64) bool {
-	r := d.BlockRadius()
-	_, dist, found := d.SearchCentroid(query, r)
-	return found && dist <= r
+	return d.nearThreatWithin(query, d.BlockRadius())
+}
+
+func (d *FloppyDisk) nearThreatWithin(query *[codebookWords]uint64, radius int) bool {
+	if d == nil {
+		return false
+	}
+	_, dist, found := d.SearchCentroid(query, radius)
+	return found && dist <= radius
 }
 
 // CalibrateBlockRadius retourne le plus grand rayon r <= FloppyDefaultBlockRadius
@@ -499,7 +513,7 @@ func (d *FloppyDisk) PredictINT8(features []float32) (predictedClass int, maxSco
 	for c := range d.Head {
 		cls := &d.Head[c]
 		var acc int32 = cls.Bias
-		for i := 0; i < EmbeddingDim; i++ {
+		for i := range EmbeddingDim {
 			f := features[i]
 			if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
 				return -1, 0, false
@@ -592,7 +606,7 @@ func SaveFloppyFile(path string, familyID uint16, keywords []string, entries []C
 	const classRecSize = EmbeddingDim + 4 + 4
 	for i := range head {
 		var rec [classRecSize]byte
-		for d := 0; d < EmbeddingDim; d++ {
+		for d := range EmbeddingDim {
 			rec[d] = byte(head[i].Weights[d])
 		}
 		binary.LittleEndian.PutUint32(rec[EmbeddingDim:EmbeddingDim+4], uint32(head[i].Bias))
@@ -604,7 +618,7 @@ func SaveFloppyFile(path string, familyID uint16, keywords []string, entries []C
 	for i := range protos {
 		var rec [floppyProtoRecSize]byte
 		binary.LittleEndian.PutUint16(rec[0:2], protos[i].Class)
-		for d := 0; d < EmbeddingDim; d++ {
+		for d := range EmbeddingDim {
 			binary.LittleEndian.PutUint32(rec[4+d*4:], math.Float32bits(protos[i].Vector[d]))
 		}
 		body = append(body, rec[:]...)
@@ -637,6 +651,10 @@ func SaveFloppyFile(path string, familyID uint16, keywords []string, entries []C
 		return err
 	}
 	if err := f.Chmod(0o644); err != nil {
+		return err
+	}
+	// Le contenu doit être durable avant que le renommage ne publie le nom définitif.
+	if err := f.Sync(); err != nil {
 		return err
 	}
 	if err := f.Close(); err != nil {

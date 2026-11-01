@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 // TestSanitizePromptInput est le test de non-régression de l'injection ChatML et de

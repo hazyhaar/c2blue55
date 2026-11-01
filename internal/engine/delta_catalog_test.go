@@ -55,9 +55,9 @@ func deltaSave(t *testing.T, rules ...DeltaRule) []byte {
 	return buf.Bytes()
 }
 
-func deltaLoad(t *testing.T, data []byte) *DeltaCatalog {
+func deltaLoad(t *testing.T, catalogBytes []byte) *DeltaCatalog {
 	t.Helper()
-	c, err := LoadDeltaCatalog(bytes.NewReader(data), deltaMachine)
+	c, err := LoadDeltaCatalog(bytes.NewReader(catalogBytes), deltaMachine)
 	if err != nil {
 		t.Fatalf("LoadDeltaCatalog: %v", err)
 	}
@@ -86,12 +86,12 @@ func TestDeltaCatalog_Sizes(t *testing.T) {
 		t.Fatalf("tailles: en-tete %d, regle %d", unsafe.Sizeof(DeltaHeader{}), unsafe.Sizeof(DeltaRule{}))
 	}
 	s := deltaSnap(SeverityLow)
-	data := deltaSave(t, deltaRule(1, &s), deltaRule(2, &s))
-	if len(data) != DeltaHeaderSize+2*DeltaRuleSize {
-		t.Fatalf("taille du fichier: %d", len(data))
+	catalogBytes := deltaSave(t, deltaRule(1, &s), deltaRule(2, &s))
+	if len(catalogBytes) != DeltaHeaderSize+2*DeltaRuleSize {
+		t.Fatalf("taille du fichier: %d", len(catalogBytes))
 	}
-	if !bytes.Equal(data[:8], []byte("C2DELTA1")) {
-		t.Fatalf("magie: %q", data[:8])
+	if !bytes.Equal(catalogBytes[:8], []byte("C2DELTA1")) {
+		t.Fatalf("magie: %q", catalogBytes[:8])
 	}
 }
 
@@ -116,23 +116,23 @@ func TestDeltaCatalog_RoundTrip(t *testing.T) {
 // une erreur de structure, jamais un chargement réussi.
 func TestDeltaCatalog_SealCoversEveryByte(t *testing.T) {
 	s := deltaSnap(SeverityLow)
-	data := deltaSave(t, deltaRule(1, &s))
-	for i := range data {
+	catalogBytes := deltaSave(t, deltaRule(1, &s))
+	for i := range catalogBytes {
 		if i >= 24 && i < 56 {
 			continue // le sceau lui-même
 		}
-		bad := bytes.Clone(data)
+		bad := bytes.Clone(catalogBytes)
 		bad[i] ^= 0x01
 		if _, err := LoadDeltaCatalog(bytes.NewReader(bad), deltaMachine); err == nil {
 			t.Fatalf("octet %d altere accepte", i)
 		}
 	}
-	bad := bytes.Clone(data)
+	bad := bytes.Clone(catalogBytes)
 	bad[30] ^= 0xFF
 	if _, err := LoadDeltaCatalog(bytes.NewReader(bad), deltaMachine); !errors.Is(err, ErrDeltaSeal) {
 		t.Fatalf("sceau altere: %v", err)
 	}
-	bad = bytes.Clone(data)
+	bad = bytes.Clone(catalogBytes)
 	bad[DeltaHeaderSize+100] ^= 0x10
 	if _, err := LoadDeltaCatalog(bytes.NewReader(bad), deltaMachine); !errors.Is(err, ErrDeltaSeal) {
 		t.Fatalf("regle alteree: %v", err)
@@ -144,9 +144,9 @@ func TestDeltaCatalog_StructuralErrors(t *testing.T) {
 	good := deltaSave(t, deltaRule(1, &s))
 	mut := func(f func(b []byte)) []byte { b := bytes.Clone(good); f(b); return b }
 	cases := []struct {
-		name string
-		data []byte
-		want error
+		name         string
+		catalogBytes []byte
+		want         error
 	}{
 		{"vide", nil, ErrDeltaCorrupt},
 		{"en-tete tronque", good[:40], ErrDeltaCorrupt},
@@ -157,7 +157,7 @@ func TestDeltaCatalog_StructuralErrors(t *testing.T) {
 		{"trop de regles", mut(func(b []byte) { b[12], b[13], b[14] = 0x01, 0x00, 0x01 }), ErrDeltaTooLarge},
 	}
 	for _, tc := range cases {
-		if _, err := LoadDeltaCatalog(bytes.NewReader(tc.data), deltaMachine); !errors.Is(err, tc.want) {
+		if _, err := LoadDeltaCatalog(bytes.NewReader(tc.catalogBytes), deltaMachine); !errors.Is(err, tc.want) {
 			t.Errorf("%s: %v, attendu %v", tc.name, err, tc.want)
 		}
 	}
@@ -273,7 +273,7 @@ func TestDeltaCatalog_Guards(t *testing.T) {
 func TestDeltaCatalog_NoRuleAbsorbsOneLevel(t *testing.T) {
 	for _, target := range []uint16{0, SeverityLow, SeverityMedium, SeverityHigh} {
 		s := deltaSnap(target)
-		for radius := uint16(0); radius < 8; radius++ {
+		for radius := range uint16(8) {
 			r := deltaRule(1, &s)
 			r.MaxRadius = radius
 			c := deltaLoad(t, deltaSave(t, r))
@@ -408,7 +408,7 @@ func TestEvaluateStateWithDelta(t *testing.T) {
 // jamais dispensé.
 func TestDeltaCatalog_SeverityCannotReachHigh(t *testing.T) {
 	for _, target := range []uint16{0, SeverityLow, SeverityMedium} {
-		for radius := uint16(0); radius < 8; radius++ {
+		for radius := range uint16(8) {
 			s := deltaSnap(target)
 			r := deltaRule(1, &s)
 			r.MaxRadius = radius

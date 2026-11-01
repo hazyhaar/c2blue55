@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // tsStatus qualifie l'horodatage en tête de ligne.
@@ -560,7 +560,7 @@ func isUUID(s string) bool {
 	if len(s) != 36 {
 		return false
 	}
-	for i := 0; i < 36; i++ {
+	for i := range 36 {
 		c := s[i]
 		if i == 8 || i == 13 || i == 18 || i == 23 {
 			if c != '-' {

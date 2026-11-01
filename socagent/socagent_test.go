@@ -8,7 +8,7 @@ import (
 	"time"
 	"uuid"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 func TestComposeV7_BitExact(t *testing.T) {

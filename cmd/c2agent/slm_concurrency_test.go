@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 	"github.com/hazyhaar/c2slm/engine"
 )
 
@@ -67,8 +67,12 @@ func TestRealSLMArbitrator_ConcurrentClose(t *testing.T) {
 	}()
 
 	<-closeStarted
-	// Permettre à l'inférence de se terminer maintenant que Close() est engagé
-	time.Sleep(10 * time.Millisecond)
+	// Attendre que Close() ait ferme arb.stop avant de relacher l'inference.
+	select {
+	case <-arb.stop:
+	case <-time.After(time.Second):
+		t.Fatal("Close() n'a pas engage arb.stop dans le delai imparti")
+	}
 	close(inferenceContinue)
 
 	closeWg.Wait()

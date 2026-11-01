@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // DeltaDescription est la description JSON d'un catalogue de dispenses, que

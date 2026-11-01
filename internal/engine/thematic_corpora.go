@@ -62,26 +62,26 @@ func fnv1a32(s string) uint32 {
 }
 
 // splitPayloadInWindows decoupe un tableau d'octets en fenetres de taille window avec pas stride.
-func splitPayloadInWindows(data []byte, window, stride int) [][]byte {
-	n := len(data)
+func splitPayloadInWindows(rawPayload []byte, window, stride int) [][]byte {
+	n := len(rawPayload)
 	if n == 0 {
 		return nil
 	}
 	if n <= window {
 		win := make([]byte, n)
-		copy(win, data)
+		copy(win, rawPayload)
 		return [][]byte{win}
 	}
 	var out [][]byte
 	for off := 0; off+window <= n; off += stride {
 		win := make([]byte, window)
-		copy(win, data[off:off+window])
+		copy(win, rawPayload[off:off+window])
 		out = append(out, win)
 	}
 	if n > window && (n-window)%stride != 0 {
 		lastOff := n - window
 		win := make([]byte, window)
-		copy(win, data[lastOff:])
+		copy(win, rawPayload[lastOff:])
 		out = append(out, win)
 	}
 	return out
@@ -349,7 +349,7 @@ func BuildThematicDPOCorpus(jsonPath string) (*Codebook, error) {
 		jsonPath = resolveThematicPath("C2BLUE_DPO_PATH", DefaultCyberNativeDPOPath)
 	}
 
-	data, err := os.ReadFile(jsonPath)
+	rawJSON, err := os.ReadFile(jsonPath)
 	if err != nil {
 		return nil, fmt.Errorf("dpo corpus: read %s: %w", jsonPath, err)
 	}
@@ -364,8 +364,8 @@ func BuildThematicDPOCorpus(jsonPath string) (*Codebook, error) {
 
 	var dpoList []dpoEntry
 
-	if uerr := json.Unmarshal(data, &dpoList); uerr != nil {
-		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	if uerr := json.Unmarshal(rawJSON, &dpoList); uerr != nil {
+		scanner := bufio.NewScanner(strings.NewReader(string(rawJSON)))
 		buf := make([]byte, 1<<20)
 		scanner.Buffer(buf, 1<<20)
 		for {
@@ -443,12 +443,12 @@ func BuildThematicFilelessCorpus(testdataDir string) (*Codebook, error) {
 
 	for _, tgt := range targets {
 		p := filepath.Join(testdataDir, tgt.filename)
-		data, err := os.ReadFile(p)
+		fileBytes, err := os.ReadFile(p)
 		if err != nil {
 			continue
 		}
 
-		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+		scanner := bufio.NewScanner(strings.NewReader(string(fileBytes)))
 		lineNum := 0
 		for {
 			if !scanner.Scan() {

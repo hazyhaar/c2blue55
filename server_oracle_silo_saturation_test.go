@@ -3,7 +3,7 @@ package c2blue55
 import (
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // hasBitcode dit si une entrée porte le bitcode de snap.
@@ -222,4 +222,3 @@ func TestSilo_EpochDayZeroCumulates(t *testing.T) {
 		t.Fatalf("jour 0: day=%d active=%d ingested=%d, attendu day=0 active=5 ingested=5", day, active, ingested)
 	}
 }
-

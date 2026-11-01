@@ -7,9 +7,10 @@
 package engine
 
 import (
+	"slices"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/goclassifier"
+	"github.com/hazyhaar/c2blue55/internal/goclassifier"
 )
 
 // Étages de décision de la cascade.
@@ -193,7 +194,7 @@ func (ce *CascadeEngine) EvaluateEventCtx(ev *Probe_event_t, cctx CascadeContext
 	disk := ce.diskFor(ev.Subsystem)
 
 	if ev.Flags&FlagLongPayload == 0 {
-		return ce.evaluateResolved(ev, ev.Payload[:payloadUsed(ev.Payload[:])], cctx, disk, start)
+		return ce.evaluateResolved(ev, ev.Payload[:inlinePayloadUsed(ev.Payload[:])], cctx, disk, start)
 	}
 
 	var page [PageSize]byte
@@ -313,8 +314,12 @@ func (ce *CascadeEngine) evaluateResolved(ev *Probe_event_t, payload []byte, cct
 	if probe != nil {
 		stats, err := probe.Probe(features[:], 0, 1)
 		if err == nil {
-			if stats.Verdict == goclassifier.ProbeConfirm && !disk.nearThreat(&bitcode) {
-				// Confirmé bénin sans ambiguïté, hors du voisinage strict de
+			nearRadius := disk.BlockRadius()
+			if ontoVerdict != OntoVerdictAllow {
+				nearRadius = max(nearRadius, 24)
+			}
+			if stats.Verdict == goclassifier.ProbeConfirm && !disk.nearThreatWithin(&bitcode, nearRadius) {
+				// Confirmé bénin sans ambiguïté, hors du voisinage de
 				// toute attaque réelle de la disquette.
 				v.Action = ce.applyNonSoftening(v.Action, VerdictPass)
 				v.DurationNs = time.Now().UnixNano() - start
@@ -342,7 +347,7 @@ func (ce *CascadeEngine) evaluateResolved(ev *Probe_event_t, payload []byte, cct
 			// d'encodage : la proximité d'un centroïde de tunnel n'y vaut veto
 			// que si la tête ne le certifie pas bénin et conforme (évaluation paresseuse).
 			apexCertified := false
-			if dist <= disk.BlockRadius() && ev.Subsystem == 3 && isApexDomain(payload) {
+			if dist <= max(disk.BlockRadius(), 24) && ev.Subsystem == 3 && isApexDomain(payload) {
 				predClass, _, conforms := disk.PredictINT8(features[:])
 				apexCertified = predClass == 0 && conforms
 			}
@@ -353,7 +358,7 @@ func (ce *CascadeEngine) evaluateResolved(ev *Probe_event_t, payload []byte, cct
 				v.ConfidenceQ8 = uint16((128 - dist) * 2)
 				v.DurationNs = time.Now().UnixNano() - start
 				return v
-			} else if dist > disk.BlockRadius() && dist <= 24 && ontoVerdict != OntoVerdictAllow {
+			} else if dist > disk.BlockRadius() && dist <= 24 && !apexCertified && ontoVerdict != OntoVerdictAllow {
 				// Zone suspecte : mise en quarantaine, sauf sous bénignité
 				// ontologique certifiée, où seule la tête hostile tranche.
 				v.Action = ce.applyNonSoftening(v.Action, VerdictQuarantine)
@@ -508,8 +513,8 @@ func netcatWithExec(cmd []byte) bool {
 // isNetcatBinary reconnaît nc, ncat, netcat et leurs variantes nommées
 // (nc.traditional, nc.openbsd), avec ou sans chemin.
 func isNetcatBinary(tok []byte) bool {
-	for k := len(tok) - 1; k >= 0; k-- {
-		if tok[k] == '/' {
+	for k, t := range slices.Backward(tok) {
+		if t == '/' {
 			tok = tok[k+1:]
 			break
 		}

@@ -116,7 +116,7 @@ var benignAdminCorpus string
 // de corpus/benign_admin_commands.txt).
 func BenignAdminCommands() []string {
 	var out []string
-	for _, line := range strings.Split(benignAdminCorpus, "\n") {
+	for line := range strings.SplitSeq(benignAdminCorpus, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
 			continue

@@ -21,7 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // Sous-systèmes conventionnels portés par les entrées produites. La valeur est
@@ -74,26 +74,26 @@ func (g *forger) readFile(path string) ([]byte, error) {
 }
 
 // forge lit un fichier et rend les entrées de codebook produites, la
-// volumétrie lue et un indicateur de succès. Un fichier vide ne produit aucune
+// volumétrie lue et toute erreur éventuelle. Un fichier vide ne produit aucune
 // fenêtre ; un fichier plus court que la fenêtre produit une fenêtre unique
 // bornée à sa longueur réelle.
-func (g *forger) forge(path string, window, stride int, threatID uint32, subsystem uint16) (out []engine.CodebookEntry, read int, ok bool) {
-	data, err := g.readFile(path)
+func (g *forger) forge(path string, window, stride int, threatID uint32, subsystem uint16) (out []engine.CodebookEntry, read int, err error) {
+	fileBytes, err := g.readFile(path)
 	if err != nil {
-		return nil, 0, false
+		return nil, 0, err
 	}
-	n := len(data)
+	n := len(fileBytes)
 	if n == 0 {
-		return nil, 0, true
+		return nil, 0, nil
 	}
 	if n < window {
-		out = g.appendWindow(out, data, threatID, subsystem)
-		return out, n, true
+		out = g.appendWindow(out, fileBytes, threatID, subsystem)
+		return out, n, nil
 	}
 	for off := 0; off+window <= n; off += stride {
-		out = g.appendWindow(out, data[off:off+window], threatID, subsystem)
+		out = g.appendWindow(out, fileBytes[off:off+window], threatID, subsystem)
 	}
-	return out, n, true
+	return out, n, nil
 }
 
 // appendWindow projette une fenêtre en vecteur 512D, la quantifie en 1-bit
@@ -169,7 +169,40 @@ func (p pathPairs) Swap(i, j int) {
 	p.rel[i], p.rel[j] = p.rel[j], p.rel[i]
 }
 
+func dispatchSubcommand(subcommand string, args []string, output io.Writer) (bool, int, error) {
+	switch subcommand {
+	case "lab-eval":
+		code, err := runLabEval(args, output)
+		return true, code, err
+	case "dns-delta":
+		code, err := runDNSDelta(args, output)
+		return true, code, err
+	case "soa-eval":
+		code, err := runSOAEval(args, output)
+		return true, code, err
+	case "aaaa-eval":
+		code, err := runAAAAEval(args, output)
+		return true, code, err
+	case "icmp-eval":
+		code, err := runICMPEval(args, output)
+		return true, code, err
+	case "encrypted-eval":
+		code, err := runEncryptedEval(args, output)
+		return true, code, err
+	default:
+		return false, 0, nil
+	}
+}
+
 func main() {
+	if len(os.Args) > 1 {
+		if prisEnCharge, code, err := dispatchSubcommand(os.Args[1], os.Args[2:], os.Stdout); prisEnCharge {
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "c2forge: %v\n", err)
+			}
+			os.Exit(code)
+		}
+	}
 	inDir := flag.String("in", "", "Répertoire source à ingérer (obligatoire)")
 	outFile := flag.String("out", "gallery.c2book", "Chemin du fichier .c2book en sortie")
 	window := flag.Int("window", engine.FeaturePayloadBytes, "Taille de la fenêtre en octets (1..96)")
@@ -347,7 +380,7 @@ func main() {
 	}
 
 	if *inDir == "" {
-		fmt.Fprintln(os.Stderr, "c2forge: le drapeau -in est obligatoire (ou -thematic-all, -thematic-*, -cross-stacks, -flaws, -oracle-*, -delta-compile)")
+		fmt.Fprintln(os.Stderr, "c2forge: le drapeau -in est obligatoire (ou -thematic-all, -thematic-*, -cross-stacks, -flaws, -oracle-*, -delta-compile ; sous-commandes soa-eval, aaaa-eval, icmp-eval)")
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -385,25 +418,22 @@ func main() {
 
 	results := make([][]engine.CodebookEntry, len(abs))
 	var (
-		next     int64
-		filesOK  int64
-		filesErr int64
-		bytesOK  int64
+		next          atomic.Int64
+		filesOK       int64
+		filesErr      int64
+		bytesOK       int64
+		forgeErrMu    sync.Mutex
+		firstForgeErr error
 	)
-	work := *workers
-	if work > len(abs) {
-		work = len(abs)
-	}
+	work := min(*workers, len(abs))
 
 	start := time.Now()
 	var wg sync.WaitGroup
-	for w := 0; w < work; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range work {
+		wg.Go(func() {
 			g := newForger()
 			for {
-				i := int(atomic.AddInt64(&next, 1)) - 1
+				i := int(next.Add(1)) - 1
 				if i >= len(abs) {
 					return
 				}
@@ -411,19 +441,29 @@ func main() {
 				if id == 0 {
 					id = fnv1a32(rel[i])
 				}
-				entries, read, ok := g.forge(abs[i], *window, *stride, id, sub)
-				if !ok {
+				entries, read, forgeErr := g.forge(abs[i], *window, *stride, id, sub)
+				if forgeErr != nil {
 					atomic.AddInt64(&filesErr, 1)
+					forgeErrMu.Lock()
+					if firstForgeErr == nil {
+						firstForgeErr = fmt.Errorf("%s: %w", abs[i], forgeErr)
+					}
+					forgeErrMu.Unlock()
 					continue
 				}
 				results[i] = entries
 				atomic.AddInt64(&filesOK, 1)
 				atomic.AddInt64(&bytesOK, int64(read))
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	elapsed := time.Since(start)
+
+	if filesErr > 0 {
+		fmt.Fprintf(os.Stderr, "c2forge: %d fichier(s) illisible(s) lors de l'ingestion (%v)\n", filesErr, firstForgeErr)
+		os.Exit(1)
+	}
 
 	total := 0
 	for _, r := range results {

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -108,12 +109,11 @@ func TestAtomicReputation_ConcurrentHotReload(t *testing.T) {
 
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
+	var lecturesEffectuees atomic.Int64
 
 	// 4 goroutines de lecture intensive
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			for {
 				select {
 				case <-stop:
@@ -121,9 +121,10 @@ func TestAtomicReputation_ConcurrentHotReload(t *testing.T) {
 				default:
 					_, _ = ar.Match("cloudtelemetry.sophosxl.com")
 					_, _ = ar.Match("random.domain.net")
+					lecturesEffectuees.Add(1)
 				}
 			}
-		}()
+		})
 	}
 
 	// Rechargement atomique de la table avec une nouvelle liste
@@ -131,7 +132,10 @@ func TestAtomicReputation_ConcurrentHotReload(t *testing.T) {
 		{Domain: "sophosxl.com", Classification: RepClassAllowVendor, MatchKind: MatchSubtree},
 		{Domain: "threatfox-c2.biz", Classification: RepClassBlockC2, MatchKind: MatchSubtree},
 	}
-	time.Sleep(10 * time.Millisecond)
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for lecturesEffectuees.Load() < 64 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 
 	if err := ar.ReloadFromEntries(newEntries); err != nil {
 		t.Fatalf("ReloadFromEntries: %v", err)

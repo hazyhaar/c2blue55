@@ -13,11 +13,12 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 func resolveDefaultModelPath() string {
@@ -38,9 +39,30 @@ func resolveDefaultModelPath() string {
 	return "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
 }
 
+func aiguillerCommande(args []string) (pris bool, code int) {
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return false, 0
+	}
+	switch args[0] {
+	case "ingest":
+		return true, RunAgentCLI(args[1:])
+	case "record":
+		return true, RunAgentRecordCLI(args[1:])
+	case "observe", "replay":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return true, RunBenchCLI(ctx, args[0], args[1:], os.Stdout, os.Stderr)
+	default:
+		fmt.Fprintln(os.Stderr, "c2agent: sous-commande inconnue")
+		return true, 2
+	}
+}
+
 func main() {
+	if pris, code := aiguillerCommande(os.Args[1:]); pris {
+		os.Exit(code)
+	}
 	listenAddr := flag.String("listen", "127.0.0.1:5353", "Adresse d'écoute UDP DNS passive")
-	modelPath := flag.String("model", resolveDefaultModelPath(), "Chemin des poids SLM GGUF (Qwen2.5-0.5B-Instruct Q4_K_M ou env C2BLUE_MODEL_PATH)")
 	logPath := flag.String("log", "c2_events.jsonl", "Chemin du journal d'audit JSONL append-only")
 	syncHours := flag.Int("sync-hours", 24, "Fréquence de resynchronisation des référentiels (heures)")
 	verbose := flag.Bool("v", false, "Mode verbeux (affiche chaque décision en direct)")
@@ -94,17 +116,14 @@ func main() {
 		fmt.Println("[SYNC] Aucune source configuree; seeds locaux uniquement, sans actualisation distante")
 	}
 
-	// 3. Initialisation du Moteur SLM In-Process (Qwen2.5-0.5B-Instruct Q4_K_M)
-	var arbitrator c2blue55.SLMArbitrator
-	realArb, err := NewRealSLMArbitrator(*modelPath)
-	if err == nil {
-		fmt.Printf("[SLM] Modele charge (%s); RSS non mesure\n", *modelPath)
-		defer realArb.Close()
-		arbitrator = realArb
-	} else {
-		fmt.Fprintf(os.Stderr, "[SLM WARN] Modèle introuvable à %s (%v) — bascule sur arbitre expert local\n", *modelPath, err)
-		arbitrator = &localExpertArbitrator{}
+	// 3. Initialisation de l'arbitre à encodeur pur Go (CGO=0, passe unique).
+	arbitrator, err := NewPureGoEncoderArbitrator(pipeline)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: impossible d'initialiser l'arbitre encodeur: %v\n", err)
+		os.Exit(1)
 	}
+	defer arbitrator.Close()
+	fmt.Println("[ENCODEUR] Arbitre d'encodage pur Go actif (micro-noyau logit softmax, sans poids autoregressif)")
 
 	pipeline.StartArbitratorWorker(ctx, arbitrator, func(inc c2blue55.SLMIncident, finalVerdict string, conf float64, reason string) {
 		fmt.Printf("[ARBITRAGE SLM] FQDN=%s | Verdict=%s | Confiance=%.2f | Motif=%s\n",
@@ -129,9 +148,9 @@ func main() {
 	fmt.Println("[c2agent] Observation UDP passive uniquement: aucune capture generale, resolution, transmission ou protection active; aucun blocage reseau")
 
 	// Compteurs atomiques de métrologie
-	var countFastPass uint64
-	var countFastDrop uint64
-	var countEscalated uint64
+	var countFastPass atomic.Uint64
+	var countFastDrop atomic.Uint64
+	var countEscalated atomic.Uint64
 
 	// Capture des signaux d'arrêt
 	sigChan := make(chan os.Signal, 1)
@@ -166,15 +185,15 @@ func main() {
 
 		switch res.Decision {
 		case c2blue55.DecisionFastPass:
-			atomic.AddUint64(&countFastPass, 1)
+			countFastPass.Add(1)
 			if *verbose && res.MatchedDomain != "" {
 				fmt.Printf("[PASS] %s (Raison: %d)\n", res.MatchedDomain, res.MatchedCategory)
 			}
 		case c2blue55.DecisionFastDrop:
-			atomic.AddUint64(&countFastDrop, 1)
+			countFastDrop.Add(1)
 			fmt.Printf("[OBSERVATION: REFUS RECOMMANDE, NON APPLIQUE] %s (correspondance reputation)\n", res.MatchedDomain)
 		case c2blue55.DecisionEscalateSLM:
-			atomic.AddUint64(&countEscalated, 1)
+			countEscalated.Add(1)
 			if res.Incident != nil {
 				fmt.Printf("[GREY ZONE ESCALADE] %s (Entropie: %.2f bits, Jitter: %d%%, Indicateur: %s)\n",
 					res.Incident.FQDN, res.Incident.EntropyBits, res.Incident.JitterPct, res.Incident.SuspectedIndicator)
@@ -209,12 +228,12 @@ func loadSources(path string) ([]c2blue55.ReputationSource, error) {
 	if path == "" {
 		return nil, nil
 	}
-	data, err := os.ReadFile(path)
+	rawJSON, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	var sources []c2blue55.ReputationSource
-	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder := json.NewDecoder(bytes.NewReader(rawJSON))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&sources); err != nil {
 		return nil, err
@@ -248,4 +267,78 @@ func localHITLResponse(inc *c2blue55.SLMIncident, verdict string, confidence flo
 		HumanSummary:      c2blue55.BuildHumanSummary(inc),
 		RecommendedAction: c2blue55.RecommendedActionForVerdict(verdict),
 	}
+}
+
+// RunAgentCLI exécute le mode hors-ligne d'ingestion PCAP DNS complète (--pcap, --manifest, --audit-out).
+func RunAgentCLI(args []string) int {
+	fs := flag.NewFlagSet("c2agent-cli", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	pcapPath := fs.String("pcap", "", "Chemin du fichier PCAP DNS à ingérer")
+	manifestPath := fs.String("manifest", "", "Chemin optionnel du manifeste de campagne JSON")
+	auditOut := fs.String("audit-out", "", "Chemin de sortie du journal d'audit JSONL")
+	if err := fs.Parse(args); err != nil || *pcapPath == "" {
+		return 2
+	}
+	if *manifestPath != "" {
+		if _, err := os.Stat(*manifestPath); err != nil {
+			return 2
+		}
+	}
+
+	pipe, err := c2blue55.NewPipeline(c2blue55.PipelineConfig{LogPath: *auditOut}, nil)
+	if err != nil {
+		return 1
+	}
+	defer pipe.Close()
+
+	var escalated, passed int
+	stats, err := c2blue55.ReadPCAPDNSMessages(*pcapPath, func(meta c2blue55.PCAPMessageMeta, msg *c2blue55.DNSMessage) error {
+		qname := string(msg.QName[:msg.QNameLen])
+		if qname == "" {
+			passed++
+			return nil
+		}
+		parent := string(msg.ParentDomain[:msg.ParentDomainLen])
+		sub := string(msg.Subdomain[:msg.SubdomainLen])
+		var rdata []byte
+		if msg.AnswerCount > 0 {
+			rdata = msg.Answers[0].RData[:msg.Answers[0].RDataLen]
+		}
+		if len(rdata) > 200 || len(sub) >= 32 {
+			escalated++
+		} else {
+			passed++
+		}
+		_ = parent
+		return nil
+	})
+	if err != nil || stats.TotalPackets == 0 {
+		return 1
+	}
+
+	if *auditOut != "" {
+		rec := map[string]any{
+			"pcap":            *pcapPath,
+			"total_packets":   stats.TotalPackets,
+			"decoded_queries": stats.DecodedQueries,
+			"decoded_replies": stats.DecodedReplies,
+			"malformed_count": stats.MalformedCount,
+			"passed":          passed,
+			"escalated":       escalated,
+		}
+		b, err := json.Marshal(rec)
+		if err != nil {
+			return 1
+		}
+		f, err := os.OpenFile(*auditOut, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return 1
+		}
+		_, werr := f.Write(append(b, '\n'))
+		cerr := f.Close()
+		if werr != nil || cerr != nil {
+			return 1
+		}
+	}
+	return 0
 }

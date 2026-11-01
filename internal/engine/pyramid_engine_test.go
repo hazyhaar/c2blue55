@@ -54,9 +54,9 @@ func pyrSave(t testing.TB, scale uint16, protos ...PyramidPrototype) []byte {
 	return buf.Bytes()
 }
 
-func pyrLoad(t testing.TB, data []byte) *Pyramid {
+func pyrLoad(t testing.TB, pyramidBytes []byte) *Pyramid {
 	t.Helper()
-	p, err := LoadPyramid(bytes.NewReader(data), pyrMachine)
+	p, err := LoadPyramid(bytes.NewReader(pyramidBytes), pyrMachine)
 	if err != nil {
 		t.Fatalf("LoadPyramid: %v", err)
 	}
@@ -122,12 +122,12 @@ func TestPyramid_SizesAndLayout(t *testing.T) {
 		}
 	}
 	s := deltaSnap(SeverityLow)
-	data := pyrSave(t, DeltaScale7d, pyrProto(&s, 8), pyrProto(&s, 4))
-	if len(data) != PyramidHeaderSize+2*PyramidPrototypeSize {
-		t.Fatalf("taille du fichier: %d", len(data))
+	pyramidBytes := pyrSave(t, DeltaScale7d, pyrProto(&s, 8), pyrProto(&s, 4))
+	if len(pyramidBytes) != PyramidHeaderSize+2*PyramidPrototypeSize {
+		t.Fatalf("taille du fichier: %d", len(pyramidBytes))
 	}
-	if !bytes.Equal(data[:8], []byte("C2PYRAM1")) {
-		t.Fatalf("magie: %q", data[:8])
+	if !bytes.Equal(pyramidBytes[:8], []byte("C2PYRAM1")) {
+		t.Fatalf("magie: %q", pyramidBytes[:8])
 	}
 }
 
@@ -152,13 +152,13 @@ func TestPyramid_RoundTrip(t *testing.T) {
 // une erreur de structure, jamais un chargement réussi.
 func TestPyramid_SealCoversEveryByte(t *testing.T) {
 	s := deltaSnap(SeverityLow)
-	data := pyrSave(t, DeltaScale30d, pyrProto(&s, 8), pyrProto(&s, 2))
-	for i := range data {
+	pyramidBytes := pyrSave(t, DeltaScale30d, pyrProto(&s, 8), pyrProto(&s, 2))
+	for i := range pyramidBytes {
 		if i >= 32 && i < 64 {
 			continue // le sceau lui-même
 		}
 		for _, flip := range []byte{0x01, 0x80} {
-			bad := bytes.Clone(data)
+			bad := bytes.Clone(pyramidBytes)
 			bad[i] ^= flip
 			if _, err := LoadPyramid(bytes.NewReader(bad), pyrMachine); err == nil {
 				t.Fatalf("octet %d altere (0x%02x) accepte", i, flip)
@@ -166,14 +166,14 @@ func TestPyramid_SealCoversEveryByte(t *testing.T) {
 		}
 	}
 	for _, i := range []int{32, 50, 63} {
-		bad := bytes.Clone(data)
+		bad := bytes.Clone(pyramidBytes)
 		bad[i] ^= 0xFF
 		if _, err := LoadPyramid(bytes.NewReader(bad), pyrMachine); !errors.Is(err, ErrPyramidSeal) {
 			t.Fatalf("sceau altere a l'octet %d: %v", i, err)
 		}
 	}
-	for _, i := range []int{PyramidHeaderSize + 3, PyramidHeaderSize + 90, len(data) - 1} {
-		bad := bytes.Clone(data)
+	for _, i := range []int{PyramidHeaderSize + 3, PyramidHeaderSize + 90, len(pyramidBytes) - 1} {
+		bad := bytes.Clone(pyramidBytes)
 		bad[i] ^= 0x10
 		if _, err := LoadPyramid(bytes.NewReader(bad), pyrMachine); !errors.Is(err, ErrPyramidSeal) {
 			t.Fatalf("prototype altere a l'octet %d: %v", i, err)
@@ -186,9 +186,9 @@ func TestPyramid_StructuralErrors(t *testing.T) {
 	good := pyrSave(t, DeltaScale24h, pyrProto(&s, 8))
 	mut := func(f func(b []byte)) []byte { b := bytes.Clone(good); f(b); return b }
 	cases := []struct {
-		name string
-		data []byte
-		want error
+		name         string
+		pyramidBytes []byte
+		want         error
 	}{
 		{"vide", nil, ErrPyramidCorrupt},
 		{"en-tete tronque", good[:40], ErrPyramidCorrupt},
@@ -198,7 +198,7 @@ func TestPyramid_StructuralErrors(t *testing.T) {
 		{"trop de prototypes", mut(func(b []byte) { b[12], b[13], b[14] = 0x01, 0x00, 0x01 }), ErrPyramidTooLarge},
 	}
 	for _, tc := range cases {
-		if _, err := LoadPyramid(bytes.NewReader(tc.data), pyrMachine); !errors.Is(err, tc.want) {
+		if _, err := LoadPyramid(bytes.NewReader(tc.pyramidBytes), pyrMachine); !errors.Is(err, tc.want) {
 			t.Errorf("%s: %v, attendu %v", tc.name, err, tc.want)
 		}
 	}

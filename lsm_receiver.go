@@ -24,7 +24,7 @@ import (
 	"io"
 	"strings"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // LSMRecordSize est la taille fixe d'un enregistrement de la sonde (256 octets).

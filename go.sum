@@ -1,2 +1,2 @@
-github.com/hazyhaar/c2slm v0.0.0-20260916130326-32cf3b996e03 h1:ijDFJZO80xSqYxUCoNr1DJIV0d6L/83hev4JF8BxOdI=
-github.com/hazyhaar/c2slm v0.0.0-20260916130326-32cf3b996e03/go.mod h1:b3Iqxc9TVMqdKdHhUSCPjDKRD+itD+C5jGszjgdX8BM=
+golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=

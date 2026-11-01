@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // v3WriteDay écrit dans dir la tranche d'un jour avec la version d'en-tête

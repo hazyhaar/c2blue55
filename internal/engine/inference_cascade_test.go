@@ -110,7 +110,7 @@ func TestInferenceCascade_ArenaFailClosed(t *testing.T) {
 	if v := cascade.EvaluateEvent(&benignPrefix); v.Action != VerdictBlock {
 		t.Fatalf("avant recyclage : action=%d, attendu Block (mot-clé hors préfixe)", v.Action)
 	}
-	for i := 0; i < ArenaCapacity; i++ {
+	for range ArenaCapacity {
 		var w Probe_event_t
 		pool.StorePayload(&w, []byte(strings.Repeat("x", 200)))
 	}

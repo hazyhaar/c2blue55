@@ -28,9 +28,9 @@ func TestTemporalTracker_BeaconDetection(t *testing.T) {
 	var lastJitter uint16
 	var lastCount uint16
 	for _, ts := range c2Timestamps {
-		jitter, _, count := tracker.RecordQuery(domain, "sync", ts)
+		jitter, _, queryCount := tracker.RecordQuery(domain, "sync", ts)
 		lastJitter = jitter
-		lastCount = count
+		lastCount = queryCount
 	}
 
 	if lastCount != 8 {
@@ -75,7 +75,7 @@ func TestTemporalTracker_UniqueSubdomainsBloom(t *testing.T) {
 	// Le filtre 256 bits à deux fonctions de hachage ne doit produire aucune collision : le
 	// comptage des sous-domaines uniques doit être exact, et non plus sous-estimé comme avec
 	// l'ancien filtre 64 bits saturé dès 6 à 8 entrées.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		sub := fmt.Sprintf("chunk%d.payload", i)
 		_, uniqueSubs, _ := tracker.RecordQuery(domain, sub, baseTime+uint32(i*10))
 		if uniqueSubs != uint16(i+1) {
@@ -96,7 +96,7 @@ func TestTemporalTracker_UniqueSubdomainsBloom(t *testing.T) {
 func findSameSlotDomains(t *testing.T) (string, string) {
 	t.Helper()
 	seen := make(map[uint64]string, MaxTrackedDomains)
-	for i := 0; i < MaxTrackedDomains+8; i++ {
+	for i := range MaxTrackedDomains + 8 {
 		d := fmt.Sprintf("same-slot-candidate-%d.attacker.net", i)
 		idx := FNV1a64String(d) % MaxTrackedDomains
 		if prev, ok := seen[idx]; ok {
@@ -145,20 +145,20 @@ func TestTemporalTracker_WindowExpiration(t *testing.T) {
 	domain := "dormant-beacon.attacker.net"
 	base := uint32(1700000000)
 
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		tracker.RecordQuery(domain, "sync", base+uint32(i*60))
 	}
 
 	// Réapparition après 3601 secondes d'inactivité : la fenêtre est purgée.
 	lastSeen := base + uint32(5*60)
-	_, _, count := tracker.RecordQuery(domain, "sync", lastSeen+3601)
-	if count != 1 {
-		t.Errorf("count = %d après péremption, attendu 1 (fenêtre non purgée)", count)
+	_, _, queryCount := tracker.RecordQuery(domain, "sync", lastSeen+3601)
+	if queryCount != 1 {
+		t.Errorf("count = %d après péremption, attendu 1 (fenêtre non purgée)", queryCount)
 	}
 
 	// À l'inverse, une réapparition sous le seuil conserve l'historique.
 	tracker2 := NewTemporalTracker()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		tracker2.RecordQuery("keep-window.net", "sync", base+uint32(i*60))
 	}
 	_, _, count2 := tracker2.RecordQuery("keep-window.net", "sync", base+3600)
@@ -189,7 +189,7 @@ func TestTemporalTracker_ZeroAllocation(t *testing.T) {
 func findCollidingDomainsWithStep(t *testing.T) (domA, domB string, homeIdx uint64, step int) {
 	t.Helper()
 	seen := make(map[uint64]string)
-	for i := 0; i < 500000; i++ {
+	for i := range 500000 {
 		d := fmt.Sprintf("disperse-%d.attacker.net", i)
 		h := FNV1a64String(d)
 		idx := h % MaxTrackedDomains

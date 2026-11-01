@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/socagent"
+	"github.com/hazyhaar/c2blue55"
+	"github.com/hazyhaar/c2blue55/socagent"
 )
 
 const (
@@ -187,10 +187,7 @@ func cpuDelta(prev, cur cpuSnap) float64 {
 		return 0
 	}
 	dTot := cTot - pTot
-	dIdle := cIdle - pIdle
-	if dIdle > dTot {
-		dIdle = dTot
-	}
+	dIdle := min(cIdle-pIdle, dTot)
 	pct := 100 * float64(dTot-dIdle) / float64(dTot)
 	if pct < 0 {
 		return 0
@@ -260,6 +257,7 @@ func scanRealProcesses(ch *c2blue55.Channel) []ProcEvent {
 	incMu.Unlock()
 	ents, err := os.ReadDir("/proc")
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "procfs scan unavailable: %v\n", err)
 		return nil
 	}
 	raw := make([]ProcEvent, 0, 64)
@@ -569,6 +567,7 @@ func (a *arena) collect() {
 func countProcDirs() int {
 	ents, err := os.ReadDir("/proc")
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "procfs count unavailable: %v\n", err)
 		return 0
 	}
 	n := 0
@@ -580,7 +579,7 @@ func countProcDirs() int {
 	return n
 }
 
-func (a *arena) handler() http.Handler {
+func (a *arena) httpHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", a.serveIndex)
 	mux.HandleFunc("GET /events", a.serveEvents)
@@ -701,7 +700,7 @@ func main() {
 	}
 	a := newArena()
 	defer a.close()
-	server := &http.Server{Addr: *addr, Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 16 << 10}
+	server := &http.Server{Addr: *addr, Handler: a.httpHandler(), ReadHeaderTimeout: 5 * time.Second, MaxHeaderBytes: 16 << 10}
 	if err := server.ListenAndServe(); err != nil {
 		fmt.Fprintf(os.Stderr, "c2blue-arena-web: %v\n", err)
 		os.Exit(1)

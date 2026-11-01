@@ -1,0 +1,12 @@
+{
+  "pcap": "testdata/i03-20261029/redhost-icmp-20261029T160107Z.pcap",
+  "sha256": "4ad300bb7593c127bc5c034f74a863f7f03954f5ee84c2a4516f6ffca3430b44",
+  "ipv4_packets": 180,
+  "echo_requests": 70,
+  "echo_replies": 110,
+  "fires": 40,
+  "asymmetric_fires": 40,
+  "unsolicited_fires": 0,
+  "packets_to_first_fire": 43,
+  "first_fire_ts_ns": 1793289674474898000
+}

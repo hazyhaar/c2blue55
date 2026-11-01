@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 var (
@@ -48,6 +48,9 @@ type Pipeline struct {
 	tracker *TemporalTracker
 	logFile *os.File
 	logMu   sync.Mutex
+
+	// Le catalogue DNS et son verrou appartiennent exclusivement à ce pipeline.
+	dnsMessages pipeMsgState
 
 	// File d'attente bornée pour l'arbitrage SLM asynchrone
 	slmQueue          chan SLMIncident
@@ -161,9 +164,7 @@ func NewPipeline(cfg PipelineConfig, repTable *ReputationTable) (*Pipeline, erro
 	}
 	if f != nil {
 		p.auditQueue = make(chan auditRecord, 64)
-		p.auditWG.Add(1)
-		go func() {
-			defer p.auditWG.Done()
+		p.auditWG.Go(func() {
 			encoder := json.NewEncoder(f)
 			for entry := range p.auditQueue {
 				if err := encoder.Encode(entry); err != nil {
@@ -173,7 +174,7 @@ func NewPipeline(cfg PipelineConfig, repTable *ReputationTable) (*Pipeline, erro
 					p.logMu.Unlock()
 				}
 			}
-		}()
+		})
 	}
 	return p, nil
 }
@@ -245,7 +246,7 @@ func (p *Pipeline) EvaluatePacket(rawPacket []byte, nowSec uint32) (EvaluationRe
 	protocolOverBound := protocolLabelPresent && !protocolBounded
 
 	// 4. Échelon 4 : Suivi Temporel en RAM (Beaconing Jitter & Prolifération)
-	jitter, uniqueSubs, count := p.tracker.RecordQuery(parent, sub, nowSec)
+	jitter, uniqueSubs, queryCount := p.tracker.RecordQuery(parent, sub, nowSec)
 	res.JitterPct = jitter
 	res.UniqueSubdomains = uniqueSubs
 
@@ -261,7 +262,7 @@ func (p *Pipeline) EvaluatePacket(rawPacket []byte, nowSec uint32) (EvaluationRe
 	// - OU Type exotique volumineux (TypeNULL/TypeCNAME, vecteurs de tunnelisation)
 	isHexOrB64Dense := (res.PayloadClass == 2 || res.PayloadClass == 3) && (ev.SubdomainLen >= 15 || ev.NameLen >= 25)
 	isHighEntropy := res.EntropyQ8 >= p.cfg.EntropyThresholdQ8 && (ev.SubdomainLen >= 15 || ev.NameLen >= 25)
-	isBeaconing := jitter <= p.cfg.BeaconJitterMax && count >= 4
+	isBeaconing := jitter <= p.cfg.BeaconJitterMax && queryCount >= 4
 	isSubdomainFlood := uniqueSubs >= p.cfg.UniqueSubThreshold
 	isTunnelRecord := (ev.QType == TypeTXT || ev.QType == TypeNULL) && ev.NameLen >= 40
 	isDeepMultilabel := ev.LabelCount >= 5 || ev.SubdomainLen >= 35
@@ -310,7 +311,7 @@ func (p *Pipeline) EvaluatePacket(rawPacket []byte, nowSec uint32) (EvaluationRe
 			PayloadClass:       res.PayloadClass,
 			JitterPct:          jitter,
 			UniqueSubdomains:   uniqueSubs,
-			QueryCount:         count,
+			QueryCount:         queryCount,
 			SuspectedIndicator: indicator,
 		}
 		res.Decision = DecisionEscalateSLM
@@ -433,7 +434,7 @@ func BuildHumanSummary(inc *SLMIncident) string {
 // Zéro allocation tas (0 B/op).
 func hasConsonantDrought(sub []byte) bool {
 	var alphaLen, vowelCount int
-	for i := 0; i < len(sub); i++ {
+	for i := range sub {
 		c := sub[i]
 		// Traitement insensible à la casse
 		if c >= 'A' && c <= 'Z' {
@@ -493,7 +494,8 @@ func hasProtocolPrefixLabel(sub string) bool {
 	s := strings.ToLower(sub)
 	return hasReservedLabel(s, "_domainkey") ||
 		hasReservedLabel(s, "_dmarc") ||
-		hasReservedLabel(s, "_acme-challenge")
+		hasReservedLabel(s, "_acme-challenge") ||
+		hasReservedLabel(s, "_spf")
 }
 
 // hasReservedLabel vérifie que label forme un label DNS complet dans s, c'est-à-dire
@@ -547,6 +549,8 @@ func (p *Pipeline) logEvent(domain, action, reason string, conf float64) error {
 // callbacks (cancelled work becomes INSUFFICIENT_EVIDENCE), then flushes audit.
 // Arbitrate must honor context; callbacks must return and must not call Close.
 // Without a worker, queued incidents are counted as abandoned, never certified.
+// Its lifecycle lock waits for this pipeline's DNS evaluations before closing;
+// no other pipeline's DNS state is inspected, reassigned or cleared.
 func (p *Pipeline) Close() error {
 	p.closeOnce.Do(func() {
 		p.lifeMu.Lock()
@@ -604,9 +608,7 @@ func (p *Pipeline) StartArbitratorWorker(ctx context.Context, arb SLMArbitrator,
 	}
 	ctx, p.workerCancel = context.WithCancel(ctx)
 	p.workerStarted = true
-	p.workerWG.Add(1)
-	go func() {
-		defer p.workerWG.Done()
+	p.workerWG.Go(func() {
 		defer p.workerCancel()
 		for inc := range p.slmQueue {
 			var resp SLMArbitrationResponse
@@ -637,7 +639,7 @@ func (p *Pipeline) StartArbitratorWorker(ctx context.Context, arb SLMArbitrator,
 				onVerdict(inc, finalVerdict, conf, reason)
 			}
 		}
-	}()
+	})
 }
 
 // EvaluateChannelEvent consomme un événement réseau standard issu d'un anneau de capture.

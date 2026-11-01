@@ -1,0 +1,10 @@
+{
+  "pcap": "testdata/a04-20261029/a04-runB-aaaa.pcap",
+  "sha256": "65c8292512227a9b737fbb4b3af8a0be326d106a5e02c9723d1971bf02b2e1c5",
+  "responses": 200,
+  "aaaa_answers": 200,
+  "fires": 185,
+  "fired_keys": 1,
+  "packets_to_first_fire": 18,
+  "first_fire_ts_ns": 1793293982637532000
+}

@@ -1,0 +1,11 @@
+{
+ "run_id": "ptunnel-ng-20261029T164739Z",
+ "capture_host": "redhost",
+ "capture_interface": "wg0",
+ "tool": "ptunnel-ng 1.42-1 (paquet Ubuntu), mandataire sur redhost (ptunnel-ng -v4, root), client sur redbo (ptunnel-ng -p10.55.0.1 -l8899 -r127.0.0.1 -R8753)",
+ "session": "trois curl http://127.0.0.1:8899/healthz depuis redbo, le premier a rendu le JSON de dnslab-auth \u00e0 travers le tunnel",
+ "packets": 48,
+ "label": "hostile : outil public de tunnel ICMP ; aucun trafic b\u00e9nin dans cette capture",
+ "sha256_pcap": "ca9f79ef797cef21189b8ece552b3472e5270fe03a1fcb38e12058a3abd0acbd",
+ "generated_by": "capture r\u00e9elle ; aucun paquet fabriqu\u00e9"
+}

@@ -126,7 +126,7 @@ func TestCorpusRouter_DispatchFanoutBatch(t *testing.T) {
 		if n != dispatchBatch {
 			t.Fatalf("anneau %d PopBatch = %d, attendu %d", index, n, dispatchBatch)
 		}
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if out[i].Src != uint64(i) {
 				t.Fatalf("anneau %d slot %d Src = %d, attendu %d", index, i, out[i].Src, i)
 			}
@@ -245,7 +245,7 @@ func BenchmarkCorpusRouter_DispatchFanoutBatch(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		rt.DispatchFanoutBatch(batch[:])
-		for ring := 0; ring < CorpusRingCount; ring++ {
+		for ring := range CorpusRingCount {
 			rt.rings[ring].PopBatch(drain[ring][:], consumeBatch)
 		}
 	}

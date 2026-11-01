@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 const p0MachineID = 0xCAFE12345678DEAD

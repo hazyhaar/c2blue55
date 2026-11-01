@@ -62,20 +62,20 @@ func TestLoadOracleDay_SealCoversHeader(t *testing.T) {
 }
 
 // oracleAllocBytes mesure les octets alloués par un LoadOracleDay.
-func oracleAllocBytes(data []byte) (uint64, error) {
+func oracleAllocBytes(oracleBytes []byte) (uint64, error) {
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	_, _, err := LoadOracleDay(bytes.NewReader(data))
+	_, _, err := LoadOracleDay(bytes.NewReader(oracleBytes))
 	runtime.ReadMemStats(&after)
 	return after.TotalAlloc - before.TotalAlloc, err
 }
 
 // Un en-tête qui annonce plus d'entrées que la borne est refusé avant toute allocation.
 func TestLoadOracleDay_RejectsOversizedVectorCount(t *testing.T) {
-	data := sealedOracleDay(t, 1)[:OracleHeaderSize]
-	binary.LittleEndian.PutUint32(data[32:36], 1<<24+1)
-	alloc, err := oracleAllocBytes(data)
+	oracleBytes := sealedOracleDay(t, 1)[:OracleHeaderSize]
+	binary.LittleEndian.PutUint32(oracleBytes[32:36], 1<<24+1)
+	alloc, err := oracleAllocBytes(oracleBytes)
 	if err == nil {
 		t.Fatal("en-tête surdimensionné accepté")
 	}
@@ -87,9 +87,9 @@ func TestLoadOracleDay_RejectsOversizedVectorCount(t *testing.T) {
 // Un fichier tronqué qui annonce un grand nombre d'entrées (sous la borne)
 // ne doit pas provoquer d'allocation proportionnelle à ce nombre annoncé.
 func TestLoadOracleDay_TruncatedBodyDoesNotPreallocate(t *testing.T) {
-	data := sealedOracleDay(t, 1)[:OracleHeaderSize]
-	binary.LittleEndian.PutUint32(data[32:36], 1<<20) // 80 Mio annoncés, 0 fournis
-	alloc, err := oracleAllocBytes(data)
+	oracleBytes := sealedOracleDay(t, 1)[:OracleHeaderSize]
+	binary.LittleEndian.PutUint32(oracleBytes[32:36], 1<<20) // 80 Mio annoncés, 0 fournis
+	alloc, err := oracleAllocBytes(oracleBytes)
 	if err == nil {
 		t.Fatal("fichier tronqué accepté")
 	}
@@ -128,9 +128,9 @@ func TestServerBaselineOracle_ConcurrentIngestQuery(t *testing.T) {
 
 // Le rejet d'un en-tête surdimensionné porte l'erreur contractuelle dédiée.
 func TestLoadOracleDay_OversizedIsErrOracleTooLarge(t *testing.T) {
-	data := sealedOracleDay(t, 1)[:OracleHeaderSize]
-	binary.LittleEndian.PutUint32(data[32:36], OracleMaxVectorCount+1)
-	if _, _, err := LoadOracleDay(bytes.NewReader(data)); !errors.Is(err, ErrOracleTooLarge) {
+	oracleBytes := sealedOracleDay(t, 1)[:OracleHeaderSize]
+	binary.LittleEndian.PutUint32(oracleBytes[32:36], OracleMaxVectorCount+1)
+	if _, _, err := LoadOracleDay(bytes.NewReader(oracleBytes)); !errors.Is(err, ErrOracleTooLarge) {
 		t.Fatalf("err=%v, attendu ErrOracleTooLarge", err)
 	}
 }

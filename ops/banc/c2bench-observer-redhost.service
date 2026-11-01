@@ -1,0 +1,24 @@
+[Unit]
+Description=Observateur c2bench sur redhost
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=root
+Group=root
+UMask=0077
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=TZ=UTC LANG=C LC_ALL=C
+StateDirectory=c2bench/observer
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/c2bench/observer
+ExecStart=/opt/c2bench-observer-redhost/bin/c2agent observe --interface wg0 --dns-ports 53 --filter "udp port 53 or tcp port 53 or icmp" --duration 1h --healthz 127.0.0.1:8755 --out-root /var/lib/c2bench/observer
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=30s
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

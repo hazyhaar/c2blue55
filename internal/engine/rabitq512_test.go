@@ -16,7 +16,7 @@ func refDistance512(queryCentered []float64, code [rabitqWords512]uint64, stored
 		return storedSqNorm
 	}
 	var querySqNorm, signDot float64
-	for i := 0; i < rabitqDim512; i++ {
+	for i := range rabitqDim512 {
 		v := queryCentered[i]
 		querySqNorm += v * v
 		if code[i>>6]&(1<<(uint(i)&63)) != 0 {
@@ -30,7 +30,7 @@ func refDistance512(queryCentered []float64, code [rabitqWords512]uint64, stored
 
 func checkCodeBits512(t *testing.T, vec []float32, code [rabitqWords512]uint64) {
 	t.Helper()
-	for i := 0; i < rabitqDim512; i++ {
+	for i := range rabitqDim512 {
 		want := vec[i] >= 0
 		got := code[i>>6]&(1<<(uint(i)&63)) != 0
 		if got != want {
@@ -112,7 +112,7 @@ func randomStored512(rng *rand.Rand) ([]float32, [rabitqWords512]uint64, float64
 
 func TestBitProductScalarExactOnGrid(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0x524142495451, 512))
-	for trial := 0; trial < 64; trial++ {
+	for trial := range 64 {
 		_, code, storedSq, storedL1 := randomStored512(rng)
 		query, querySq := gridQuery512(rng)
 
@@ -165,7 +165,7 @@ func TestBitProductScalarZeroL1(t *testing.T) {
 
 func TestBitProductScalarApproachesOracle(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0xA990C1, 512))
-	for trial := 0; trial < 32; trial++ {
+	for trial := range 32 {
 		_, code, storedSq, storedL1 := randomStored512(rng)
 		query := make([]float64, rabitqDim512)
 		var querySq float64
@@ -297,9 +297,9 @@ func sylvesterHadamardOracle(vec []float32) ([codebookWords]uint64, float64, flo
 
 	// Produit matriciel direct de Sylvester H_512
 	var proj [N]float32
-	for i := 0; i < N; i++ {
+	for i := range N {
 		var sum float32
-		for j := 0; j < N; j++ {
+		for j := range N {
 			if bits.OnesCount(uint(i&j))%2 == 0 {
 				sum += signedInput[j]
 			} else {
@@ -311,16 +311,16 @@ func sylvesterHadamardOracle(vec []float32) ([codebookWords]uint64, float64, flo
 
 	// Quantification par centrage sur la moyenne arithmétique
 	var mean float32
-	for i := 0; i < N; i++ {
+	for i := range N {
 		mean += proj[i]
 	}
 	mean /= float32(N)
 
 	var code [codebookWords]uint64
 	var l1, l2 float32
-	for w := 0; w < codebookWords; w++ {
+	for w := range codebookWords {
 		base := w * 64
-		for b := 0; b < 64; b++ {
+		for b := range 64 {
 			c := proj[base+b] - mean
 			if c >= 0 {
 				code[w] |= uint64(1) << uint(b)
@@ -348,7 +348,7 @@ func TestQuantizeFHT512_Harmonization(t *testing.T) {
 
 	// Vérification bit-à-bit contre l'oracle mathématique indépendant (Sylvester O(N^2))
 	oracleCode, oracleSq, oracleL1 := sylvesterHadamardOracle(vec)
-	for w := 0; w < codebookWords; w++ {
+	for w := range codebookWords {
 		if codeFHT[w] != oracleCode[w] {
 			t.Fatalf("mot %d discordant avec l'oracle Sylvester: codeFHT=%016x oracle=%016x", w, codeFHT[w], oracleCode[w])
 		}
@@ -371,7 +371,7 @@ func TestQuantizeFHT512_Harmonization(t *testing.T) {
 		0x86505cea0351f978,
 		0x5860fd24209ea3eb,
 	}
-	for w := 0; w < codebookWords; w++ {
+	for w := range codebookWords {
 		if codeFHT[w] != goldenWords[w] {
 			t.Fatalf("mot %d discordant avec le vecteur d'or: codeFHT=%016x golden=%016x", w, codeFHT[w], goldenWords[w])
 		}

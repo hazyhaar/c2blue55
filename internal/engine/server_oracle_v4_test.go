@@ -64,12 +64,12 @@ func TestOracleV4_HMACSeal(t *testing.T) {
 // ignore la clé forgerait une tranche en la déclarant de version 3.
 func TestOracleV4_LegacyRefusedUnderKey(t *testing.T) {
 	for _, v := range []uint16{OracleVersionLegacy, OracleVersionV3} {
-		data := oracleDayWithVersion(v, v4Entries(2))
-		hdr, e, err := LoadOracleDayHMAC(bytes.NewReader(data), v4Key)
+		oracleBytes := oracleDayWithVersion(v, v4Entries(2))
+		hdr, e, err := LoadOracleDayHMAC(bytes.NewReader(oracleBytes), v4Key)
 		if !errors.Is(err, ErrOracleUnkeyed) || hdr == nil || hdr.Version != v || e != nil {
 			t.Fatalf("v%d sous cle: %v %+v", v, err, hdr)
 		}
-		if _, _, err := LoadOracleDay(bytes.NewReader(data)); err != nil {
+		if _, _, err := LoadOracleDay(bytes.NewReader(oracleBytes)); err != nil {
 			t.Fatalf("v%d sans cle: %v", v, err)
 		}
 	}
@@ -84,9 +84,9 @@ func TestOracleV4_SealCoversChainFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, off := range map[string]int{"PrevDaySeal": 48, "ObservedCount": 112, "Reserved": 120} {
-		data := bytes.Clone(buf.Bytes())
-		data[off] ^= 1
-		if _, _, err := LoadOracleDayHMAC(bytes.NewReader(data), v4Key); !errors.Is(err, ErrOracleSeal) {
+		tamperedBytes := bytes.Clone(buf.Bytes())
+		tamperedBytes[off] ^= 1
+		if _, _, err := LoadOracleDayHMAC(bytes.NewReader(tamperedBytes), v4Key); !errors.Is(err, ErrOracleSeal) {
 			t.Fatalf("%s altere: %v", name, err)
 		}
 	}
@@ -228,11 +228,11 @@ func TestQueryStateLocality_NovelStateSpeedup(t *testing.T) {
 			o.QueryStateLocality(code, cfg)
 		}
 	})
-	ratio := float64(scan.NsPerOp()) / float64(max(bucket.NsPerOp(), 1))
+	ratioVitesse := float64(scan.NsPerOp()) / float64(max(bucket.NsPerOp(), 1))
 	t.Logf("etat inedit, %d references : balayage %d ns/op, compartiments %d ns/op, rapport %.0f",
-		OracleMaxVectorCount, scan.NsPerOp(), bucket.NsPerOp(), ratio)
-	if ratio < 100 {
-		t.Fatalf("rapport %.0f, attendu au moins 100", ratio)
+		OracleMaxVectorCount, scan.NsPerOp(), bucket.NsPerOp(), ratioVitesse)
+	if ratioVitesse < 100 {
+		t.Fatalf("rapport %.0f, attendu au moins 100", ratioVitesse)
 	}
 	if bucket.AllocsPerOp() != 0 {
 		t.Fatalf("compartiments: %d allocations", bucket.AllocsPerOp())

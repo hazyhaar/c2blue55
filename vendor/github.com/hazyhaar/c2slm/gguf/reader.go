@@ -600,3 +600,15 @@ func (gf *File) GetStringSlice(key string) ([]string, bool) {
 	s, ok := v.([]string)
 	return s, ok
 }
+
+// TableauEntiers retourne le tableau d'entiers signés 32 bits d'une métadonnée
+// (ex. tokenizer.ggml.token_type), sans copie ; faux si la clé est absente
+// ou d'un autre type.
+func (gf *File) TableauEntiers(cleMeta string) ([]int32, bool) {
+	v, present := gf.Metadata[cleMeta]
+	if !present {
+		return nil, false
+	}
+	tableau, ok := v.([]int32)
+	return tableau, ok
+}

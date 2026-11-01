@@ -1,0 +1,24 @@
+[Unit]
+Description=Observateur c2bench sur redbo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=root
+Group=root
+UMask=0077
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=TZ=UTC LANG=C LC_ALL=C
+StateDirectory=c2bench/observer
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/c2bench/observer
+ExecStart=/opt/c2bench-observer-redbo/bin/c2agent observe --interface any --dns-ports 5335 --filter "udp port 5335 or tcp port 5335 or icmp" --duration 1h --healthz 127.0.0.1:8756 --out-root /var/lib/c2bench/observer
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=30s
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -150,16 +150,16 @@ var referenceCentroid = buildReferenceCentroid()
 
 func buildReferenceCentroid() [EmbeddingDim]float32 {
 	var c [EmbeddingDim]float32
-	for i := 0; i < unigramDims; i++ {
+	for i := range unigramDims {
 		c[unigramBase+i] = 1.0 / float32(unigramDims)
 	}
-	for i := 0; i < bigramDims; i++ {
+	for i := range bigramDims {
 		c[bigramBase+i] = 1.0 / float32(bigramDims)
 	}
-	for i := 0; i < trigramDims; i++ {
+	for i := range trigramDims {
 		c[trigramBase+i] = 1.0 / float32(trigramDims)
 	}
-	for i := 0; i < entropyDims; i++ {
+	for i := range entropyDims {
 		c[entropyBase+i] = 1.0
 	}
 	c[classBase+classVowel] = 10.0 / 256.0
@@ -202,7 +202,7 @@ func (fe *FeatureExtractor) ExtractTo(ev *Event, dst []float32) bool {
 		return false
 	}
 	if ev.Flags&FlagLongPayload == 0 {
-		return fe.ExtractResolvedTo(ev, ev.Payload[:payloadUsed(ev.Payload[:])], dst)
+		return fe.ExtractResolvedTo(ev, ev.Payload[:inlinePayloadUsed(ev.Payload[:])], dst)
 	}
 	var page [PageSize]byte
 	payload, err := ResolvePayloadGlobal(ev, &page)
@@ -251,7 +251,7 @@ func (fe *FeatureExtractor) center(dst []float32) {
 	if fe == nil {
 		return
 	}
-	for i := 0; i < EmbeddingDim; i++ {
+	for i := range EmbeddingDim {
 		dst[i] -= fe.Centroid[i]
 	}
 }
@@ -259,10 +259,10 @@ func (fe *FeatureExtractor) center(dst []float32) {
 // extractPayloadFeatures remplit les régions distributionnelles et statistiques.
 // Aucune allocation de tas : tous les états intermédiaires sont des tableaux
 // locaux, et dst est remis à zéro sur ses 512 premières composantes.
-func extractPayloadFeatures(data []byte, dst []float32) {
+func extractPayloadFeatures(payload []byte, dst []float32) {
 	clear(dst[:EmbeddingDim])
 
-	used := payloadUsed(data)
+	used := payloadUsed(payload)
 	n := uint32(used)
 
 	var hist [unigramDims]uint32
@@ -271,36 +271,40 @@ func extractPayloadFeatures(data []byte, dst []float32) {
 	var classes [classDims]uint32
 	var window [256]uint32
 
-	for i := 0; i < used; i++ {
-		b := data[i]
+	firstNul := used
+	for i := range used {
+		b := payload[i]
+		if b == 0 && firstNul == used {
+			firstNul = i
+		}
 		hist[b]++
 		classifyByte(b, &classes)
 	}
 	for i := 0; i+1 < used; i++ {
-		bigram[bigramBucket(data[i], data[i+1])]++
+		bigram[bigramBucket(payload[i], payload[i+1])]++
 	}
 	for i := 0; i+2 < used; i++ {
-		trigram[trigramBucket(data[i], data[i+1], data[i+2])]++
+		trigram[trigramBucket(payload[i], payload[i+1], payload[i+2])]++
 	}
 
 	if n > 0 {
 		inv := 1.0 / float32(n)
-		for i := 0; i < unigramDims; i++ {
+		for i := range unigramDims {
 			dst[unigramBase+i] = float32(hist[i]) * inv
 		}
-		for i := 0; i < classDims; i++ {
+		for i := range classDims {
 			dst[classBase+i] = float32(classes[i]) * inv
 		}
 	}
 	if used >= 2 {
 		inv := 1.0 / float32(used-1)
-		for i := 0; i < bigramDims; i++ {
+		for i := range bigramDims {
 			dst[bigramBase+i] = float32(bigram[i]) * inv
 		}
 	}
 	if used >= 3 {
 		inv := 1.0 / float32(used-2)
-		for i := 0; i < trigramDims; i++ {
+		for i := range trigramDims {
 			dst[trigramBase+i] = float32(trigram[i]) * inv
 		}
 	}
@@ -311,16 +315,13 @@ func extractPayloadFeatures(data []byte, dst []float32) {
 	hostile := 0
 	if used > 0 {
 		eMin = 8.0
-		for w := 0; w < entropyDims; w++ {
+		for w := range entropyDims {
 			start := w * used / entropyDims
-			end := (w + 1) * used / entropyDims
-			if end > used {
-				end = used
-			}
+			end := min((w+1)*used/entropyDims, used)
 			clear(window[:])
 			total := uint32(0)
 			for i := start; i < end; i++ {
-				window[data[i]]++
+				window[payload[i]]++
 				total++
 			}
 			bitsPerByte := 0.0
@@ -350,7 +351,7 @@ func extractPayloadFeatures(data []byte, dst []float32) {
 	distinct := 0
 	maxHist := uint32(0)
 	var sumHistSq uint64
-	for i := 0; i < unigramDims; i++ {
+	for i := range unigramDims {
 		c := hist[i]
 		if c > 0 {
 			distinct++
@@ -361,29 +362,29 @@ func extractPayloadFeatures(data []byte, dst []float32) {
 		}
 	}
 	nonzeroBigram := 0
-	for i := 0; i < bigramDims; i++ {
+	for i := range bigramDims {
 		if bigram[i] > 0 {
 			nonzeroBigram++
 		}
 	}
 	nonzeroTrigram := 0
-	for i := 0; i < trigramDims; i++ {
+	for i := range trigramDims {
 		if trigram[i] > 0 {
 			nonzeroTrigram++
 		}
 	}
 
 	var sumBytes uint64
-	for i := 0; i < used; i++ {
-		sumBytes += uint64(data[i])
+	for i := range used {
+		sumBytes += uint64(payload[i])
 	}
 	meanByte := 0.0
 	byteVar := 0.0
 	if n > 0 {
 		meanByte = float64(sumBytes) / float64(n)
 		var sq float64
-		for i := 0; i < used; i++ {
-			d := float64(data[i]) - meanByte
+		for i := range used {
+			d := float64(payload[i]) - meanByte
 			sq += d * d
 		}
 		byteVar = sq / float64(n)
@@ -392,8 +393,8 @@ func extractPayloadFeatures(data []byte, dst []float32) {
 	maxRun := 0
 	run := 0
 	transitions := 0
-	for i := 0; i < used; i++ {
-		if i > 0 && data[i] == data[i-1] {
+	for i := range used {
+		if i > 0 && payload[i] == payload[i-1] {
 			run++
 		} else {
 			run = 1
@@ -423,8 +424,8 @@ func extractPayloadFeatures(data []byte, dst []float32) {
 	dst[b+aggBigramOccupancy] = float32(nonzeroBigram) / float32(bigramDims)
 	dst[b+aggTrigramOccupancy] = float32(nonzeroTrigram) / float32(trigramDims)
 	dst[b+aggUnigramMax] = float32(float64(maxHist) * invN)
-	dst[b+aggUsedRatio] = float32(used) / float32(FeaturePayloadBytes)
-	dst[b+aggNulPos] = float32(used) / float32(FeaturePayloadBytes)
+	dst[b+aggUsedRatio] = float32(used) / float32(PageSize)
+	dst[b+aggNulPos] = float32(firstNul) / float32(max(used, 1))
 	dst[b+aggControlRatio] = float32(float64(classes[classControl]) * invN)
 	dst[b+aggPrintableRatio] = float32(float64(classes[classPrintable]) * invN)
 	dst[b+aggWhitespaceRatio] = float32(float64(classes[classSpace]) * invN)
@@ -447,7 +448,7 @@ func extractPayloadFeatures(data []byte, dst []float32) {
 	}
 	dst[b+aggBigramEntropy] = float32(bigramEntropy)
 	dst[b+aggTrigramEntropy] = float32(trigramEntropy)
-	dst[headerBase+hdrPayloadUsed] = float32(used) / float32(FeaturePayloadBytes)
+	dst[headerBase+hdrPayloadUsed] = float32(used) / float32(PageSize)
 }
 
 // fillEventHeader projette les métadonnées d'en-tête et la fusion action ×
@@ -470,20 +471,22 @@ func fillEventHeader(ev *Event, dst []float32) {
 	dst[aggregateBase+aggHeaderFusion] = (float32(ev.Action) / 65535.0) * (float32(ev.Subsystem) / 65535.0)
 }
 
-// payloadUsed retourne l'index du premier octet NUL, ou la longueur bornée à 96
-// lorsqu'aucun terminateur n'est présent. Cette convention de troncature est
-// celle déjà appliquée par l'évaluateur de règles.
-func payloadUsed(data []byte) int {
-	end := len(data)
-	if end > FeaturePayloadBytes {
-		end = FeaturePayloadBytes
-	}
-	for i := 0; i < end; i++ {
-		if data[i] == 0 {
+// inlinePayloadUsed retourne l'index du premier octet NUL, ou la longueur bornée à 96
+// lorsqu'aucun terminateur n'est présent dans le tampon court inline ev.Payload[:].
+func inlinePayloadUsed(buf []byte) int {
+	end := min(len(buf), FeaturePayloadBytes)
+	for i := range end {
+		if buf[i] == 0 {
 			return i
 		}
 	}
 	return end
+}
+
+// payloadUsed retourne la longueur intégrale de la charge utile analysée, bornée à
+// PageSize (4096 octets), sans jamais s'arrêter sur un octet NUL intérieur.
+func payloadUsed(payload []byte) int {
+	return min(len(payload), PageSize)
 }
 
 // bigramBucket projette un bigramme sur l'un des 128 seaux.
@@ -505,7 +508,7 @@ func shannonBits(counts []uint32, total uint32) float64 {
 	}
 	inv := 1.0 / float64(total)
 	h := 0.0
-	for i := 0; i < len(counts); i++ {
+	for i := range counts {
 		c := counts[i]
 		if c == 0 {
 			continue

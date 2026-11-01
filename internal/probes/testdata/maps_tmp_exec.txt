@@ -1,0 +1,50 @@
+00400000-00420000 r--p 00000000 103:06 27528737                          /usr/bin/python3.12
+00420000-00703000 r-xp 00020000 103:06 27528737                          /usr/bin/python3.12
+00703000-00a28000 r--p 00303000 103:06 27528737                          /usr/bin/python3.12
+00a28000-00a29000 r--p 00627000 103:06 27528737                          /usr/bin/python3.12
+00a29000-00ba7000 rw-p 00628000 103:06 27528737                          /usr/bin/python3.12
+00ba7000-00bab000 rw-p 00000000 00:00 0 
+0ca0d000-0cb0a000 rw-p 00000000 00:00 0                                  [heap]
+73dda2e00000-73dda3000000 rw-p 00000000 00:00 0 
+73dda3000000-73dda3566000 r--p 00000000 103:06 27525553                  /usr/lib/locale/locale-archive
+73dda3600000-73dda3628000 r--p 00000000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+73dda3628000-73dda37b1000 r-xp 00028000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+73dda37b1000-73dda3800000 r--p 001b1000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+73dda3800000-73dda3804000 r--p 001ff000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+73dda3804000-73dda3806000 rw-p 00203000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+73dda3806000-73dda3813000 rw-p 00000000 00:00 0 
+73dda3823000-73dda3887000 rw-p 00000000 00:00 0 
+73dda3887000-73dda388b000 r--p 00000000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+73dda388b000-73dda38a8000 r-xp 00004000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+73dda38a8000-73dda38b0000 r--p 00021000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+73dda38b0000-73dda38b2000 r--p 00028000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+73dda38b2000-73dda38b3000 rw-p 0002a000 103:06 27526405                  /usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1
+73dda38b3000-73dda38b5000 r--p 00000000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+73dda38b5000-73dda38c7000 r-xp 00002000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+73dda38c7000-73dda38cd000 r--p 00014000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+73dda38cd000-73dda38ce000 r--p 0001a000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+73dda38ce000-73dda38cf000 rw-p 0001b000 103:06 27536133                  /usr/lib/x86_64-linux-gnu/libz.so.1.3
+73dda38cf000-73dda38df000 r--p 00000000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+73dda38df000-73dda395e000 r-xp 00010000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+73dda395e000-73dda39b6000 r--p 0008f000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+73dda39b6000-73dda39b7000 r--p 000e7000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+73dda39b7000-73dda39b8000 rw-p 000e8000 103:06 27557647                  /usr/lib/x86_64-linux-gnu/libm.so.6
+73dda39c7000-73dda39c8000 r-xs 00000000 103:06 21286474                  /tmp/wpfixture.bin
+73dda39c8000-73dda39ca000 r--p 00000000 103:06 27571333                  /usr/lib/python3.12/lib-dynload/mmap.cpython-312-x86_64-linux-gnu.so
+73dda39ca000-73dda39cd000 r-xp 00002000 103:06 27571333                  /usr/lib/python3.12/lib-dynload/mmap.cpython-312-x86_64-linux-gnu.so
+73dda39cd000-73dda39cf000 r--p 00005000 103:06 27571333                  /usr/lib/python3.12/lib-dynload/mmap.cpython-312-x86_64-linux-gnu.so
+73dda39cf000-73dda39d0000 r--p 00006000 103:06 27571333                  /usr/lib/python3.12/lib-dynload/mmap.cpython-312-x86_64-linux-gnu.so
+73dda39d0000-73dda39d1000 rw-p 00007000 103:06 27571333                  /usr/lib/python3.12/lib-dynload/mmap.cpython-312-x86_64-linux-gnu.so
+73dda39d1000-73dda39d5000 rw-p 00000000 00:00 0 
+73dda39d5000-73dda39dc000 r--s 00000000 103:06 27557633                  /usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache
+73dda39dc000-73dda39de000 rw-p 00000000 00:00 0 
+73dda39de000-73dda39e0000 r--p 00000000 00:00 0                          [vvar]
+73dda39e0000-73dda39e2000 r--p 00000000 00:00 0                          [vvar_vclock]
+73dda39e2000-73dda39e4000 r-xp 00000000 00:00 0                          [vdso]
+73dda39e4000-73dda39e5000 r--p 00000000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+73dda39e5000-73dda3a10000 r-xp 00001000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+73dda3a10000-73dda3a1a000 r--p 0002c000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+73dda3a1a000-73dda3a1c000 r--p 00036000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+73dda3a1c000-73dda3a1e000 rw-p 00038000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7ffd16d27000-7ffd16d49000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

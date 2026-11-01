@@ -1,0 +1,22 @@
+[Unit]
+Description=Client isole natif c2bench-a
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ip netns add c2bench-a
+ExecStart=/usr/sbin/ip link add c2b-a-h type veth peer name c2b-a-n netns c2bench-a
+ExecStart=/usr/sbin/ip address add 10.55.55.1/30 dev c2b-a-h
+ExecStart=/usr/sbin/ip link set c2b-a-h up
+ExecStart=/usr/sbin/ip -n c2bench-a address add 10.55.55.2/30 dev c2b-a-n
+ExecStart=/usr/sbin/ip -n c2bench-a link set c2b-a-n up
+ExecStart=/usr/sbin/ip -n c2bench-a link set lo up
+ExecStart=/usr/sbin/ip -n c2bench-a route add 10.55.0.2/32 via 10.55.55.1 dev c2b-a-n
+ExecStop=/usr/sbin/ip link delete c2b-a-h
+ExecStop=/usr/sbin/ip netns delete c2bench-a
+TimeoutStartSec=15s
+TimeoutStopSec=8s
+
+[Install]
+WantedBy=multi-user.target

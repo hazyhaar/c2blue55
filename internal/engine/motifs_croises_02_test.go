@@ -73,10 +73,10 @@ func TestMotifsCroises02Encoding(t *testing.T) {
 	}
 
 	minDist := 1 << 30
-	for i := 0; i < len(entries); i++ {
+	for i := range entries {
 		for j := i + 1; j < len(entries); j++ {
 			d := 0
-			for k := 0; k < codebookWords; k++ {
+			for k := range codebookWords {
 				d += bits.OnesCount64(entries[i].Bitcode[k] ^ entries[j].Bitcode[k])
 			}
 			if d == 0 {

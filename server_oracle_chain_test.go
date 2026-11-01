@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 var chainKey = []byte("cle-hote-partagee-chainage-32-oc")

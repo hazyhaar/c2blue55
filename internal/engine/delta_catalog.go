@@ -421,7 +421,7 @@ func LoadDeltaCatalogHMAC(r io.Reader, machineID uint64, key []byte) (*DeltaCata
 	br := bufio.NewReaderSize(r, 1<<16)
 	var hb [DeltaHeaderSize]byte
 	if _, err := io.ReadFull(br, hb[:]); err != nil {
-		return nil, ErrDeltaCorrupt
+		return nil, fmt.Errorf("%w: %w", ErrDeltaCorrupt, err)
 	}
 	var hdr DeltaHeader
 	DecodeDeltaHeader(&hb, &hdr)
@@ -441,7 +441,7 @@ func LoadDeltaCatalogHMAC(r io.Reader, machineID uint64, key []byte) (*DeltaCata
 	var rb [DeltaRuleSize]byte
 	for i := uint32(0); i < hdr.RuleCount; i++ {
 		if _, err := io.ReadFull(br, rb[:]); err != nil {
-			return nil, ErrDeltaCorrupt
+			return nil, fmt.Errorf("%w: %w", ErrDeltaCorrupt, err)
 		}
 		var rule DeltaRule
 		DecodeDeltaRule(&rb, &rule)

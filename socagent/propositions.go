@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 const (
@@ -76,6 +76,9 @@ func ValidateAll(facts []Proposition) error {
 }
 
 func RemediationFor(facts []Proposition, events []c2blue55.Event) []string {
+	if len(facts) == 0 {
+		return nil
+	}
 	var needPID, needFS, needMCP bool
 	for i := range facts {
 		switch facts[i].Type {

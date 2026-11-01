@@ -1,0 +1,22 @@
+{
+  "run_id": "a04-benin-fw-aaaa",
+  "capture_host": "redhost",
+  "capture_interface": "wg0",
+  "capture_source": "/var/lib/dnslab/pcap/dnslab-20261029T17Z.pcap (tcpdump, dnslab-capture.service)",
+  "capture_source_sha256": "6418f2d0dbeaf44711bee0484515d47ee0109770ef28b66fd3295332d1b1b2ee",
+  "emitter": "c2dnslab-emit@a5f918cb1763 sur redbo, outil replay, QType 28, RD=1, 200 questions à 5/s, 5 noms répétés (bénin, témoin à identifiant pleine largeur constant)",
+  "resolver": "Unbound 1.13.1 sur redbo 10.55.0.2:5335 (cache-min-ttl 0, serve-expired no, prefetch no)",
+  "server": "dnslab-auth@a5f918cb1763 sur redhost, -aaaa static -aaaa-answer 2001:db8:55::1234:5678:9abc:def1 (identifiant d'interface sans octet nul), -ttl 0",
+  "client_leg_capture": "a04-benin-fw-aaaa.client-leg-redbo.pcap (tcpdump -i lo udp port 5335 sur redbo : jambe stub → Unbound)",
+  "window_utc": [
+    "2026-10-29T17:25:52.320122Z",
+    "2026-10-29T17:26:32.328649Z"
+  ],
+  "slice_margin_s": [
+    1.0,
+    1.5
+  ],
+  "packets": 400,
+  "label": "benin",
+  "sha256": "b98b3765ebd19f5ad1b4c00d43dac46cc76c39ea94aab70d385c2bbed2728936"
+}

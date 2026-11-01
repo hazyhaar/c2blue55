@@ -1,0 +1,20 @@
+{
+ "run_id": "n04-runB-stego-v2",
+ "capture_host": "redhost",
+ "capture_interface": "wg0",
+ "capture_source": "/var/lib/dnslab/pcap/dnslab-20261029T14Z.pcap (tcpdump, dnslab-capture.service)",
+ "emitter": "c2dnslab-emit@ec77785de6a3 sur redbo, famille redhost-negative-soa, outil replay, Recursive=true",
+ "path": "redbo stub -> unbound 1.13.1 (10.55.0.2:5335, qname-minimisation) -> redhost dnslab-auth@77ebc4c265c3 (10.55.0.1:53)",
+ "server_negative_mode": "soa-stego",
+ "server_negative_seed": "0x5EEDB",
+ "names_seed": "0x2026B",
+ "names_count": 100,
+ "label": "hostile",
+ "window_utc": [
+  "2026-10-29T15:32:16.317136Z",
+  "2026-10-29T15:32:56.318188Z"
+ ],
+ "packets": 400,
+ "sha256_pcap": "632a7aed2c845450627e65781542c55a0c070dd0fa412b37c6140a63e741b49f",
+ "generated_by": "d\u00e9coupage par fen\u00eatre de run de la capture r\u00e9elle ; aucun paquet fabriqu\u00e9"
+}

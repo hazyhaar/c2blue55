@@ -98,10 +98,7 @@ func (d *GrayZoneDecider) tryAcquireGlobalToken() bool {
 		if d.lastRefill.CompareAndSwap(last, now) {
 			added := uint32(elapsed/int64(time.Second)) * d.cfg.RefillPerSec
 			cur := d.tokens.Load()
-			newTok := cur + added
-			if newTok > d.cfg.MaxBurst {
-				newTok = d.cfg.MaxBurst
-			}
+			newTok := min(cur+added, d.cfg.MaxBurst)
 			d.tokens.Store(newTok)
 		}
 	}
@@ -161,10 +158,7 @@ func (d *GrayZoneDecider) tryAcquireSourceToken(sourceID uint64) bool {
 		if slot.lastRefill.CompareAndSwap(last, now) {
 			added := uint32(elapsed/int64(time.Second)) * d.cfg.SourceRefillPerSec
 			cur := slot.tokens.Load()
-			newTok := cur + added
-			if newTok > d.cfg.SourceMaxBurst {
-				newTok = d.cfg.SourceMaxBurst
-			}
+			newTok := min(cur+added, d.cfg.SourceMaxBurst)
 			slot.tokens.Store(newTok)
 		}
 	}

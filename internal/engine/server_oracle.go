@@ -9,6 +9,7 @@ import (
 	"crypto/hmac"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"math/bits"
@@ -180,7 +181,7 @@ func VectorizeServerHealth(s *ServerHealthSnapshot, outBitcode *[8]uint64) {
 	outBitcode[2] = mixSpatial64(entKey ^ 0x5555555555555555)
 
 	var payloadHash uint64 = 0xCBF29CE484222325
-	for i := 0; i < len(s.RawPayload); i++ {
+	for i := range len(s.RawPayload) {
 		b := s.RawPayload[i]
 		if b == 0 {
 			break
@@ -309,7 +310,7 @@ func decodeOracleHeaderCommon(src []byte, h *OracleDailyHeader) {
 
 // EncodeOracleVectorEntry sérialise une entrée d'état vectorisé dans un tampon de 80 octets.
 func EncodeOracleVectorEntry(dst *[OracleEntrySize]byte, e *OracleVectorEntry) {
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		binary.LittleEndian.PutUint64(dst[i*8:(i+1)*8], e.Bitcode[i])
 	}
 	binary.LittleEndian.PutUint32(dst[64:68], e.RelativeSec)
@@ -323,7 +324,7 @@ func EncodeOracleVectorEntry(dst *[OracleEntrySize]byte, e *OracleVectorEntry) {
 
 // DecodeOracleVectorEntry désérialise une entrée d'état vectorisé depuis un tampon de 80 octets.
 func DecodeOracleVectorEntry(src *[OracleEntrySize]byte, e *OracleVectorEntry) {
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		e.Bitcode[i] = binary.LittleEndian.Uint64(src[i*8 : (i+1)*8])
 	}
 	e.RelativeSec = binary.LittleEndian.Uint32(src[64:68])
@@ -438,7 +439,7 @@ func LoadOracleDayHMAC(r io.Reader, key []byte) (*OracleDailyHeader, []OracleVec
 	br := bufio.NewReaderSize(r, 1<<16)
 	var hb [OracleHeaderSize]byte
 	if _, err := io.ReadFull(br, hb[:OracleHeaderSizeV3]); err != nil {
-		return nil, nil, ErrOracleCorrupt
+		return nil, nil, fmt.Errorf("%w: %w", ErrOracleCorrupt, err)
 	}
 
 	var hdr OracleDailyHeader
@@ -449,7 +450,7 @@ func LoadOracleDayHMAC(r io.Reader, key []byte) (*OracleDailyHeader, []OracleVec
 	switch hdr.Version {
 	case OracleVersion:
 		if _, err := io.ReadFull(br, hb[OracleHeaderSizeV3:]); err != nil {
-			return nil, nil, ErrOracleCorrupt
+			return nil, nil, fmt.Errorf("%w: %w", ErrOracleCorrupt, err)
 		}
 		DecodeOracleDailyHeader(&hb, &hdr)
 	case OracleVersionV3, OracleVersionLegacy:
@@ -473,7 +474,7 @@ func LoadOracleDayHMAC(r io.Reader, key []byte) (*OracleDailyHeader, []OracleVec
 	var eb [OracleEntrySize]byte
 	for i := uint32(0); i < hdr.VectorCount; i++ {
 		if _, err := io.ReadFull(br, eb[:]); err != nil {
-			return nil, nil, ErrOracleCorrupt
+			return nil, nil, fmt.Errorf("%w: %w", ErrOracleCorrupt, err)
 		}
 		var e OracleVectorEntry
 		DecodeOracleVectorEntry(&eb, &e)

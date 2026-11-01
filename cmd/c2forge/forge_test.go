@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // TestMain relance le binaire de test comme c2forge quand C2FORGE_E2E vaut 1 :
@@ -90,9 +90,9 @@ func TestForge_PyramidDeltaEndToEnd(t *testing.T) {
 	if out = forgeOK(t, "-oracle-verify-chain", "-out-dir", silo, "-hmac-key", e2eKey); !strings.Contains(out, "chaine des tranches .c2oracle intacte") {
 		t.Fatalf("chaine: %s", out)
 	}
-	// Sans la clé, aucune tranche n'entre dans la baseline.
-	if out = forgeOK(t, "-oracle-baseline", "-out-dir", silo); !strings.Contains(out, ": 0 etats") {
-		t.Fatalf("baseline sans cle: %s", out)
+	// Sans la clé, la construction d'une baseline sur des tranches scellées HMAC doit échouer explicitement.
+	if _, _, codeSansCle := forge(t, "-oracle-baseline", "-out-dir", silo); codeSansCle == 0 {
+		t.Fatalf("baseline sans cle sur tranches HMAC: attendu code != 0, obtenu 0")
 	}
 	if out = forgeOK(t, "-oracle-baseline", "-out-dir", silo, "-hmac-key", e2eKey); !strings.Contains(out, ": 240 etats") {
 		t.Fatalf("baseline sous cle: %s", out)
@@ -111,14 +111,14 @@ func TestForge_PyramidDeltaEndToEnd(t *testing.T) {
 	}
 	// La pyramide produite se relit sous la clé, et seulement sous elle.
 	p24 := filepath.Join(silo, fmt.Sprintf("pyramid_%016x_24h.c2pyramid", machine))
-	data, err := os.ReadFile(p24)
+	pyramidBytes24h, err := os.ReadFile(p24)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p, err := engine.LoadPyramidHMAC(bytes.NewReader(data), machine, []byte(e2eKey)); err != nil || p.Len() != 1 || p.Header().EpochEnd != p.Header().EpochStart {
+	if p, err := engine.LoadPyramidHMAC(bytes.NewReader(pyramidBytes24h), machine, []byte(e2eKey)); err != nil || p.Len() != 1 || p.Header().EpochEnd != p.Header().EpochStart {
 		t.Fatalf("pyramide 24h: %v", err)
 	}
-	if _, err := engine.LoadPyramid(bytes.NewReader(data), machine); err == nil {
+	if _, err := engine.LoadPyramid(bytes.NewReader(pyramidBytes24h), machine); err == nil {
 		t.Fatal("pyramide HMAC chargee sans cle")
 	}
 
@@ -214,12 +214,12 @@ func TestForge_EvalRefusesUnauthenticated(t *testing.T) {
 	// Un octet de prototype altéré dans une pyramide fait échouer le chargement entier.
 	machine := c2blue55.DefaultSiloConfig(silo).MachineID
 	p7 := filepath.Join(silo, fmt.Sprintf("pyramid_%016x_7d.c2pyramid", machine))
-	data, err := os.ReadFile(p7)
+	pyramidBytes7d, err := os.ReadFile(p7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data[engine.PyramidHeaderSize+64] ^= 1 // rayon du premier prototype
-	writeFile(t, p7, string(data))
+	pyramidBytes7d[engine.PyramidHeaderSize+64] ^= 1 // rayon du premier prototype
+	writeFile(t, p7, string(pyramidBytes7d))
 	if _, errOut, code := forge(t, good...); code == 0 || !strings.Contains(errOut, p7) {
 		t.Fatalf("pyramide alteree: code %d %s", code, errOut)
 	}

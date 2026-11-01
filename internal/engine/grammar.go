@@ -14,8 +14,8 @@ type C2bt_grammar_profile_t struct {
 }
 
 type C2bt_grammar_table_t struct {
-	Tools [C2BT_MAX_MCP_TOOLS]C2bt_grammar_profile_t
-	Count uint32
+	Tools     [C2BT_MAX_MCP_TOOLS]C2bt_grammar_profile_t
+	ToolCount uint32
 }
 
 func C2bt_grammar_init(table *C2bt_grammar_table_t) {
@@ -31,11 +31,11 @@ func C2bt_grammar_register_tool(table *C2bt_grammar_table_t, name string, sample
 	}
 	idx := grammarFindTool(table, name)
 	if idx < 0 {
-		if table.Count >= C2BT_MAX_MCP_TOOLS {
+		if table.ToolCount >= C2BT_MAX_MCP_TOOLS {
 			return -2
 		}
-		idx = int(table.Count)
-		table.Count++
+		idx = int(table.ToolCount)
+		table.ToolCount++
 		table.Tools[idx] = C2bt_grammar_profile_t{}
 	}
 	slot := &table.Tools[idx]
@@ -70,7 +70,7 @@ func C2bt_grammar_eval(table *C2bt_grammar_table_t, toolName string, args []byte
 	if len(args) == 0 {
 		return 0
 	}
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		cls := uint32(archtime_char_class[args[i]])
 		if cls&slot.Char_mask_allowed == 0 {
 			*outDjsQ8 = 256
@@ -103,10 +103,10 @@ func grammarFindTool(table *C2bt_grammar_table_t, name string) int {
 		return -1
 	}
 	n := len(name)
-	for i := uint32(0); i < table.Count; i++ {
+	for i := uint32(0); i < table.ToolCount; i++ {
 		stored := table.Tools[i].Tool_name
 		match := true
-		for j := 0; j < n; j++ {
+		for j := range n {
 			if stored[j] != name[j] {
 				match = false
 				break
@@ -119,36 +119,33 @@ func grammarFindTool(table *C2bt_grammar_table_t, name string) int {
 	return -1
 }
 
-func histNormalize256(data []byte, out []byte) int {
-	if len(data) == 0 || len(out) < 256 {
+func histNormalize256(sampleBytes []byte, out []byte) int {
+	if len(sampleBytes) == 0 || len(out) < 256 {
 		return -1
 	}
 	var freq [256]uint32
 	var raw [256]uint32
 	off := 0
-	for off+7 < len(data) {
-		freq[data[off]]++
-		freq[data[off+1]]++
-		freq[data[off+2]]++
-		freq[data[off+3]]++
-		freq[data[off+4]]++
-		freq[data[off+5]]++
-		freq[data[off+6]]++
-		freq[data[off+7]]++
+	for off+7 < len(sampleBytes) {
+		freq[sampleBytes[off]]++
+		freq[sampleBytes[off+1]]++
+		freq[sampleBytes[off+2]]++
+		freq[sampleBytes[off+3]]++
+		freq[sampleBytes[off+4]]++
+		freq[sampleBytes[off+5]]++
+		freq[sampleBytes[off+6]]++
+		freq[sampleBytes[off+7]]++
 		off += 8
 	}
-	for ; off < len(data); off++ {
-		freq[data[off]]++
+	for ; off < len(sampleBytes); off++ {
+		freq[sampleBytes[off]]++
 	}
 	sum := uint32(0)
 	maxF := uint32(0)
 	maxI := 0
-	n := uint64(len(data))
-	for i := 0; i < 256; i++ {
-		v := uint32((uint64(freq[i]) * 256) / n)
-		if v > 255 {
-			v = 255
-		}
+	n := uint64(len(sampleBytes))
+	for i := range 256 {
+		v := min(uint32((uint64(freq[i])*256)/n), 255)
 		raw[i] = v
 		sum += v
 		if freq[i] > maxF {
@@ -159,10 +156,7 @@ func histNormalize256(data []byte, out []byte) int {
 	if sum < 256 {
 		rem := 256 - sum
 		room := 255 - raw[maxI]
-		add := rem
-		if add > room {
-			add = room
-		}
+		add := min(rem, room)
 		raw[maxI] += add
 		rem -= add
 		for i := 0; rem > 0 && i < 256; i++ {
@@ -172,7 +166,7 @@ func histNormalize256(data []byte, out []byte) int {
 			}
 		}
 	}
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		out[i] = byte(raw[i])
 	}
 	return 0
@@ -194,7 +188,7 @@ func klTermDiffQ8(pi, mi uint32) int32 {
 
 func klPmQ8(p *[256]byte, q *[256]byte) uint32 {
 	acc := int64(0)
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		pi := uint32(p[i])
 		if pi == 0 {
 			continue

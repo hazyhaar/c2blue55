@@ -1,6 +1,6 @@
 // Package c2blue55 — wittgenstein_bench_test.go
 // Bancs d'homologation du concours Wittgenstein Security, sur données réelles
-// (/devhoros/data/wittgenstein/) strictement disjointes de l'apprentissage :
+// (/devhoros/c2blue55/wittgenstein/) strictement disjointes de l'apprentissage :
 //   - LOLBAS : uniquement les reverse shells distincts tenus à l'écart par
 //     c2forge (engine.ReverseShellTrainCount), puis leurs variantes d'adresse
 //     IP et de port ;
@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // resolveWittgensteinDataDir résout l'emplacement des données et disquettes d'évaluation.
@@ -36,6 +36,9 @@ func resolveWittgensteinDataDir(t testing.TB) string {
 		return env
 	}
 	candidates := []string{
+		"../wittgenstein",
+		"../../../wittgenstein",
+		"wittgenstein",
 		"testdata/wittgenstein",
 		"pkg/c2blue55/testdata/wittgenstein",
 		"../../testdata/wittgenstein",
@@ -325,7 +328,7 @@ func TestWittgenstein_Evaluation_RealData(t *testing.T) {
 	if len(longBenign) == 0 {
 		t.Fatal("aucune commande bénigne longue pour recycler l'arène")
 	}
-	for i := 0; i < engine.ArenaCapacity; i++ {
+	for i := range engine.ArenaCapacity {
 		var w engine.Probe_event_t
 		arena.StorePayload(&w, longBenign[i%len(longBenign)])
 	}

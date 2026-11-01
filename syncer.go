@@ -161,12 +161,12 @@ func (s *ReputationSyncer) SyncOnce(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("syncer: echec compilation instantane: %w", err)
 	}
 
-	count := s.rep.Load().numEntries
+	entryCount := s.rep.Load().numEntries
 	if lastErr == nil && s.cfg.OnSyncSuccess != nil {
-		s.cfg.OnSyncSuccess(count)
+		s.cfg.OnSyncSuccess(entryCount)
 	}
 
-	return count, lastErr
+	return entryCount, lastErr
 }
 
 // StartPeriodic démarre la goroutine de synchronisation périodique (ex: toutes les 24h).

@@ -1,0 +1,10 @@
+{
+  "pcap": "/devhoros/c2blue55/wittgenstein/redhost_lab/n04-20261029/n04-benin-soa-v2.pcap",
+  "sha256": "57bb8f2f207b4f7c1e657eece8ddb3f152969aefcd5dc7a7c1497c0361eb92f8",
+  "responses": 100,
+  "negative_with_soa": 100,
+  "fires": 0,
+  "fired_keys": 0,
+  "packets_to_first_fire": 0,
+  "first_fire_ts_ns": 0
+}

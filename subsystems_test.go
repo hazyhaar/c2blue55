@@ -6,7 +6,7 @@ package c2blue55
 import (
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 func TestSubsystems_ValuesAndNames(t *testing.T) {
@@ -92,7 +92,7 @@ func TestContext_InjectObservation_MultiChannel(t *testing.T) {
 	}
 
 	seen := make(map[uint16]bool)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		seen[out[i].Subsystem] = true
 	}
 	if !seen[SubProc] || !seen[SubFile] || !seen[SubNet] || !seen[SubMCP] {

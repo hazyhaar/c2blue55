@@ -15,7 +15,7 @@ import (
 // synthEntry fabrique une entrée déterministe à partir d'une graine.
 func synthEntry(rng *rand.Rand, threatID uint32, subsystem, severity uint16) CodebookEntry {
 	var e CodebookEntry
-	for k := 0; k < codebookWords; k++ {
+	for k := range codebookWords {
 		e.Bitcode[k] = rng.Uint64()
 	}
 	e.ThreatID = threatID
@@ -267,7 +267,7 @@ func TestCodebookLatencyPerEntry(t *testing.T) {
 	const rounds = 64
 	cb.SearchAll(&query, 512, out)
 	start := time.Now()
-	for r := 0; r < rounds; r++ {
+	for range rounds {
 		cb.SearchAll(&query, 512, out)
 	}
 	elapsed := time.Since(start)
@@ -342,12 +342,12 @@ func TestAtomicCodebook_ConcurrentHotReload(t *testing.T) {
 	var wg sync.WaitGroup
 	const readers = 4
 	stopRef := &stop
-	for r := 0; r < readers; r++ {
+	for r := range readers {
 		wg.Add(1)
 		go runWorkerSearch(ac, r, stopRef, &wg)
 	}
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		time.Sleep(2 * time.Millisecond)
 		if i%2 == 0 {
 			ac.Swap(cb2)
@@ -371,4 +371,3 @@ func TestAtomicCodebook_ConcurrentHotReload(t *testing.T) {
 	stop.Store(true)
 	wg.Wait()
 }
-

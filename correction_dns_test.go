@@ -215,14 +215,12 @@ func TestCorrectionDNSSnapshotIntegrityOwnershipAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := range input {
 			input[i] ^= 255
 		}
-	}()
-	for i := 0; i < 100; i++ {
+	})
+	for range 100 {
 		if res, ok := table.Match("a.test"); !ok || res.Classification != RepClassBlockC2 {
 			t.Error("borrowed caller memory")
 		}
@@ -284,7 +282,7 @@ func TestCorrectionDNSSharedHostingAndPreFastPassControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer p.Close()
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		res, err := p.EvaluatePacket(buildDNSQueryWire(fmt.Sprintf("key%d._domainkey.google.com", i), TypeTXT), 10)
 		if err != nil {
 			t.Fatal(err)
@@ -301,13 +299,13 @@ func TestCorrectionDNSTrackerExpiryIdentityAndEviction(t *testing.T) {
 	tracker.RecordQuery(a, "old", 1)
 	tracker.RecordQuery(b, "first", 1000)
 	tracker.RecordQuery(b, "second", 3500)
-	if _, unique, count := tracker.RecordQuery(b, "third", 3601); count != 3 || unique != 3 {
-		t.Fatalf("expired anchor hid identity: %d %d", count, unique)
+	if _, unique, queryCount := tracker.RecordQuery(b, "third", 3601); queryCount != 3 || unique != 3 {
+		t.Fatalf("expired anchor hid identity: %d %d", queryCount, unique)
 	}
-	if _, unique, count := tracker.RecordQuery(b, "fresh", 7201); count != 1 || unique != 1 {
-		t.Fatalf("Bloom window survived expiration: %d %d", count, unique)
+	if _, unique, queryCount := tracker.RecordQuery(b, "fresh", 7201); queryCount != 1 || unique != 1 {
+		t.Fatalf("Bloom window survived expiration: %d %d", queryCount, unique)
 	}
-	if _, unique, count := tracker.RecordQuery(b, "next", 7202); count != 2 || unique != 2 {
+	if _, unique, queryCount := tracker.RecordQuery(b, "next", 7202); queryCount != 2 || unique != 2 {
 		t.Fatal("window failed to resume")
 	}
 	// Fill one eight-slot probe using real RecordQuery calls, not prewritten counts.
@@ -332,10 +330,10 @@ func TestCorrectionDNSTrackerExpiryIdentityAndEviction(t *testing.T) {
 	if tracker.Evictions() != 1 {
 		t.Fatalf("invisible eviction: %d", tracker.Evictions())
 	}
-	if _, _, count := tracker.RecordQuery(colliders[8], "two", 101); count != 2 {
+	if _, _, queryCount := tracker.RecordQuery(colliders[8], "two", 101); queryCount != 2 {
 		t.Fatal("victim replacement not retained")
 	}
-	if _, _, count := tracker.RecordQuery(colliders[0], "returned", 102); count != 1 {
+	if _, _, queryCount := tracker.RecordQuery(colliders[0], "returned", 102); queryCount != 1 {
 		t.Fatal("evicted identity not reinitialized")
 	}
 	if tracker.Evictions() != 2 {
@@ -355,7 +353,7 @@ func TestCorrectionDNSQueueSaturationDrainAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	wire := buildDNSQueryWire("0123456789abcdef0123456789.example.test", TypeTXT)
-	for i := 0; i < 65; i++ {
+	for i := range 65 {
 		res, err := p.EvaluatePacket(wire, 100)
 		if i < 64 && (err != nil || !res.ArbitrationQueued) {
 			t.Fatalf("early queue failure %d: %v", i, err)
@@ -402,7 +400,7 @@ func TestCorrectionDNSQueueSaturationDrainAndClose(t *testing.T) {
 	if len(callbacks) != 64 || p.Stats().ArbitrationErrors != 64 {
 		t.Fatalf("incomplete drain: callbacks=%d stats=%+v", len(callbacks), p.Stats())
 	}
-	for i := 0; i < 64; i++ {
+	for range 64 {
 		if <-callbacks != "INSUFFICIENT_EVIDENCE" {
 			t.Fatal("invalid cancellation verdict")
 		}
@@ -441,9 +439,9 @@ func TestCorrectionDNSInvalidVerdictThenRecovery(t *testing.T) {
 	n := 0
 	results := make(chan SLMArbitrationResponse, len(responses))
 	p.StartArbitratorWorker(context.Background(), correctionDNSArbitrator(func(context.Context, *SLMIncident) (SLMArbitrationResponse, error) {
-		result := responses[n]
+		arbReply := responses[n]
 		n++
-		return result, nil
+		return arbReply, nil
 	}), func(_ SLMIncident, verdict string, confidence float64, _ string) {
 		results <- SLMArbitrationResponse{Verdict: verdict, Confidence: confidence}
 	})
@@ -452,12 +450,12 @@ func TestCorrectionDNSInvalidVerdictThenRecovery(t *testing.T) {
 	}
 	for i := range responses {
 		select {
-		case result := <-results:
-			if i < 3 && (result.Verdict != "INSUFFICIENT_EVIDENCE" || result.Confidence != 0) {
+		case arbOutcome := <-results:
+			if i < 3 && (arbOutcome.Verdict != "INSUFFICIENT_EVIDENCE" || arbOutcome.Confidence != 0) {
 				t.Fatal("invalid response accepted")
 			}
-			if i == 3 && (result.Verdict != "DNS_TUNNEL_CONFIRMED" || result.Confidence != 0.37) {
-				t.Fatalf("confidence replaced or no recovery: %+v", result)
+			if i == 3 && (arbOutcome.Verdict != "DNS_TUNNEL_CONFIRMED" || arbOutcome.Confidence != 0.37) {
+				t.Fatalf("confidence replaced or no recovery: %+v", arbOutcome)
 			}
 		case <-time.After(time.Second):
 			t.Fatal("worker failed to resume")
@@ -479,26 +477,22 @@ func TestCorrectionDNSConcurrentCloseAndUnservedQueue(t *testing.T) {
 	}
 	nominal := buildDNSQueryWire("www.google.com", TypeA)
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 100; j++ {
+	for range 4 {
+		wg.Go(func() {
+			for range 100 {
 				_, err := p.EvaluatePacket(nominal, 100)
 				if err != nil && !errors.Is(err, ErrPipelineClosed) {
 					t.Errorf("concurrent evaluation: %v", err)
 				}
 			}
-		}()
+		})
 	}
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			if err := p.Close(); !errors.Is(err, ErrSLMAbandoned) {
 				t.Errorf("unserved work hidden: %v", err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if p.Stats().SLMAbandoned != 1 {
@@ -543,9 +537,9 @@ func TestCorrectionDNSAuditErrorsAndRecovery(t *testing.T) {
 	if err := q.Close(); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(path)
-	if err != nil || !bytes.Contains(data, []byte("RECOVERED")) || bytes.Count(data, []byte{'\n'}) != 1 {
-		t.Fatalf("audit recovery: %s %v", data, err)
+	auditBytes, err := os.ReadFile(path)
+	if err != nil || !bytes.Contains(auditBytes, []byte("RECOVERED")) || bytes.Count(auditBytes, []byte{'\n'}) != 1 {
+		t.Fatalf("audit recovery: %s %v", auditBytes, err)
 	}
 	// Isolate the bounded producer from disk/encoder allocation in a private queue.
 	isolated := &Pipeline{auditQueue: make(chan auditRecord, 1)}

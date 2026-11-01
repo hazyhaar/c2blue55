@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 func TestDailyOracleSilo_RotationAndSeal(t *testing.T) {
@@ -103,10 +103,17 @@ func TestDailyOracleSilo_RotationAndSeal(t *testing.T) {
 }
 
 func TestLogStreamIngester_RealHostLogs(t *testing.T) {
-	// Vérifie la présence d'un fichier de log réel sur l'hôte Linux
-	realLogPath := "/var/log/dpkg.log"
-	if _, err := os.Stat(realLogPath); os.IsNotExist(err) {
-		t.Skip("Journal /var/log/dpkg.log non disponible sur cet environnement de test")
+	// Vérifie la présence d'un fichier de log réel non vide sur l'hôte Linux (y compris après rotation logrotate).
+	var realLogPath string
+	for _, candidatePath := range []string{"/var/log/dpkg.log", "/var/log/dpkg.log.1"} {
+		statInfo, statErr := os.Stat(candidatePath)
+		if statErr == nil && statInfo.Size() > 0 {
+			realLogPath = candidatePath
+			break
+		}
+	}
+	if realLogPath == "" {
+		t.Skip("Journaux /var/log/dpkg.log et /var/log/dpkg.log.1 absents ou vides sur cet environnement de test")
 	}
 
 	tmpDir, err := os.MkdirTemp("", "c2oracle_real_*")
@@ -121,15 +128,15 @@ func TestLogStreamIngester_RealHostLogs(t *testing.T) {
 	}
 
 	ingester := NewLogStreamIngester(silo)
-	count, err := ingester.IngestLogFile(realLogPath)
+	ingestedCount, err := ingester.IngestLogFile(realLogPath)
 	if err != nil {
 		t.Fatalf("IngestLogFile: %v", err)
 	}
-	if count == 0 {
+	if ingestedCount == 0 {
 		t.Fatalf("aucun log ingéré depuis %s", realLogPath)
 	}
 
-	t.Logf("Succès d'ingestion de traces réelles de l'hôte: %d événements ingérés", count)
+	t.Logf("Succès d'ingestion de traces réelles de l'hôte: %d événements ingérés", ingestedCount)
 
 	// Scelle la dernière tranche
 	if err := silo.SealDay(uint64(time.Now().Unix())); err != nil {

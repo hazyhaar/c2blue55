@@ -9,3 +9,5 @@
 *.pprof
 .DS_Store
 .coverage
+
+/wittgenstein/abusayed_dga_full.csv

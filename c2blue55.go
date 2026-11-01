@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sync"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // Constantes de sous-systèmes de capture : définies canoniquement dans subsystems.go.
@@ -216,20 +216,20 @@ func (c *Context) PollBatch(outBatch []Event, maxEvents int) int {
 }
 
 // CalcEntropyQ8 calcule l'entropie de Shannon en virgule fixe Q8.8 (0..2048).
-func CalcEntropyQ8(data []byte) uint32 {
-	return engine.C2bt_calc_entropy_8_8(data, uint64(len(data)))
+func CalcEntropyQ8(payload []byte) uint32 {
+	return engine.C2bt_calc_entropy_8_8(payload, uint64(len(payload)))
 }
 
 // CalcEntropyBits calcule l'entropie de Shannon réelle en bits par octet (0.0..8.0).
-func CalcEntropyBits(data []byte) float64 {
-	q8 := CalcEntropyQ8(data)
+func CalcEntropyBits(payload []byte) float64 {
+	q8 := CalcEntropyQ8(payload)
 	return float64(q8) / 256.0
 }
 
 // ProfilePayload extrait le profil d'entropie et la classe de charge utile en une passe.
-func ProfilePayload(data []byte) EntropyProfile {
+func ProfilePayload(payload []byte) EntropyProfile {
 	var rawProf engine.C2bt_entropy_profile_t
-	engine.C2bt_profile_payload(data, uint64(len(data)), &rawProf)
+	engine.C2bt_profile_payload(payload, uint64(len(payload)), &rawProf)
 	return EntropyProfile{
 		EntropyQ8:     rawProf.Entropy_q8,
 		CharMask:      rawProf.Char_mask,
@@ -240,8 +240,8 @@ func ProfilePayload(data []byte) EntropyProfile {
 }
 
 // EvalRulesBatch évalue les règles de filtrage LOLBAS, MCP et doctrine par lot.
-func EvalRulesBatch(inEvents []Event, outEvents []Event, count int) int {
-	return engine.C2bt_eval_rules_batch(inEvents, outEvents, count)
+func EvalRulesBatch(inEvents []Event, outEvents []Event, eventCount int) int {
+	return engine.C2bt_eval_rules_batch(inEvents, outEvents, eventCount)
 }
 
 var (

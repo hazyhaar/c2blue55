@@ -173,11 +173,11 @@ func TestPipeline_AuditLogWritten(t *testing.T) {
 	p.logEvent("bad-c2.net", "TEST_ALERT", "REPUTATION_MATCH", 0.99)
 	_ = p.Close()
 
-	data, err := os.ReadFile(logPath)
+	auditLogBytes, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("Lecture du journal: %v", err)
 	}
-	if len(data) == 0 {
+	if len(auditLogBytes) == 0 {
 		t.Fatalf("Journal d'audit vide")
 	}
 }
@@ -203,8 +203,7 @@ func TestPipeline_ArbitratorWorker(t *testing.T) {
 	}
 	defer p.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Arbitre configuré pour halluciner un verdict agressif DNS_TUNNEL_CONFIRMED
 	arb := &concreteArbitrator{verdict: "DNS_TUNNEL_CONFIRMED"}

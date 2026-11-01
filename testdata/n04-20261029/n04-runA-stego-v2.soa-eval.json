@@ -1,0 +1,10 @@
+{
+  "pcap": "/devhoros/c2blue55/wittgenstein/redhost_lab/n04-20261029/n04-runA-stego-v2.pcap",
+  "sha256": "15a15d533f201420af06284c21e32430b0600ffda8a4b99284e302c44ffecf20",
+  "responses": 200,
+  "negative_with_soa": 200,
+  "fires": 198,
+  "fired_keys": 1,
+  "packets_to_first_fire": 6,
+  "first_fire_ts_ns": 1793287885980212000
+}

@@ -1,0 +1,21 @@
+{
+  "run_id": "a04-runA-aaaa",
+  "capture_host": "redhost",
+  "capture_interface": "wg0",
+  "capture_source": "/var/lib/dnslab/pcap/dnslab-20261029T17Z.pcap (tcpdump, dnslab-capture.service)",
+  "capture_source_sha256": "30f4398cdf3985d118571ead700adc203a6373d1eae88cd065d0df2c50336627",
+  "emitter": "c2dnslab-emit@a5f918cb1763 sur redbo, famille redhost-negative-soa (étiquette de contrat réutilisée), outil replay, QType 28 (AAAA), RD=1, 200 questions à 5/s, 100 noms (hostile) ou 5 noms répétés (bénin)",
+  "resolver": "Unbound 1.13.1 sur redbo 10.55.0.2:5335, forward-zone lab.pound2pound.fr → 10.55.0.1 ; le point de capture voit la jambe Unbound → redhost",
+  "server": "dnslab-auth@a5f918cb1763 sur redhost 10.55.0.1:53, -aaaa iid-stego -aaaa-answer 2001:db8:55::1 -aaaa-seed 0xAAAA1, -ttl 0",
+  "window_utc": [
+    "2026-10-29T17:12:10.953427Z",
+    "2026-10-29T17:12:50.954314Z"
+  ],
+  "slice_margin_s": [
+    1.0,
+    1.5
+  ],
+  "packets": 400,
+  "label": "hostile",
+  "sha256": "edaa69e8a52e8ff4fab8195878c43f4a558ec63d7c4b16d1b8bf43916f44a14d"
+}

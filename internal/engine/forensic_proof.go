@@ -91,7 +91,7 @@ func (p *ForensicProof) CanonicalBytes() []byte {
 // descripteur d'arène.
 func bindPayloadToEvent(ev *Probe_event_t, payload []byte) error {
 	if ev.Flags&FlagLongPayload == 0 {
-		if !bytes.Equal(payload, ev.Payload[:payloadUsed(ev.Payload[:])]) {
+		if !bytes.Equal(payload, ev.Payload[:inlinePayloadUsed(ev.Payload[:])]) {
 			return errProofPayloadShort
 		}
 		return nil

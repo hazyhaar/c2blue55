@@ -1,0 +1,11 @@
+{
+  "capture": "poste-aaaa-benin-20261029T170630Z.pcap",
+  "sha256": "c17bb2964afe40291df279c3e9fb37303b572cb1f594181f5789c46425cdc5ff",
+  "emitter": "dig (poste de travail, 192.168.2.50)",
+  "target": "192.168.2.1:53 (routeur, résolveur du poste)",
+  "interface": "enp5s0",
+  "date_utc": "20261029T170630Z",
+  "names": "200 premiers noms de poste-aaaa-benin-20261029T170630Z.noms.txt, une question AAAA chacun, 5 par seconde",
+  "label": "benin-poste",
+  "note": "trafic de résolution ordinaire du poste de travail, hors banc wg0 ; aucune émission depuis redbo/redhost ; vrais pools AAAA de CDN"
+}

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 )
 
 func TestObservationIdentityAndPrivacy(t *testing.T) {
@@ -30,7 +30,7 @@ func TestObservationIdentityAndPrivacy(t *testing.T) {
 		t.Fatal("nominal stat recovery")
 	}
 	ch := c2blue55.NewChannel()
-	for pass := 0; pass < 2; pass++ {
+	for range 2 {
 		procs := scanRealProcesses(ch)
 		if len(procs) == 0 {
 			t.Fatal("no live observations")
@@ -70,7 +70,7 @@ func TestAuthenticationSnapshotAndSubscriberBound(t *testing.T) {
 	t.Setenv("C2BLUE_DASHBOARD_TOKEN", "private")
 	a := newArena()
 	defer a.close()
-	h := a.handler()
+	h := a.httpHandler()
 	denied := httptest.NewRecorder()
 	h.ServeHTTP(denied, httptest.NewRequest("GET", "/events", nil))
 	if denied.Code != http.StatusUnauthorized {

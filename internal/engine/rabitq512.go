@@ -11,7 +11,7 @@ import (
 	"math"
 	"math/bits"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/goclassifier"
+	"github.com/hazyhaar/c2blue55/internal/goclassifier"
 )
 
 const (
@@ -48,11 +48,8 @@ func Encode512(vec []float32, dstCode *[rabitqWords512]uint64) (sqNorm float64, 
 		return 0, 0
 	}
 	var code [rabitqWords512]uint64
-	n := len(vec)
-	if n > rabitqDim512 {
-		n = rabitqDim512
-	}
-	for i := 0; i < n; i++ {
+	n := min(len(vec), rabitqDim512)
+	for i := range n {
 		c := float64(vec[i])
 		sqNorm += c * c
 		if c >= 0 {
@@ -80,18 +77,15 @@ func QuantizeMeanCentered512(vec []float32, dst *[codebookWords]uint64) (sqNorm 
 	if dst == nil || len(vec) == 0 {
 		return 0, 0
 	}
-	n := len(vec)
-	if n > rabitqDim512 {
-		n = rabitqDim512
-	}
+	n := min(len(vec), rabitqDim512)
 	var mean float64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		mean += float64(vec[i])
 	}
 	mean /= float64(n)
 
 	var code [rabitqWords512]uint64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		c := float64(vec[i]) - mean
 		sqNorm += c * c
 		if c >= 0 {
@@ -115,7 +109,7 @@ func QuantizeFHT512(vec []float32, dst *[codebookWords]uint64) (sqNorm float64, 
 	var proj [goclassifier.RabitqDim]float32
 	goclassifier.ProjectRabitq(&proj, vec)
 	code := goclassifier.QuantizeRabitq(&proj)
-	for w := 0; w < codebookWords; w++ {
+	for w := range codebookWords {
 		dst[w] = code.Bits[w]
 	}
 	return float64(code.L2 * code.L2), float64(code.L1)
@@ -132,17 +126,14 @@ func prepareQueryPlanes(queryCentered []float64, dst *QueryPlanes512) {
 	clear(dst.Planes[:])
 	dst.VMin, dst.Delta, dst.SumQ = 0, 1, 0
 
-	n := len(queryCentered)
-	if n > rabitqDim512 {
-		n = rabitqDim512
-	}
+	n := min(len(queryCentered), rabitqDim512)
 	if n == 0 {
 		return
 	}
 
 	vMin, vMax := queryCentered[0], queryCentered[0]
 	var sumQ float64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		v := queryCentered[i]
 		if v < vMin {
 			vMin = v
@@ -163,13 +154,10 @@ func prepareQueryPlanes(queryCentered []float64, dst *QueryPlanes512) {
 	dst.VMin, dst.Delta, dst.SumQ = vMin, delta, sumQ
 
 	planes := &dst.Planes
-	for i := 0; i < n; i++ {
-		q := uint64(math.Round((queryCentered[i] - vMin) / delta))
-		if q > uint64(levels) {
-			q = uint64(levels)
-		}
+	for i := range n {
+		q := min(uint64(math.Round((queryCentered[i]-vMin)/delta)), uint64(levels))
 		w, bit := i>>6, uint(i)&63
-		for k := 0; k < rabitqBpBits512; k++ {
+		for k := range rabitqBpBits512 {
 			if (q>>uint(k))&1 == 1 {
 				planes[k*rabitqWords512+w] |= 1 << bit
 			}

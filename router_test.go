@@ -19,7 +19,7 @@ func TestRouter_Sizing(t *testing.T) {
 
 func TestSubRing_SPSC_WrapAndSaturation(t *testing.T) {
 	var ring SubRing
-	for i := 0; i < subRingSlots; i++ {
+	for i := range subRingSlots {
 		ev := Event{Src: uint64(i)}
 		if !ring.Push(&ev) {
 			t.Fatalf("Push(%d) refusé sur anneau non plein", i)
@@ -37,7 +37,7 @@ func TestSubRing_SPSC_WrapAndSaturation(t *testing.T) {
 	}
 
 	var got Event
-	for i := 0; i < subRingSlots; i++ {
+	for i := range subRingSlots {
 		if !ring.Pop(&got) {
 			t.Fatalf("Pop(%d) refusé", i)
 		}
@@ -49,7 +49,7 @@ func TestSubRing_SPSC_WrapAndSaturation(t *testing.T) {
 		t.Fatal("Pop accepté sur anneau vide")
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ev := Event{Src: uint64(i)}
 		if !ring.Push(&ev) {
 			t.Fatalf("Push(%d) refusé après vidage", i)
@@ -59,7 +59,7 @@ func TestSubRing_SPSC_WrapAndSaturation(t *testing.T) {
 
 func TestSubRing_PopBatch(t *testing.T) {
 	var ring SubRing
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		ev := Event{Src: uint64(i)}
 		ring.Push(&ev)
 	}
@@ -105,7 +105,7 @@ func TestDispatchLoop_RoutesAndStops(t *testing.T) {
 	rt := NewRouter()
 	input := NewChannel()
 	const total = 40
-	for i := 0; i < total; i++ {
+	for i := range total {
 		ev := Event{Subsystem: uint16(i%4) + SubProc, Src: uint64(i)}
 		if rc := input.Write(&ev); rc != 0 {
 			t.Fatalf("Write(%d) = %d", i, rc)
@@ -148,7 +148,7 @@ func TestRouter_RunWorkers(t *testing.T) {
 	rt := NewRouter()
 	var proc, file, net, mem atomic.Int64
 	const total = 8
-	for i := 0; i < total; i++ {
+	for i := range total {
 		ev := Event{Subsystem: uint16(i%4) + SubProc}
 		if !rt.Dispatch(&ev) {
 			t.Fatalf("Dispatch(%d) refusé", i)

@@ -1,0 +1,24 @@
+5d7b138d4000-5d7b138d5000 r--p 00000000 103:06 21286498                  /tmp/wp_del
+5d7b138d5000-5d7b138d6000 r-xp 00001000 103:06 21286498                  /tmp/wp_del
+5d7b138d6000-5d7b138d7000 r--p 00002000 103:06 21286498                  /tmp/wp_del
+5d7b138d7000-5d7b138d8000 r--p 00002000 103:06 21286498                  /tmp/wp_del
+5d7b138d8000-5d7b138d9000 rw-p 00003000 103:06 21286498                  /tmp/wp_del
+70b303a00000-70b303a28000 r--p 00000000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+70b303a28000-70b303bb1000 r-xp 00028000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+70b303bb1000-70b303c00000 r--p 001b1000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+70b303c00000-70b303c04000 r--p 001ff000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+70b303c04000-70b303c06000 rw-p 00203000 103:06 27557644                  /usr/lib/x86_64-linux-gnu/libc.so.6
+70b303c06000-70b303c13000 rw-p 00000000 00:00 0 
+70b303d08000-70b303d0b000 rw-p 00000000 00:00 0 
+70b303d2d000-70b303d2f000 r-xs 00000000 103:06 21286492                  /tmp/wp_del.bin (deleted)
+70b303d2f000-70b303d31000 rw-p 00000000 00:00 0 
+70b303d31000-70b303d33000 r--p 00000000 00:00 0                          [vvar]
+70b303d33000-70b303d35000 r--p 00000000 00:00 0                          [vvar_vclock]
+70b303d35000-70b303d37000 r-xp 00000000 00:00 0                          [vdso]
+70b303d37000-70b303d38000 r--p 00000000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+70b303d38000-70b303d63000 r-xp 00001000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+70b303d63000-70b303d6d000 r--p 0002c000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+70b303d6d000-70b303d6f000 r--p 00036000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+70b303d6f000-70b303d71000 rw-p 00038000 103:06 27557641                  /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7ffefd683000-7ffefd6a5000 rw-p 00000000 00:00 0                          [stack]
+ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0                  [vsyscall]

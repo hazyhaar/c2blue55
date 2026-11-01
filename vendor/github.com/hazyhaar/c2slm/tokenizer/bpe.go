@@ -48,26 +48,43 @@ func NewTokenizerFromGGUF(gf *gguf.File) (*Tokenizer, error) {
 
 	initByteEncodings(tok.byteToUnicode, tok.unicodeToByte)
 
+	// Strate V5b : tout jeton de type 3 (contrôle) ou 4 (défini par
+	// l'utilisateur) dans tokenizer.ggml.token_type est spécial (découpe
+	// littérale avant le BPE, comme <|im_start|> aujourd'hui). La détection
+	// en dur reste le repli si la clé est absente ou de longueur incohérente.
+	const typeControle int32 = 3
+	const typeUtilisateur int32 = 4
+
+	typesJetons, typesPresents := gf.TableauEntiers("tokenizer.ggml.token_type")
+	typesUtilisables := typesPresents && len(typesJetons) == len(tokens)
+
 	for id, s := range tokens {
 		id32 := int32(id)
 		tok.tokenToID[s] = id32
 		tok.idToToken[id] = s
 
-		// Index special tokens (like <|im_start|>, <|im_end|>, etc.)
-		if strings.HasPrefix(s, "<|") && strings.HasSuffix(s, "|>") {
+		estSpecial := false
+		if typesUtilisables {
+			estSpecial = typesJetons[id] == typeControle || typesJetons[id] == typeUtilisateur
+		} else if strings.HasPrefix(s, "<|") && strings.HasSuffix(s, "|>") {
+			estSpecial = true
+		}
+		if estSpecial {
 			tok.specialTokens[s] = id32
 		}
 	}
 
-	// Register specific standard Qwen special tokens if present
-	specialNames := []string{
-		"<|im_start|>",
-		"<|im_end|>",
-		"<|endoftext|>",
-	}
-	for _, name := range specialNames {
-		if id, exists := tok.tokenToID[name]; exists {
-			tok.specialTokens[name] = id
+	if !typesUtilisables {
+		// Repli : enregistrement explicite des jetons standard Qwen si présents
+		nomsSpeciaux := []string{
+			"<|im_start|>",
+			"<|im_end|>",
+			"<|endoftext|>",
+		}
+		for _, nomSpecial := range nomsSpeciaux {
+			if id, exists := tok.tokenToID[nomSpecial]; exists {
+				tok.specialTokens[nomSpecial] = id
+			}
 		}
 	}
 

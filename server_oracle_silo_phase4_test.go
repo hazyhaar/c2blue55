@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"testing"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 // Finding F_DS_05 : les K dernières tranches sont les K derniers jours

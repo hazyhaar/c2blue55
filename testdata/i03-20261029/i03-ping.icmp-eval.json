@@ -1,0 +1,12 @@
+{
+  "pcap": "testdata/i03-20261029/i03-ping.pcap",
+  "sha256": "0deffb943ca49ff22014af9d7c9b7d9dd2710c7851c7fa051ec3b82ef7898b4e",
+  "ipv4_packets": 60,
+  "echo_requests": 30,
+  "echo_replies": 30,
+  "fires": 0,
+  "asymmetric_fires": 0,
+  "unsolicited_fires": 0,
+  "packets_to_first_fire": 0,
+  "first_fire_ts_ns": 0
+}

@@ -163,11 +163,8 @@ func FHT512(buf *[RabitqDim]float32) {
 // zero-padded to 512, multiplied by the deterministic Rademacher pattern, then
 // transformed by FHT512. No dense projection matrix is allocated or stored.
 func ProjectRabitq(dst *[RabitqDim]float32, features []float32) {
-	n := len(features)
-	if n > RabitqDim {
-		n = RabitqDim
-	}
-	for i := 0; i < n; i++ {
+	n := min(len(features), RabitqDim)
+	for i := range n {
 		dst[i] = features[i] * rabitqSigns[i]
 	}
 	for i := n; i < RabitqDim; i++ {
@@ -184,16 +181,16 @@ func QuantizeRabitq(v *[RabitqDim]float32) RabitqCode {
 	var code RabitqCode
 
 	var mean float32
-	for i := 0; i < RabitqDim; i++ {
+	for i := range RabitqDim {
 		mean += v[i]
 	}
 	mean /= RabitqDim
 
 	var l1, l2 float32
-	for w := 0; w < RabitqWords; w++ {
+	for w := range RabitqWords {
 		var word uint64
 		base := w * 64
-		for b := 0; b < 64; b++ {
+		for b := range 64 {
 			c := v[base+b] - mean
 			if c < 0 {
 				l1 -= c
@@ -215,7 +212,7 @@ func QuantizeRabitq(v *[RabitqDim]float32) RabitqCode {
 // hardware POPCNT instruction through math/bits.OnesCount64.
 func hamming512(a, b *[RabitqWords]uint64) int {
 	var d uint64
-	for w := 0; w < RabitqWords; w++ {
+	for w := range RabitqWords {
 		d += uint64(bits.OnesCount64(a[w] ^ b[w]))
 	}
 	return int(d)
@@ -248,7 +245,7 @@ func classSpread(protos []RabitqCode) float32 {
 	}
 
 	var centroid [RabitqWords]uint64
-	for w := 0; w < RabitqWords; w++ {
+	for w := range RabitqWords {
 		var ones int
 		for i := range protos {
 			ones += bits.OnesCount64(protos[i].Bits[w])

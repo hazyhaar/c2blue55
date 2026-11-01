@@ -48,9 +48,9 @@ var zeroPage [PageSize]byte
 // rend sur la page complétée, mais en flux et sans image locale de 4 Ko :
 // hash/crc32 appelle son noyau par une variable de fonction, ce qui ferait
 // échapper vers le tas toute image tenue sur la pile.
-func arenaPageCRC32C(data []byte) uint32 {
-	crc := crc32.Update(0, castagnoliTable, data)
-	return crc32.Update(crc, castagnoliTable, zeroPage[:PageSize-len(data)])
+func arenaPageCRC32C(payloadBytes []byte) uint32 {
+	crc := crc32.Update(0, castagnoliTable, payloadBytes)
+	return crc32.Update(crc, castagnoliTable, zeroPage[:PageSize-len(payloadBytes)])
 }
 
 // Erreurs de résolution d'une charge longue. Toutes signifient que les octets
@@ -114,30 +114,27 @@ func NewArenaPool() *ArenaPool {
 //     est scellé dans ev.Payload[80..96] avec le drapeau FlagLongPayload.
 //
 // Retourne la longueur effective écrite dans l'arène ou dans l'événement.
-func (p *ArenaPool) StorePayload(ev *Probe_event_t, data []byte) int {
-	if ev == nil || len(data) == 0 {
+func (p *ArenaPool) StorePayload(ev *Probe_event_t, payloadBytes []byte) int {
+	if ev == nil || len(payloadBytes) == 0 {
 		return 0
 	}
 	clear(ev.Payload[:])
 
-	if len(data) <= 96 {
-		copy(ev.Payload[:], data)
+	if len(payloadBytes) <= 96 {
+		copy(ev.Payload[:], payloadBytes)
 		ev.Flags &^= FlagLongPayload
-		return len(data)
+		return len(payloadBytes)
 	}
 
 	// Charge longue : plafonnement à 4096 octets
-	length := len(data)
-	if length > PageSize {
-		length = PageSize
-	}
+	length := min(len(payloadBytes), PageSize)
 
 	// 1. Copie du préfixe réflexe (80 octets)
-	copy(ev.Payload[:metaOffsetPageIdx], data[:metaOffsetPageIdx])
+	copy(ev.Payload[:metaOffsetPageIdx], payloadBytes[:metaOffsetPageIdx])
 
 	// 2. CRC32-C Castagnoli de la page [charge ‖ zéros], tel que le noyau
 	// c2archtsim le rend sur la page complétée.
-	crc := arenaPageCRC32C(data[:length])
+	crc := arenaPageCRC32C(payloadBytes[:length])
 
 	// 3. Allocation atomique de page tournante
 	slotIdx := p.alloc.Add(1) - 1
@@ -158,9 +155,9 @@ func (p *ArenaPool) StorePayload(ev *Probe_event_t, data []byte) int {
 		runtime.Gosched()
 	}
 	words := (length + 7) / 8
-	for w := 0; w < words; w++ {
+	for w := range words {
 		var buf [8]byte
-		copy(buf[:], data[w*8:min(w*8+8, length)])
+		copy(buf[:], payloadBytes[w*8:min(w*8+8, length)])
 		page.words[w].Store(binary.LittleEndian.Uint64(buf[:]))
 	}
 	page.Len.Store(uint32(length))
@@ -196,7 +193,7 @@ func (p *ArenaPool) ResolvePayload(ev *Probe_event_t, dst *[PageSize]byte) ([]by
 		return nil, nil
 	}
 	if ev.Flags&FlagLongPayload == 0 {
-		return ev.Payload[:payloadUsed(ev.Payload[:])], nil
+		return ev.Payload[:inlinePayloadUsed(ev.Payload[:])], nil
 	}
 	if dst == nil {
 		return nil, ErrArenaDescriptor
@@ -223,7 +220,7 @@ func (p *ArenaPool) ResolvePayload(ev *Probe_event_t, dst *[PageSize]byte) ([]by
 
 	// 3. Copie atomique des mots utiles, traîne remise à zéro.
 	words := (length + 7) / 8
-	for w := 0; w < words; w++ {
+	for w := range words {
 		binary.LittleEndian.PutUint64(dst[w*8:], page.words[w].Load())
 	}
 	clear(dst[length:])

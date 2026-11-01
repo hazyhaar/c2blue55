@@ -142,17 +142,17 @@ func NormalizeCodeWindow(src []byte, dst []byte) int {
 // CalculateEntropyQ8 calcule l'entropie de Shannon en virgule fixe Q8.8 (0..2048).
 // Il exploite directement l'algorithme entier C2bt_calc_entropy_8_8 et les tables L1D
 // ARCHTIME du moteur (c_log2_c_table), sans allocation sur le tas et sans fonction mathématique flottante.
-func CalculateEntropyQ8(data []byte) uint32 {
-	if len(data) == 0 {
+func CalculateEntropyQ8(payload []byte) uint32 {
+	if len(payload) == 0 {
 		return 0
 	}
-	return C2bt_calc_entropy_8_8(data, uint64(len(data)))
+	return C2bt_calc_entropy_8_8(payload, uint64(len(payload)))
 }
 
 // CalculateShannonEntropy calcule l'entropie de Shannon H en bits par octet (0.0..8.0).
 // La conversion depuis le format fixe Q8.8 s'effectue par division par 256.0.
-func CalculateShannonEntropy(data []byte) float64 {
-	return float64(CalculateEntropyQ8(data)) / 256.0
+func CalculateShannonEntropy(payload []byte) float64 {
+	return float64(CalculateEntropyQ8(payload)) / 256.0
 }
 
 // IsBoilerplateOrLowEntropy retourne vrai lorsque le bloc doit être rejeté
@@ -160,22 +160,22 @@ func CalculateShannonEntropy(data []byte) float64 {
 // répétition d'un unique octet de bourrage à plus de 75 % du bloc. Le seuil de
 // répétition est strict : compter exactement trois quarts du bloc ne suffit pas
 // à rejeter un contenu par ailleurs structuré.
-func IsBoilerplateOrLowEntropy(data []byte, minEntropy float64) bool {
-	if len(data) == 0 {
+func IsBoilerplateOrLowEntropy(payload []byte, minEntropy float64) bool {
+	if len(payload) == 0 {
 		return true
 	}
 	if minEntropy > 0 {
 		minQ8 := uint32(minEntropy * 256.0)
-		if CalculateEntropyQ8(data) < minQ8 {
+		if CalculateEntropyQ8(payload) < minQ8 {
 			return true
 		}
 	}
 
 	var freq [256]int
-	for _, b := range data {
+	for _, b := range payload {
 		freq[b]++
 	}
-	threeQuarters := len(data) * 3
+	threeQuarters := len(payload) * 3
 	for _, b := range boilerplateBytes {
 		if freq[b]*4 > threeQuarters {
 			return true

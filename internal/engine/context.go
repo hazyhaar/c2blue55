@@ -38,24 +38,24 @@ func C2bt_poll_batch(ctx *C2bt_ctx_t, out []Probe_event_t, maxEvents int) int {
 		return 0
 	}
 	maxEvents = min(maxEvents, len(out))
-	count := 0
+	polledCount := 0
 	channels := [...]*Probe_channel_t{&ctx.Chan_proc, &ctx.Chan_file, &ctx.Chan_net, &ctx.Chan_mcp}
-	for count < maxEvents {
-		before := count
+	for polledCount < maxEvents {
+		before := polledCount
 		for _, ch := range channels {
-			if count < maxEvents && C2bt_channel_read(ch, &out[count]) == 1 {
-				count++
+			if polledCount < maxEvents && C2bt_channel_read(ch, &out[polledCount]) == 1 {
+				polledCount++
 			}
 		}
-		if count == before {
+		if polledCount == before {
 			break
 		}
 	}
-	C2bt_eval_rules_batch(out, out, count)
-	for i := 0; i < count; i++ {
+	C2bt_eval_rules_batch(out, out, polledCount)
+	for i := 0; i < polledCount; i++ {
 		var flags uint32
 		C2bt_correlate_event(&ctx.Tracker_table, &out[i], &flags, 1000000000)
 		out[i].Flags = flags
 	}
-	return count
+	return polledCount
 }

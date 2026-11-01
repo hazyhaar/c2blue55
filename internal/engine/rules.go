@@ -28,12 +28,12 @@ func Check_lolbas_comm(comm []byte) int {
 	return 0
 }
 
-func C2bt_eval_rules_batch(inEvents, outEvents []Probe_event_t, count int) int {
-	count = min(count, len(inEvents), len(outEvents))
-	if count <= 0 {
+func C2bt_eval_rules_batch(inEvents, outEvents []Probe_event_t, batchCount int) int {
+	batchCount = min(batchCount, len(inEvents), len(outEvents))
+	if batchCount <= 0 {
 		return 0
 	}
-	for i := 0; i < count; i++ {
+	for i := 0; i < batchCount; i++ {
 		ev := inEvents[i]
 		payload := ev.Payload[:]
 		if end := bytes.IndexByte(payload, 0); end >= 0 {
@@ -75,5 +75,5 @@ func C2bt_eval_rules_batch(inEvents, outEvents []Probe_event_t, count int) int {
 		}
 		outEvents[i] = ev
 	}
-	return count
+	return batchCount
 }

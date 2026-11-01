@@ -58,8 +58,8 @@ func NewDefenseTools(journalPath string) *DefenseTools {
 func RegisterDefenseTools(reg *c2slm.ToolRegistry, journalPath string) (*DefenseTools, error) {
 	d := NewDefenseTools(journalPath)
 	defs := []struct {
-		def     c2slm.ToolDefinition
-		handler c2slm.ToolHandler
+		def         c2slm.ToolDefinition
+		toolHandler c2slm.ToolHandler
 	}{
 		{
 			def: c2slm.ToolDefinition{
@@ -67,7 +67,7 @@ func RegisterDefenseTools(reg *c2slm.ToolRegistry, journalPath string) (*Defense
 				Description: "Inspecte /proc/net/{udp,tcp} pour un port donné et identifie les processus propriétaires du socket (inode -> PID) : localise l'émetteur d'une requête DNS suspecte.",
 				Parameters:  json.RawMessage(`{"type":"object","properties":{"port":{"type":"integer","minimum":1,"maximum":65535,"description":"Port local ou distant recherché dans /proc/net"}},"required":["port"],"additionalProperties":false}`),
 			},
-			handler: d.InspectSocket,
+			toolHandler: d.InspectSocket,
 		},
 		{
 			def: c2slm.ToolDefinition{
@@ -75,7 +75,7 @@ func RegisterDefenseTools(reg *c2slm.ToolRegistry, journalPath string) (*Defense
 				Description: "Lit les métadonnées d'un processus (/proc/<pid>/cmdline, comm, exe, uid, ppid) et calcule l'empreinte SHA-256 de son binaire.",
 				Parameters:  json.RawMessage(`{"type":"object","properties":{"pid":{"type":"integer","minimum":1,"description":"Identifiant du processus à inspecter"}},"required":["pid"],"additionalProperties":false}`),
 			},
-			handler: d.InspectProc,
+			toolHandler: d.InspectProc,
 		},
 		{
 			def: c2slm.ToolDefinition{
@@ -83,11 +83,11 @@ func RegisterDefenseTools(reg *c2slm.ToolRegistry, journalPath string) (*Defense
 				Description: "Consigne une intention d'interception d'une adresse IP : produit la règle nftables correspondante et une entrée de journal médico-légal chaînée SHA-256. N'applique aucun blocage lui-même.",
 				Parameters:  json.RawMessage(`{"type":"object","properties":{"ip":{"type":"string","description":"Adresse IP à bloquer"},"duration_seconds":{"type":"integer","minimum":1,"description":"Durée du blocage en secondes"}},"required":["ip","duration_seconds"],"additionalProperties":false}`),
 			},
-			handler: d.BanIP,
+			toolHandler: d.BanIP,
 		},
 	}
 	for _, entry := range defs {
-		if err := reg.Register(entry.def, entry.handler); err != nil {
+		if err := reg.Register(entry.def, entry.toolHandler); err != nil {
 			return nil, err
 		}
 	}
@@ -145,7 +145,7 @@ func (d *DefenseTools) InspectSocket(args json.RawMessage) (string, error) {
 	for i := range res.Matches {
 		res.Matches[i].PIDs = d.findSocketOwners(res.Matches[i].Inode)
 		for _, pid := range res.Matches[i].PIDs {
-			if comm := readTrimmedFile(d.procPath(pid, "comm")); comm != "" {
+			if comm, err := readTrimmedFile(d.procPath(pid, "comm")); err == nil && comm != "" {
 				res.Matches[i].Comms = append(res.Matches[i].Comms, comm)
 			}
 		}
@@ -243,6 +243,7 @@ func (d *DefenseTools) findSocketOwners(inode string) []int {
 	target := "socket:[" + inode + "]"
 	entries, err := os.ReadDir(d.procRoot)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "inspect_socket: lecture %s impossible: %v\n", d.procRoot, err)
 		return nil
 	}
 	var pids []int
@@ -305,20 +306,22 @@ func (d *DefenseTools) InspectProc(args json.RawMessage) (string, error) {
 	exeLink := d.procPath(req.PID, "exe")
 	exePath, _ := os.Readlink(exeLink)
 
+	commVal, _ := readTrimmedFile(d.procPath(req.PID, "comm"))
+	cmdVal, _ := readCmdline(d.procPath(req.PID, "cmdline"))
 	res := inspectProcResult{
 		PID:     req.PID,
-		Comm:    readTrimmedFile(d.procPath(req.PID, "comm")),
-		Cmdline: readCmdline(d.procPath(req.PID, "cmdline")),
+		Comm:    commVal,
+		Cmdline: cmdVal,
 		Exe:     exePath,
 	}
 	if res.Comm == "" && res.Cmdline == "" && exePath == "" {
 		if _, err := os.Stat(d.procPath(req.PID, "")); err != nil {
-			return "", fmt.Errorf("inspect_proc: processus %d introuvable", req.PID)
+			return "", fmt.Errorf("inspect_proc: processus %d introuvable: %w", req.PID, err)
 		}
 	}
 
-	if status := readTrimmedFile(d.procPath(req.PID, "status")); status != "" {
-		for _, line := range strings.Split(status, "\n") {
+	if status, err := readTrimmedFile(d.procPath(req.PID, "status")); err == nil && status != "" {
+		for line := range strings.SplitSeq(status, "\n") {
 			switch {
 			case strings.HasPrefix(line, "Uid:"):
 				res.UID = firstField(strings.TrimPrefix(line, "Uid:"))
@@ -533,21 +536,21 @@ func (d *DefenseTools) procPath(pid int, name string) string {
 	return filepath.Join(base, name)
 }
 
-func readTrimmedFile(path string) string {
-	data, err := os.ReadFile(path)
+func readTrimmedFile(path string) (string, error) {
+	fileBytes, err := os.ReadFile(path)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return strings.TrimSpace(string(data))
+	return strings.TrimSpace(string(fileBytes)), nil
 }
 
-func readCmdline(path string) string {
-	data, err := os.ReadFile(path)
+func readCmdline(path string) (string, error) {
+	fileBytes, err := os.ReadFile(path)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	fields := strings.Split(strings.TrimRight(string(data), "\x00"), "\x00")
-	return strings.Join(fields, " ")
+	fields := strings.Split(strings.TrimRight(string(fileBytes), "\x00"), "\x00")
+	return strings.Join(fields, " "), nil
 }
 
 func firstField(s string) string {

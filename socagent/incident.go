@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55"
+	"github.com/hazyhaar/c2blue55"
 	"uuid"
 )
 
@@ -54,7 +55,7 @@ func ComposeV7(unixMs uint64, seq uint16, randB uint64) string {
 	u[5] = byte(unixMs)
 	u[6] = 0x70 | byte((seq>>8)&0x0F)
 	u[7] = byte(seq)
-	u[8] = 0x80 | byte((randB>>56)&0x3F)
+	u[8] = 0x80 | (byte((randB>>56)&0x3F) ^ byte((seq>>12)&0x0F))
 	u[9] = byte(randB >> 48)
 	u[10] = byte(randB >> 40)
 	u[11] = byte(randB >> 32)
@@ -167,26 +168,41 @@ func appendFactJSON(dst []byte, p *Proposition) []byte {
 }
 
 func appendJSONString(dst []byte, s string) []byte {
+	const hexdigits = "0123456789abcdef"
 	dst = append(dst, '"')
-	for i := 0; i < len(s); i++ {
+	for i := 0; i < len(s); {
 		c := s[i]
-		switch c {
-		case '"', '\\':
-			dst = append(dst, '\\', c)
-		case '\n':
-			dst = append(dst, '\\', 'n')
-		case '\r':
-			dst = append(dst, '\\', 'r')
-		case '\t':
-			dst = append(dst, '\\', 't')
-		default:
-			if c < 0x20 {
-				const hexdigits = "0123456789abcdef"
-				dst = append(dst, '\\', 'u', '0', '0', hexdigits[c>>4], hexdigits[c&0xF])
-			} else {
-				dst = append(dst, c)
+		if c < utf8.RuneSelf {
+			switch c {
+			case '"', '\\':
+				dst = append(dst, '\\', c)
+			case '\b':
+				dst = append(dst, '\\', 'b')
+			case '\f':
+				dst = append(dst, '\\', 'f')
+			case '\n':
+				dst = append(dst, '\\', 'n')
+			case '\r':
+				dst = append(dst, '\\', 'r')
+			case '\t':
+				dst = append(dst, '\\', 't')
+			default:
+				if c < 0x20 {
+					dst = append(dst, '\\', 'u', '0', '0', hexdigits[c>>4], hexdigits[c&0xF])
+				} else {
+					dst = append(dst, c)
+				}
 			}
+			i++
+			continue
 		}
+		decodedRune, width := utf8.DecodeRuneInString(s[i:])
+		if decodedRune == utf8.RuneError && width == 1 {
+			dst = append(dst, `\ufffd`...)
+		} else {
+			dst = append(dst, s[i:i+width]...)
+		}
+		i += width
 	}
 	return append(dst, '"')
 }

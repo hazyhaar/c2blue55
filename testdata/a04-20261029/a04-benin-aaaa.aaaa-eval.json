@@ -1,0 +1,10 @@
+{
+  "pcap": "testdata/a04-20261029/a04-benin-aaaa.pcap",
+  "sha256": "d972cc6687d010963ed40f17ec712e9476ee39a24c37ad46cff2b78abb89db93",
+  "responses": 200,
+  "aaaa_answers": 200,
+  "fires": 0,
+  "fired_keys": 0,
+  "packets_to_first_fire": 0,
+  "first_fire_ts_ns": 0
+}

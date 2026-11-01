@@ -180,11 +180,11 @@ func TestBanIPJournalChain(t *testing.T) {
 	}
 
 	// Le journal doit contenir deux lignes JSON valides et chaînées.
-	data, err := os.ReadFile(journal)
+	journalBytes, err := os.ReadFile(journal)
 	if err != nil {
 		t.Fatalf("lecture journal: %v", err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	lines := strings.Split(strings.TrimSpace(string(journalBytes)), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("%d lignes dans le journal, attendu 2", len(lines))
 	}

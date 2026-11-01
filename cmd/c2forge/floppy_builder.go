@@ -1,6 +1,6 @@
 // Package main — floppy_builder.go
 // Forgerie des trois disquettes de vecteurs canoniques du tournoi Wittgenstein
-// à partir des données d'exécution réelles exclusives (/devhoros/data/wittgenstein/).
+// à partir des données d'exécution réelles exclusives (/devhoros/c2blue55/wittgenstein/).
 // Règle 4 (Anti-factive) : calcul empirique strict des poids et centroïdes réels (0 formule synthétique).
 package main
 
@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"code.hazyhaar.fr/devhoros/pkg/c2blue55/internal/engine"
+	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
 func clampInt8(v float32) int8 {
@@ -33,24 +33,24 @@ func computeEmpiricalHead(benignVectors, harmfulVectors [][engine.EmbeddingDim]f
 
 	if len(benignVectors) > 0 {
 		for _, vec := range benignVectors {
-			for d := 0; d < engine.EmbeddingDim; d++ {
+			for d := range engine.EmbeddingDim {
 				meanBenign[d] += vec[d]
 			}
 		}
 		invB := 1.0 / float32(len(benignVectors))
-		for d := 0; d < engine.EmbeddingDim; d++ {
+		for d := range engine.EmbeddingDim {
 			meanBenign[d] *= invB
 		}
 	}
 
 	if len(harmfulVectors) > 0 {
 		for _, vec := range harmfulVectors {
-			for d := 0; d < engine.EmbeddingDim; d++ {
+			for d := range engine.EmbeddingDim {
 				meanHarmful[d] += vec[d]
 			}
 		}
 		invH := 1.0 / float32(len(harmfulVectors))
-		for d := 0; d < engine.EmbeddingDim; d++ {
+		for d := range engine.EmbeddingDim {
 			meanHarmful[d] *= invH
 		}
 	}
@@ -58,7 +58,7 @@ func computeEmpiricalHead(benignVectors, harmfulVectors [][engine.EmbeddingDim]f
 	head := make([]engine.DecisionClass, 2)
 
 	// Classe 0 (Bénin) : orientée vers meanBenign - meanHarmful
-	for d := 0; d < engine.EmbeddingDim; d++ {
+	for d := range engine.EmbeddingDim {
 		diff := (meanBenign[d] - meanHarmful[d]) * 127.0
 		head[0].Weights[d] = clampInt8(diff)
 	}
@@ -66,7 +66,7 @@ func computeEmpiricalHead(benignVectors, harmfulVectors [][engine.EmbeddingDim]f
 	head[0].QHat = 0.05
 
 	// Classe 1 (Hostile) : orientée vers meanHarmful - meanBenign
-	for d := 0; d < engine.EmbeddingDim; d++ {
+	for d := range engine.EmbeddingDim {
 		diff := (meanHarmful[d] - meanBenign[d]) * 127.0
 		head[1].Weights[d] = clampInt8(diff)
 	}
@@ -78,7 +78,7 @@ func computeEmpiricalHead(benignVectors, harmfulVectors [][engine.EmbeddingDim]f
 		var sumScore float32
 		for _, vec := range harmfulVectors {
 			var dot int32
-			for d := 0; d < engine.EmbeddingDim; d++ {
+			for d := range engine.EmbeddingDim {
 				f := vec[d]
 				var q int32
 				if f > 1.0 {
@@ -103,7 +103,7 @@ func computeEmpiricalHead(benignVectors, harmfulVectors [][engine.EmbeddingDim]f
 		var sumScore float32
 		for _, vec := range benignVectors {
 			var dot int32
-			for d := 0; d < engine.EmbeddingDim; d++ {
+			for d := range engine.EmbeddingDim {
 				f := vec[d]
 				var q int32
 				if f > 1.0 {
@@ -141,12 +141,9 @@ const maxFloppyPrototypes = 32
 // couvrir toute l'étendue de la classe plutôt que son début.
 func selectPrototypes(class uint16, vecs [][engine.EmbeddingDim]float32) []engine.FloppyPrototype {
 	n := len(vecs)
-	k := n
-	if k > maxFloppyPrototypes {
-		k = maxFloppyPrototypes
-	}
+	k := min(n, maxFloppyPrototypes)
 	out := make([]engine.FloppyPrototype, 0, k)
-	for i := 0; i < k; i++ {
+	for i := range k {
 		out = append(out, engine.FloppyPrototype{Class: class, Vector: vecs[i*n/k]})
 	}
 	return out
@@ -280,7 +277,11 @@ func BuildWittgensteinFloppies(dataDir, outDir string) error {
 		if err == io.EOF {
 			break
 		}
-		if err != nil || len(row) < 2 {
+		if err != nil {
+			_ = f.Close()
+			return fmt.Errorf("lecture CSV netrack_dns/train.csv: %w", err)
+		}
+		if len(row) < 2 {
 			continue
 		}
 		label := strings.TrimSpace(row[0])
@@ -345,14 +346,19 @@ func BuildWittgensteinFloppies(dataDir, outDir string) error {
 		defer f.Close()
 		reader := csv.NewReader(f)
 		threatID := uint32(3001)
-		count := 0
-		_, _ = reader.Read() // skip header
+		entryCount := 0
+		if _, err := reader.Read(); err != nil && err != io.EOF {
+			return fmt.Errorf("lecture en-tête lakera_agent_attacks.csv: %w", err)
+		}
 		for {
 			row, err := reader.Read()
-			if err == io.EOF || count >= 1000 {
+			if err == io.EOF || entryCount >= 1000 {
 				break
 			}
-			if err != nil || len(row) < 4 {
+			if err != nil {
+				return fmt.Errorf("lecture CSV lakera_agent_attacks.csv: %w", err)
+			}
+			if len(row) < 4 {
 				continue
 			}
 			attackText := row[3]
@@ -377,7 +383,7 @@ func BuildWittgensteinFloppies(dataDir, outDir string) error {
 				})
 				threatID++
 				mcpHarmfulVecs = append(mcpHarmfulVecs, dst)
-				count++
+				entryCount++
 			}
 		}
 	} else {
@@ -389,14 +395,19 @@ func BuildWittgensteinFloppies(dataDir, outDir string) error {
 	if f, err := os.Open(pInjPath); err == nil {
 		defer f.Close()
 		reader := csv.NewReader(f)
-		_, _ = reader.Read()
-		count := 0
+		if _, err := reader.Read(); err != nil && err != io.EOF {
+			return fmt.Errorf("lecture en-tête prompt_injection_train.csv: %w", err)
+		}
+		entryCount := 0
 		for {
 			row, err := reader.Read()
-			if err == io.EOF || count >= 500 {
+			if err == io.EOF || entryCount >= 500 {
 				break
 			}
-			if err != nil || len(row) < 2 {
+			if err != nil {
+				return fmt.Errorf("lecture CSV prompt_injection_train.csv: %w", err)
+			}
+			if len(row) < 2 {
 				continue
 			}
 			if strings.TrimSpace(row[1]) == "0" && len(row[0]) > 0 {
@@ -407,24 +418,31 @@ func BuildWittgensteinFloppies(dataDir, outDir string) error {
 				var dst [engine.EmbeddingDim]float32
 				if fe.ExtractTo(&ev, dst[:]) {
 					mcpBenignVecs = append(mcpBenignVecs, dst)
-					count++
+					entryCount++
 				}
 			}
 		}
+	} else {
+		return fmt.Errorf("impossible d'ouvrir prompt_injection_train.csv: %w", err)
 	}
 
 	jbbPath := filepath.Join(dataDir, "jbb_benign.csv")
 	if f, err := os.Open(jbbPath); err == nil {
 		defer f.Close()
 		reader := csv.NewReader(f)
-		_, _ = reader.Read()
-		count := 0
+		if _, err := reader.Read(); err != nil && err != io.EOF {
+			return fmt.Errorf("lecture en-tête jbb_benign.csv: %w", err)
+		}
+		entryCount := 0
 		for {
 			row, err := reader.Read()
-			if err == io.EOF || count >= 300 {
+			if err == io.EOF || entryCount >= 300 {
 				break
 			}
-			if err != nil || len(row) < 2 {
+			if err != nil {
+				return fmt.Errorf("lecture CSV jbb_benign.csv: %w", err)
+			}
+			if len(row) < 2 {
 				continue
 			}
 			text := row[1]
@@ -436,10 +454,12 @@ func BuildWittgensteinFloppies(dataDir, outDir string) error {
 				var dst [engine.EmbeddingDim]float32
 				if fe.ExtractTo(&ev, dst[:]) {
 					mcpBenignVecs = append(mcpBenignVecs, dst)
-					count++
+					entryCount++
 				}
 			}
 		}
+	} else {
+		return fmt.Errorf("impossible d'ouvrir jbb_benign.csv: %w", err)
 	}
 
 	mcpHead := computeEmpiricalHead(mcpBenignVecs, mcpHarmfulVecs)
