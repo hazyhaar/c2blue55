@@ -128,7 +128,7 @@ Latences unitaires (`Go 1.27`, Linux `6.14`, `GOAMD64=v3`) :
 | **Cascade Complète (Requête DNS)** | `11,68 µs/op` | **`9,61 µs/op`** | $\approx 104\,000\text{ ops/s}$ | **`0 B/op (0 alloc)`** |
 | **Cascade Complète (Charge Longue en Arène, L1b)** | `16,32 µs/op` | **`11,94 µs/op`** | $\approx 84\,000\text{ ops/s}$ | **`0 B/op (0 alloc)`** |
 
-Tenue sous **charge soutenue de 60 secondes** (`GOEXPERIMENT=simd`, étude comparative complète dans [`docs/dns_detection_solutions_benchmark.md`](docs/dns_detection_solutions_benchmark.md)) :
+Tenue sous **charge soutenue de 60 secondes** (`GOEXPERIMENT=simd`, étude comparative complète dans [`docs/dns_detection_solutions_benchmark.fr.md`](docs/dns_detection_solutions_benchmark.fr.md)) :
 - **Socket UDP/53 Temps Réel (`60,00 s`) :** à **`2 000 pkt/s`** (`120 000` paquets), `0` perte, `0,79 s` CPU (`1,31 %` d'un cœur), **`7,62 Mio` MaxRSS**, `0,0 Mio` d'écriture disque. À **`44 997 pkt/s`** (`2 700 014` paquets), **`0` perte**, `10,24 s` CPU (`17,07 %` d'un cœur ; **`3,42 µs/msg`** temps mural de boucle, **`3,79 µs/msg`** CPU total processus appels système inclus), **`7,39 Mio` MaxRSS**, `0,0 Mio` d'écriture disque.
 - **Rejeu PCAP Multi-Protocoles (`normal-60s.pcap` `147 020` pkts / `22,15 Mo` & `extreme-60s.pcap` `3 011 298` pkts / `325,11 Mo`) :** `c2blue55` traite le palier Normal en **`0,65 s` (`226 267 pkt/s`)** et le palier Extrême en **`13,86 s` (`217 298 pkt/s`, `0,21x` le temps réel, `332,7 Mio` RSS, `0,12 Mio` écrit sur disque, `0` perte)**, obtenant **`TP = 6/14` (`FN = 8`, taux majoritaire `0,7200`)** en Normal et **`TP = 13/23` (`FN = 10`, taux majoritaire `0,6102`)** en Extrême sur les flux chiffrés `DoQ`/`DoH2`/`DoH3`/`H3` avec **`0/36` faux positif (`TN = 36/36`, `ROC AUC = 1,0000`)**.
 
@@ -246,11 +246,15 @@ c2blue55/
 │   ├── probes/                # Sondes hôtes Linux (cn_proc, fanotify, inet_diag, anneau UDP/53)
 │   └── projlearn/             # Noyaux d'ablation de projecteur appris transpilés depuis C99
 ├── docs/                      # Monographies d'architecture, benchmarks comparatifs et feuilles de route
-│   ├── dns_detection_solutions_benchmark.fr.md   # Benchmark 7 piles DNS clair/chiffré & charge 60s (FR)
-│   ├── dns_detection_solutions_benchmark.fr.docx # Édition Word du benchmark comparatif 7 piles (FR)
-│   ├── dns_detection_solutions_benchmark.md      # Benchmark 7 piles DNS clair/chiffré & charge 60s (EN)
-│   ├── dns_detection_solutions_benchmark.docx    # Édition Word du benchmark comparatif 7 piles (EN)
-│   ├── inter_channel_c2_roadmap.md               # Feuille de route C2 inter-canaux (IC-01..06)
+│   ├── c2blue55_wittgenstein_article.fr.md         # Monographie intégrale §1–§15 & bancs labo (FR)
+│   ├── c2blue55_wittgenstein_article.fr.docx       # Édition Word de la monographie intégrale (FR)
+│   ├── c2blue55_wittgenstein_article.md            # Monographie intégrale §1–§15 & bancs labo (EN)
+│   ├── c2blue55_wittgenstein_article.docx          # Édition Word de la monographie intégrale (EN)
+│   ├── dns_detection_solutions_benchmark.fr.md     # Benchmark 7 piles DNS clair/chiffré & charge 60s (FR)
+│   ├── dns_detection_solutions_benchmark.fr.docx   # Édition Word du benchmark comparatif 7 piles (FR)
+│   ├── dns_detection_solutions_benchmark.md        # Benchmark 7 piles DNS clair/chiffré & charge 60s (EN)
+│   ├── dns_detection_solutions_benchmark.docx      # Édition Word du benchmark comparatif 7 piles (EN)
+│   ├── inter_channel_c2_roadmap.md                 # Feuille de route C2 inter-canaux (IC-01..06)
 │   ├── why_micro_optimization_is_a_security_choice.fr.md   # Monographie architecture & 0 B/op (FR)
 │   ├── why_micro_optimization_is_a_security_choice.fr.docx # Édition Word de la monographie (FR)
 │   ├── why_micro_optimization_is_a_security_choice.md      # Monographie architecture & 0 B/op (EN)

@@ -2,13 +2,88 @@
 
 *Autonomous, Resource-Sobriety Architecture for Local Cyber Defense and AI Agent Oversight*
 
-> **Entry for:** Wittgenstein AI Tournament (Hackers-Arise / Master OTW)  
-> **Repository:** [https://github.com/hazyhaar/c2blue55](https://github.com/hazyhaar/c2blue55)  
-> **License:** MIT  
-> **Version:** v8.1, 2026-11-01 (section 15.5 and updated 4,096 B benchmark figures added after full adversarial code audit across all 21 Go packages; section 15: seven-detector parity bench across clear and encrypted transports, binary-clean non-LDH wire closure, zero-allocation encrypted-transit kinetics `V2`/`V2.1`, and out-of-sample exotic campaign covering `Slipstream` QUIC-in-DNS multipath, `NoizDNS` variable labels, `VayDNS` `CAA/SRV/MX/NS`, `Soar` held polls and signed `NXDOMAIN`, `EDNS(0) OPT`, and shared-origin HTTP/3 multiplexing; sections 13 and 14: real iodine and dns2tcp tunnels through Unbound, DoQ, and DoH3; sections 9 to 12: closed laboratory bench, SOA, ICMP Echo, and AAAA IID modulations)  
-> **Implementation:** Pure Go 1.27 (`GOAMD64=v3` / AVX2 benchmarked, portable pure Go for ARM, Zero CGo, Zero GPU)
+[![Tournament](https://img.shields.io/badge/Wittgenstein-AI%20Tournament-0f766e?style=flat)](../README.md) [![Release](https://img.shields.io/badge/release-v8.2-1d4ed8?style=flat)](#156-post-mythos-ratio--wire-grammar-hardening-v82-2026-11-01) [![Pure Go](https://img.shields.io/badge/Go%201.27-0%25%20CGo%20%7C%200%25%20GPU-00ADD8?style=flat)](#2-zero-allocation-hot-path-and-in-memory-architecture) [![Hotpath Alloc](https://img.shields.io/badge/hotpath%20alloc-0%20B%2Fop-b45309?style=flat)](#21-zero-heap-allocation-0-bop) [![Lab PCAPs](https://img.shields.io/badge/lab%20captures-86%2B%20verified%20PCAPs-6d28d9?style=flat)](#15-addendum-v1-2026-10-31-seven-detector-parity-bench-non-ldh-wire-closure-keyless-encrypted-transit-kinetics-and-out-of-sample-exotic-quicdns-experiments) [![License: MIT](https://img.shields.io/badge/license-MIT-334155?style=flat)](../LICENSE)
 
-[Version française disponible ici](c2blue55_wittgenstein_article.fr.md)
+**Navigation:** [Version française](c2blue55_wittgenstein_article.fr.md) · [Word Edition (.docx)](c2blue55_wittgenstein_article.docx) · [Repository Overview](../README.md) · [Micro-Optimization & Security](why_micro_optimization_is_a_security_choice.md) · [7-Stack DNS Benchmark](dns_detection_solutions_benchmark.md)
+
+| Engineering Parameter | Verified Specification |
+| :--- | :--- |
+| **Entry & License** | Wittgenstein AI Tournament (Hackers-Arise / Master OTW) · MIT License · [github.com/hazyhaar/c2blue55](https://github.com/hazyhaar/c2blue55) |
+| **Version & Date** | `v8.2` — `2026-11-01` (Full 4,096 B Payload Window, Seven-Detector Parity Bench, Exotic QUIC/DNS Campaign & `RAT-01..04` Wire/Host Hardening) |
+| **Implementation** | Pure Go 1.27 (`GOAMD64=v3` / `GOEXPERIMENT=simd` AVX2 kernels transpiled mechanically from C99 via `sgoiter`, portable scalar Go for ARM64/x86_64, `0% CGo`, `0% GPU`) |
+| **Decision Architecture** | Sovereign `0 B/op` deterministic `L0 -> L1a -> L1b` cascade over HMAC-SHA256-sealed `.c2book` (`C2FLOP1`) floppies + `PureGoEncoderArbitrator` (`0 B/op`); optional out-of-band `c2slm` (`Qwen2.5-0.5B-Instruct` GGUF) for L2 human-readable SOC incident narratives |
+| **Empirical Scope** | Tournament corpora (`5,236` host/DNS samples) + closed WireGuard laboratory campaigns (`SOA` negative cache, `ICMP Echo` / `ptunnel-ng`, `AAAA` IID, live `iodine` & `dns2tcp` over `Unbound`/`DoQ`/`DoH3`, `25` `L1` + `61` `L1-bis` captures across `Slipstream`, `NoizDNS`, `VayDNS`, `Soar`) |
+
+<details>
+<summary><strong>Complete Revision History (v1 to v8.2)</strong></summary>
+
+- **v8.2 (2026-11-01, §15.6):** Sealed `RAT-01..04` hardening — signed-`NXDOMAIN` answer grammar (`P14`), query-side private `EDNS0` (`P9`), cross-response `RDATA` renewal (`P15`), RFC 2782/8552 underscore service-label stripping (`0/50` `SRV` FPs), fail-closed malformed DNS escalation, cross-resolver host aggregation (`AgregateurHoteChiffre`, `Slipstream` `TP = 3/3`), and 12-ratio Linux host kinetics (`part_resolveur_permille`).
+- **v8.1 (2026-11-01, §6.2 & §15.5):** Full adversarial code audit across all 21 Go packages; `4,096`-byte NUL-safe `ExtractFeatures512` window and reforged `.c2book` floppies; elimination of circular synthetic bench proofs; fail-closed supervisory and parser guards.
+- **v8.0 (2026-10-31, §§13–15):** Live `iodine` Base128 and `dns2tcp` tunnels over `Unbound`, `DoQ`, and `DoH3`; `netrack/learn` external corpus; seven-detector parity bench (`L1`, 25 PCAPs); `-tolerant` non-LDH wire closure; keyless encrypted-transit kinetics (`V2.1`); out-of-sample exotic campaign (`L1-bis`, 61 PCAPs: `Slipstream`, `NoizDNS`, `VayDNS`, `Soar`).
+- **v2–v5 (2026-10-27 to 2026-10-29, §§9–12):** Closed OVHcloud WireGuard laboratory bench (`dnslab-auth`, `c2dnslab-emit`), learned 512-bit projector negative ablation (`K-0..K-2`), recursive `SOA` authority modulation (`N-01..N-05`), `ICMP Echo` asymmetry & `ptunnel-ng` (`I-01..I-04`), and `AAAA` interface-identifier modulation (`A-01..A-04`).
+
+</details>
+
+---
+
+## Table of Contents
+
+- [1. Context and Architectural Objectives](#1-context-and-architectural-objectives)
+- [2. Zero-Allocation Hot Path and In-Memory Architecture](#2-zero-allocation-hot-path-and-in-memory-architecture)
+  - [2.1 Zero Heap Allocation (`0 B/op`)](#21-zero-heap-allocation-0-bop)
+  - [2.2 4MB Atomic Seqlock Ring Arena](#22-4mb-atomic-seqlock-ring-arena)
+  - [2.3 Fail-Closed Quarantine Decision](#23-fail-closed-quarantine-decision)
+  - [2.4 Memory-Mapped Knowledge Bases & Cryptographic Sealing](#24-memory-mapped-knowledge-bases--cryptographic-sealing)
+- [3. The Dual-Layer Threat Detection Cascade](#3-the-dual-layer-threat-detection-cascade)
+  - [3.1 Layer 0: Deterministic Substring & Ontological Reflex](#31-layer-0-deterministic-substring--ontological-reflex)
+  - [3.2 Layer 1a: Conformal RaBitQ 512D Vector Projection](#32-layer-1a-conformal-rabitq-512d-vector-projection)
+  - [3.3 Layer 1b: Quantized INT8 Heads & Centroid Veto](#33-layer-1b-quantized-int8-heads--centroid-veto)
+- [4. Baseline Drift Control: A Modular Guard for Centroid Recertification](#4-baseline-drift-control-a-modular-guard-for-centroid-recertification)
+- [5. Verifiable Causality: Stand-Alone Forensic Attestation and Deterministic Replay](#5-verifiable-causality-stand-alone-forensic-attestation-and-deterministic-replay)
+  - [5.1 Stand-Alone Forensic Attestation (`ForensicProof`)](#51-stand-alone-forensic-attestation-forensicproof)
+  - [5.2 Ed25519 Root Key Attestation](#52-ed25519-root-key-attestation)
+  - [5.3 Deterministic Verdict Verification (`ReplayForensicProof`)](#53-deterministic-verdict-verification-replayforensicproof)
+- [6. Empirical Evaluation, Statistical Caveats, and Operational Trade-Offs](#6-empirical-evaluation-statistical-caveats-and-operational-trade-offs)
+  - [6.1 Statistical Caveat on Sample Sizes & A Posteriori Calibration](#61-statistical-caveat-on-sample-sizes--a-posteriori-calibration)
+  - [6.2 Empirical Evaluation Summary (Full 4,096-Byte NUL-Safe Payload Window)](#62-empirical-evaluation-summary-full-4096-byte-nul-safe-payload-window)
+  - [6.3 Detailed Findings by Threat Vector](#63-detailed-findings-by-threat-vector)
+- [7. Scope of Protection and Subsystem Boundaries](#7-scope-of-protection-and-subsystem-boundaries)
+  - [7.1 SubProc (Host & Container Execution)](#71-subproc-host--container-execution)
+  - [7.2 SubNet (Network Boundary & DNS Tunneling)](#72-subnet-network-boundary--dns-tunneling)
+  - [7.3 SubMCP (AI Agent Oversight & Tool Guard)](#73-submcp-ai-agent-oversight--tool-guard)
+- [8. Conclusion and Open-Source Distribution](#8-conclusion-and-open-source-distribution)
+- [9. Addendum v2 (2026-10-27): Closed Laboratory Bench on Dedicated Infrastructure](#9-addendum-v2-2026-10-27-closed-laboratory-bench-on-dedicated-infrastructure)
+  - [9.1 Pieces (all pure Go, no CGO)](#91-pieces-all-pure-go-no-cgo)
+  - [9.2 Runs Captured](#92-runs-captured)
+  - [9.3 Measured on Laboratory Traffic](#93-measured-on-laboratory-traffic)
+  - [9.4 Two Evasions Closed In-Sample on Laboratory Captures](#94-two-evasions-closed-in-sample-on-laboratory-captures)
+  - [9.5 Open-source base model (tournament rule; declaration, not a bench measurement)](#95-open-source-base-model-tournament-rule-declaration-not-a-bench-measurement)
+  - [9.6 Learned 512-bit projector (strates K-0 to K-2): built, measured, not wired (harness records)](#96-learned-512-bit-projector-strates-k-0-to-k-2-built-measured-not-wired-harness-records)
+  - [9.7 Incidents and limits, as recorded](#97-incidents-and-limits-as-recorded)
+- [10. Addendum v3 (2026-10-29): SOA Modulation in Negative Answers, Measured Through a Recursive Resolver](#10-addendum-v3-2026-10-29-soa-modulation-in-negative-answers-measured-through-a-recursive-resolver)
+  - [10.1 Bench](#101-bench)
+  - [10.2 Captured Runs](#102-captured-runs)
+  - [10.3 Detector Evaluation](#103-detector-evaluation)
+  - [10.4 What this does and does not establish](#104-what-this-does-and-does-not-establish)
+- [11. Addendum v5 (2026-10-29): ICMP Echo Payload Asymmetry, a First Network Measurement Outside DNS](#11-addendum-v5-2026-10-29-icmp-echo-payload-asymmetry-a-first-network-measurement-outside-dns)
+- [12. Addendum v2 (2026-10-29): Interface-Identifier Modulation in AAAA Answers, Measured Through a Recursive Resolver](#12-addendum-v2-2026-10-29-interface-identifier-modulation-in-aaaa-answers-measured-through-a-recursive-resolver)
+- [13. Addendum v1 (2026-10-31): Real DNS Tunnels Through a Recursive Resolver, and an External Real-Tunnel Corpus](#13-addendum-v1-2026-10-31-real-dns-tunnels-through-a-recursive-resolver-and-an-external-real-tunnel-corpus)
+  - [13.1 Own infrastructure: iodine and dns2tcp through Unbound](#131-own-infrastructure-iodine-and-dns2tcp-through-unbound)
+  - [13.2 External corpus: netrack/learn (Apache-2.0)](#132-external-corpus-netracklearn-apache-20)
+- [14. Addendum v1 (2026-10-31): The Same Tunnels Over DNS-over-QUIC and DNS-over-HTTPS/3](#14-addendum-v1-2026-10-31-the-same-tunnels-over-dns-over-quic-and-dns-over-https3)
+  - [14.1 Question](#141-question)
+  - [14.2 Setup](#142-setup)
+  - [14.3 H1: traversal](#143-h1-traversal)
+  - [14.4 H2 and H3: three observation points on the same sessions](#144-h2-and-h3-three-observation-points-on-the-same-sessions)
+  - [14.5 What this establishes](#145-what-this-establishes)
+  - [14.6 Sources consulted](#146-sources-consulted)
+- [15. Addendum v1 (2026-10-31): Seven-Detector Parity Bench, Non-LDH Wire Closure, Keyless Encrypted-Transit Kinetics, and Out-of-Sample Exotic QUIC/DNS Experiments](#15-addendum-v1-2026-10-31-seven-detector-parity-bench-non-ldh-wire-closure-keyless-encrypted-transit-kinetics-and-out-of-sample-exotic-quicdns-experiments)
+  - [15.1 Closing the §13 Non-LDH Blind Spot (`lab-eval -tolerant` and `NonLDHBurstGuard`)](#151-closing-the-13-non-ldh-blind-spot-lab-eval--tolerant-and-nonldhburstguard)
+  - [15.2 Seven-Detector Parity Bench (`L1`, 25 Captures) and Upstream Stack Defects](#152-seven-detector-parity-bench-l1-25-captures-and-upstream-stack-defects)
+  - [15.3 Keyless Encrypted-Transit Kinetics (`V2` to `V2.1`) and Out-of-Sample Exotic Campaign (`L1-bis`)](#153-keyless-encrypted-transit-kinetics-v2-to-v21-and-out-of-sample-exotic-campaign-l1-bis)
+  - [15.4 What This Does Not Establish (Measured Architectural Limitations)](#154-what-this-does-not-establish-measured-architectural-limitations)
+  - [15.5 Post-Audit Integrity & Security Remediation (v8.1, 2026-11-01)](#155-post-audit-integrity--security-remediation-v81-2026-11-01)
+  - [15.6 Post-Mythos Ratio & Wire Grammar Hardening (v8.2, 2026-11-01)](#156-post-mythos-ratio--wire-grammar-hardening-v82-2026-11-01)
 
 ---
 
@@ -43,7 +118,8 @@ Ingests variable-length payloads into an arena composed of 1,024 dedicated 4KB s
 
 If high-velocity event streams cause an arena slot to wrap before an ongoing evaluation completes, the epoch discrepancy is detected immediately. The engine refuses to evaluate corrupt memory and fails closed, assigning a `VerdictQuarantine` decision.
 
-> **Operational Boundary:** Mitigation enforcement itself (such as terminating a process or dropping a packet) is left to host orchestration or daemon integration.
+> [!NOTE]
+> **Operational Boundary:** Mitigation enforcement itself (such as terminating a process, denying `fanotify` execution, or dropping/sinkholing a packet) is left to host orchestration or daemon integration outside the core evaluation library.
 
 ### 2.4 Memory-Mapped Knowledge Bases & Cryptographic Sealing
 
@@ -61,9 +137,40 @@ This closes the loophole where simply clearing the header's seal flag (which is 
 
 ## 3. The Dual-Layer Threat Detection Cascade
 
-Rather than subjecting every mundane system event to deep neural inference, `c2blue55` organizes analysis into an asymmetric, hierarchical cascade. Early stages resolve clear-cut events at microsecond latency (approximately 1.1 µs for Layer 0), reserving heavier mathematical inference for ambiguous edge cases.
+Rather than subjecting every mundane system event to deep neural inference, `c2blue55` organizes analysis into an asymmetric, hierarchical cascade. Early stages resolve clear-cut events at microsecond latency (approximately `0.97` to `1.12 µs` for Layer 0), reserving vector projection and quantized linear scoring for ambiguous edge cases.
 
-> **Library Component Status:** The synchronous L0/L1a/L1b cascade (`CascadeEngine`), memory-mapped floppy mounting, and provenance arbitration constitute a high-performance library component evaluated directly by the tournament benchmark harness (`wittgenstein_bench_test.go`), distinct from the repository's standalone daemons (such as `c2agent`, which relies on standalone codebooks, gray-zone deciders, and DNS server oracles).
+```mermaid
+flowchart TD
+    subgraph Ingest["Telemetry Sources & Lock-Free Ingestion"]
+        S1["SubProc: Host & Container CLI"]
+        S2["SubNet: Wire DNS & DoQ/DoH Flows"]
+        S3["SubMCP: AI Agent Tool Calls"]
+        Arena["ArenaPool: 1,024 x 4,096 B Seqlock Ring (0 B/op)"]
+        S1 --> Arena
+        S2 --> Arena
+        S3 --> Arena
+    end
+
+    subgraph Cascade["Synchronous Deterministic Cascade (0 B/op)"]
+        L0["Layer 0: Substring, Non-LDH & O(1) Ontology (~1.12 us)"]
+        Feat["ExtractFeatures512 (4,096 B NUL-Safe) + QuantizeFHT512"]
+        L1a["Layer 1a: RaBitQ 512-bit Popcount & Conformal Guard"]
+        L1b["Layer 1b: .c2book INT8 Linear Heads & Centroid Veto (~8.6-16.3 us)"]
+        Arena -->|"Epoch Valid"| L0
+        Arena -->|"Slot Wrap"| VQ["VerdictQuarantine (Fail-Closed)"]
+        L0 -->|"Ambiguous"| Feat --> L1a
+        L1a -->|"Near Threat or Uncertified"| L1b
+    end
+
+    L0 -->|"Known Signature / Certified Benign"| Out["Deterministic Verdict: Block / Pass"]
+    L1a -->|"Conformal Benign & Outside Threat Radius"| Out
+    L1b --> Out
+    L1b -->|"Ambiguous Band (13..24 bits)"| Gray["Quarantine / Optional Out-of-Band c2slm L2 Explanation"]
+    Out -.->|"On-Demand Ed25519 Receipt"| Proof["ForensicProof (230 Bytes, ReplayForensicProof)"]
+```
+
+> [!IMPORTANT]
+> **Library Cascade vs. Standalone Daemons:** The synchronous `L0 -> L1a -> L1b` cascade (`CascadeEngine`), memory-mapped `.c2book` floppy mounting, and provenance arbitration form the deterministic library core evaluated by `wittgenstein_bench_test.go` and `c2forge`. Standalone daemons (`cmd/c2agent`, `cmd/c2blue-mcp-guard`) pair fixed codebooks and zero-allocation gray-zone arbitration (`PureGoEncoderArbitrator`, `0 B/op`) on the hot path with optional out-of-band `c2slm` (`Qwen2.5-0.5B-Instruct` GGUF) incident explanations on Layer 2.
 
 ### 3.1 Layer 0: Deterministic Substring & Ontological Reflex
 
@@ -103,7 +210,8 @@ Independent verifications on alternative hardware platforms observe latencies ap
 
 Autonomous defensive systems that adapt in real time face severe risks of adversarial poisoning, where attackers slowly shift the model's nominal centroid baseline until severe threats are misclassified as normal traffic. `c2blue55` includes a modular statistical drift guard (`CusumDriftGuard` in `internal/engine/drift_guard.go`) to preserve baseline stability.
 
-> **Architectural Boundary:** In strict adherence to ARCHTIME and zero-allocation principles, the runtime inference cascade operates exclusively over immutable, memory-mapped centroid floppies and does not mutate centroids inline during packet inspection. `CusumDriftGuard` is not wired into the line-rate evaluation path. Instead, it exists as a standalone supervisory component designed for offline training pipelines and periodic baseline recertification.
+> [!NOTE]
+> **Architectural Boundary:** In strict adherence to `ARCHTIME` and zero-allocation principles, the runtime inference cascade operates exclusively over immutable, memory-mapped centroid floppies and never mutates centroids inline during packet inspection. `CusumDriftGuard` is intentionally decoupled from the line-rate evaluation path and serves as a standalone supervisory gate for offline training pipelines and periodic baseline recertification.
 
 The guard provides two supervision layers:
 1. **Finite-Vector Gate & Scalar Step Distance Monitoring:** Before computing distances, `EvaluateSample` strictly rejects any vector containing `NaN` or `±Inf` (`ErrDriftGuardNaN`) so IEEE-754 unordered comparisons can never bypass thresholds or overwrite the installed reference. When candidate centroid updates are finite, the guard computes the Euclidean step distance between successive candidate vectors: $d = ||\mu_t - \mu_{t-1}||_2$. It enforces a maximum step threshold (`MaxRadius`) and a cumulative displacement budget ceiling (`MaxDriftBudget`).
@@ -181,7 +289,8 @@ Tested across 4,000 DNS C2 tunnel queries compiled in `validate.csv`: **100.00% 
 
 Incorporating zero-allocation apex domain structural discrimination (`isApexDomain`) eliminated all 8 previously observed false-positive blocks on multi-word concatenated dictionary domains (e.g. `sickbeard.com`). For second-level registrable domains without deep subdomains, centroid proximity blocks by default **unless** the INT8 decision head explicitly certifies that the domain is benign and conforming to class prototypes (`predClass == 0 && conforms`).
 
-> **Architectural Limitation on DGA:** Because the apex rule assumes that covert channels require deep subdomain labels to encode exfiltrated payloads, it effectively weakens direct centroid-based blocking against Domain Generation Algorithms (DGA), which register disposable apex domains directly. DGA domains lacking deep subdomains must rely entirely on INT8 hyperplane classification or a specialized upstream DGA classifier.
+> [!WARNING]
+> **Architectural Limitation on DGA:** Because the apex rule assumes that covert channels require deep subdomain labels to encode exfiltrated payloads, it weakens direct centroid-based blocking against Domain Generation Algorithms (`DGA`), which register disposable apex domains directly. `DGA` domains lacking deep subdomains rely entirely on `INT8` hyperplane classification (`floppy_dns_dga.c2book`) or a dedicated upstream `DGA` classifier.
 
 #### Administrative Commands: Sensitivity vs. Interactive Provenance
 Tested against 42 benign system administration command lines drawn from documentation (coreutils, systemd, docker, kubectl, apt; representing single-line commands rather than live fleet telemetry). In a raw headless baseline without host provenance metadata over the full 4,096-byte payload window, the engine achieves 30.95% immediate pass (13/42) and 69.05% fail-safe quarantine (29/42) due to token overlap with LOLBAS discovery patterns (0.00% false positive block).
@@ -196,9 +305,8 @@ When process provenance is established (`DeriveCascadeContext`), ontological eva
 
 When satisfied, `OntoVerdictAllow` unconditionally disables the ambiguous quarantine band (13 to 24 bits Hamming distance). All 42 commands pass immediately (100.00% pass, 0.00% quarantine) without degrading strict centroid blocking against attacks.
 
-> **Operational Trade-Off & Subsystem Scope:** In the implementation, `deriveCascadeOntoKey` unconditionally maps any event from the process subsystem (`Subsystem == SubProc`) to `TgtBinSystem` without inspecting filesystem paths. Only temporary execution directories (`/tmp/`, `/var/tmp/`, `/dev/shm/`) are screened out indirectly via `CtxTmpResidence`.  
-> Consequently, binaries located in user home directories (`/home/...`), `/opt/`, or `/usr/local/` are also classified as `TgtBinSystem` and benefit from the benignity axiom in interactive TTY sessions.  
-> Suppressing the quarantine band under interactive sessions thus introduces an **expanded evasion window**: an adversary operating inside an authenticated interactive shell executing an arbitrary binary from a user directory without hostile memory flags is completely exempt from the 13–24 distance quarantine band. Detection relies exclusively on the strict centroid block radius ($\le 12$) or an explicit hostile classification (`predClass == 1`) by the INT8 head. If an unknown hostile payload falls in the 13–24 band and receives an INT8 prediction of class 0 (even non-conforming), it passes without quarantine. Additionally, the test harness applies a generic `/usr/bin/bash` provenance across the administrative corpus, including PowerShell commands—a laboratory simplification that should be replaced with native kernel auditd/ETW provenance in production.
+> [!WARNING]
+> **Operational Trade-Off & Subsystem Scope:** In the current implementation, `deriveCascadeOntoKey` maps any event from the process subsystem (`Subsystem == SubProc`) to `TgtBinSystem` without inspecting filesystem paths; only temporary execution directories (`/tmp/`, `/var/tmp/`, `/dev/shm/`) are screened out indirectly via `CtxTmpResidence`. Binaries located in `/home/...`, `/opt/`, or `/usr/local/` therefore inherit `TgtBinSystem` under interactive `TTY` sessions, creating an **expanded evasion window**: an adversary operating inside an authenticated interactive shell without hostile memory flags bypasses the `13..24`-bit quarantine band, leaving detection to the strict centroid block radius ($\le 12$) or an explicit hostile `INT8` classification (`predClass == 1`). In addition, the benchmark harness applies a generic `/usr/bin/bash` provenance across the administrative corpus (including PowerShell strings), which production deployments must replace with native kernel `auditd` or `ETW` provenance.
 
 ---
 
@@ -225,13 +333,46 @@ The complete source code, memory-mapped floppy builders (`c2forge`), bilingual d
 
 ---
 
-## 9. Addendum v2 (2026-10-27): Closed Laboratory Bench on Our Own Infrastructure
+## 9. Addendum v2 (2026-10-27): Closed Laboratory Bench on Dedicated Infrastructure
 
-Sections 1 to 8 evaluate the engine on third-party corpora and on the author's workstation. Between 2026-10-26 and 2026-10-27 we built a closed laboratory to measure the DNS detector on traffic **we emit ourselves**: two VPS we rent from OVHcloud (`redhost`, the laboratory authoritative server, and `redbo`, the emitter), a third mesh host that only receives the signed journals (the "log sink"), and the development host that runs the evaluation, all over a private WireGuard mesh (`10.55.0.0/24`), with no third-party target, no scanning, no payload carrying real data (replayed names and one tool handshake only) and a hard cap of 50 queries per second per run.
+Sections 1 to 8 evaluate the engine on third-party corpora and on the author's workstation. Between 2026-10-26 and 2026-10-27, a closed laboratory was built to measure the DNS detector on traffic **emitted end-to-end by the laboratory**: two dedicated virtual private servers (`VPS`) rented from OVHcloud (`redhost`, the laboratory authoritative server, and `redbo`, the emitter), a third mesh host that only receives the signed journals (the "log sink"), and the development host that runs the evaluation, all over a private WireGuard mesh (`10.55.0.0/24`, extended with a three-node `10.77.0.0/24` egress-blocked mesh in Section 15), with no third-party target, no scanning, no payload carrying real data (replayed names and one tool handshake only) and a hard cap of 50 queries per second per run.
 
-Provenance of the numbers: §9.2 comes from the `tcpdump` captures and the run manifests; §9.3 and §9.4 come from the two `c2forge` subcommands with their exit codes (all `spec/*` documents cited in Sections 9 to 15—such as `spec/06-motifs-prouves.md`, `spec/07-homologation-laboratoire.json`, and `spec/09..11`—together with `desks/executions.json` and cross-model audit logs live in the private project-envelope repository and are not distributed in the public GitHub repository, whereas all PCAP captures, manifests, and JSON evaluation reports under `testdata/{n04,i03,a03,a04}-20261029/` and `wittgenstein/` are shipped in the public repository). The per-name counts of §9.3 come from a one-off evaluation of every captured question against the same floppies, run on 2026-10-27 and kept with the harness records.
+```mermaid
+flowchart LR
+    subgraph ClientNode["Emitter Host (redbo / client)"]
+        Emit["c2dnslab-emit / iodine / dns2tcp / Slipstream / VayDNS / NoizDNS / Soar"]
+        Stub["Unbound 1.13.1 Recursive Cache or dnsproxy DoQ/DoH2/DoH3 Stub"]
+        Emit --> Stub
+    end
 
-Vocabulary used below: a *floppy* is a sealed `.c2book` file of centroids (section 2); a *view* is one parsed DNS question; *strates* are the numbered work stages of the harness (S-03 to S-07 for the bench, K-0 to K-2 for the learned projector), each accepted by frozen tests written before the code, by the race detector run over the whole suite, and by a cross-model audit; the *DGA head* is the second floppy, `floppy_dns_dga.c2book`, the apex-domain classifier of section 6; *Cold-Family Split* holds one whole family of a corpus out of training and evaluates on it; the *SLM* is the small language model of §9.5.
+    subgraph WireMesh["Private WireGuard Mesh (10.55.0.0/24 & 10.77.0.0/24, 0 Public Egress)"]
+        WClear["Clear UDP/53 Capture (wg0)"]
+        WEnc["Encrypted Transit Capture: DoQ :853/:8853, DoH2 :8443, DoH3 :8443/:9443/:9444"]
+    end
+
+    subgraph AuthNode["Terminating & Authoritative Host (redhost / relay + auth)"]
+        Term["dnsproxy DoQ/DoH Terminating Resolver -> lo UDP/53 Clear Leg"]
+        Auth["dnslab-auth (A, TXT, SOA-Stego, AAAA-IID) & Live Tunnel Servers"]
+        Term --> Auth
+    end
+
+    Stub -->|"UDP/53"| WClear --> Auth
+    Stub -->|"QUIC / TLS 1.3"| WEnc --> Term
+    Auth -.->|"Ed25519-Signed JSONL Batches"| Sink["Dedicated Log Sink & Offline c2forge Evaluators"]
+```
+
+Provenance of the numbers:
+- **§9.2** comes from the `tcpdump` captures and the run manifests;
+- **§9.3 and §9.4** come from the two `c2forge` subcommands with their exit codes (all `spec/*` documents cited in Sections 9 to 15—such as `spec/06-motifs-prouves.md`, `spec/07-homologation-laboratoire.json`, and `spec/09..11`—together with `desks/executions.json` and cross-model audit logs live in the private project-envelope repository and are not distributed in the public GitHub repository, whereas all PCAP captures, manifests, and JSON evaluation reports under `testdata/{n04,i03,a03,a04}-20261029/` and `wittgenstein/` are shipped in the public repository);
+- **Per-name counts in §9.3** come from a one-off evaluation of every captured question against the same floppies, run on 2026-10-27 and kept with the harness records.
+
+Vocabulary used below:
+- **Floppy:** a sealed `.c2book` file of centroids (Section 2);
+- **View:** one parsed DNS question;
+- **Strates:** the numbered work stages of the harness (`S-03` to `S-07` for the bench, `K-0` to `K-2` for the learned projector), each accepted by frozen tests written before the code, by the race detector run over the whole suite, and by a cross-model audit;
+- **DGA head:** the second floppy, `floppy_dns_dga.c2book`, the apex-domain classifier of Section 6;
+- **Cold-Family Split:** holds one whole family of a corpus out of training and evaluates on it;
+- **SLM:** the small language model declared in §9.5.
 
 ### 9.1 Pieces (all pure Go, no CGO)
 
@@ -245,11 +386,13 @@ Vocabulary used below: a *floppy* is a sealed `.c2book` file of centroids (secti
 
 The whole suite (these pieces and the K strates) passed `go test -race` at the final merge: 374 passes, 0 failure.
 
-### 9.2 Runs captured (hourly `tcpdump` on `wg0` of redhost, sliced per run; counts from captures and manifests)
+### 9.2 Runs Captured
+
+*Hourly `tcpdump` on `wg0` of `redhost`, sliced per run; counts from captures and manifests.*
 
 | Run (chronological) | Family | Questions | Distinct names | Provenance |
 | :--- | :--- | ---: | ---: | :--- |
-| `local-dns-20261027T113715Z` | benign (own domains) | 69 | 11 | real `dig` queries from the development host: 20 queries are tunnel-shaped by construction (18 for six `probe-*` names with a random base32 label, 2 for a name with a 53-character label), 25 go to `hazyhaar.fr` / `www.hazyhaar.fr`, 24 to `pound2pound.fr` / `lab.pound2pound.fr`; all labelled benign because we sent them. **Seven of these eleven names are also replayed as hostile in `replay-20261027T150838Z`** (see §9.3) |
+| `local-dns-20261027T113715Z` | benign (own domains) | 69 | 11 | real `dig` queries from the development host: 20 queries are tunnel-shaped by construction (18 for six `probe-*` names with a random base32 label, 2 for a name with a 53-character label), 25 go to `hazyhaar.fr` / `www.hazyhaar.fr`, 24 to `pound2pound.fr` / `lab.pound2pound.fr`; all labelled benign because they were intentionally issued by the bench operator. **Seven of these eleven names are also replayed as hostile in `replay-20261027T150838Z`** (see §9.3) |
 | `replay-tuns-20261027T150656Z` | `redhost-replay` | 132 (partial: capture incident, §9.7) | 132 | real `tuns.org` tunnel subdomains taken from the section 6 corpus (labels kept, suffix changed to `t.lab.pound2pound.fr`); **all 132 names are also in the complete run below**, so they are counted twice in the per-question totals |
 | `replay-20261027T150838Z` | `redhost-replay` | 598 | 8 | replay of 8 laboratory names (the six `probe-*` names, the 53-character name and `canary.lab.pound2pound.fr`) at 10 q/s for 60 s; manifest `Sent=598 Dropped=0 Errors=0`: 2 of the 600 slots were not sent, cause not measured |
 | `replay-tuns-20261027T150942Z` | `redhost-replay` | 598 | 598 | same `tuns.org` list, complete; manifest `Sent=598 Dropped=0 Errors=0` |
@@ -258,7 +401,9 @@ The whole suite (these pieces and the K strates) passed `go test -race` at the f
 
 The per-question totals are therefore dominated by repetition: 1,328 hostile questions of the `redhost-replay` family carry 606 distinct names (598 `tuns.org` labels and 8 laboratory names), and 598 of those questions are 8 names repeated about 75 times each.
 
-### 9.3 Measured on our own traffic (`c2forge lab-eval`, exit code 0; family held out, laboratory benign never learned)
+### 9.3 Measured on Laboratory Traffic
+
+*Evaluated via `c2forge lab-eval` (exit code `0`); family held out, laboratory benign never learned.*
 
 TP, FN: hostile questions blocked / passed; FP, TN: benign questions blocked / passed; AUC: area under the ROC curve of the tunnel-head score over hostile and benign questions (the FP column counts both heads, the AUC only the tunnel head). `Questions` in the raw report counts hostile questions; the 69 benign questions are the same in both rows.
 
@@ -282,12 +427,14 @@ Per distinct name, `redhost-replay` held out (one-off evaluation of every captur
 Reading these numbers:
 
 - **Labelling conflict.** The 20 tunnel-shaped benign queries (7 names) are the same names as 7 of the 8 hostile laboratory names of `replay-20261027T150838Z`. They are blocked in both runs: counted as FP in the benign run and as TP in the replay run. Restricted to the 49 benign queries whose names are not replayed as hostile, the benign side reads FP 25, TN 24.
-- **The 25 queries to `hazyhaar.fr` and `www.hazyhaar.fr` are blocked by the DGA head, 25 out of 25.** This is a genuine false positive on a registered apex domain of ours and the main finding of the bench on the benign side. The benign false-positive rate as reported is 45 / 69 = 65.2 % (25 / 49 = 51.0 % after removing the conflicting names); this bench's benign set is **not** a production baseline, and the 1,000-domain benign baseline of section 6 remains the reference for false positives.
+- **The 25 queries to `hazyhaar.fr` and `www.hazyhaar.fr` are blocked by the DGA head, 25 out of 25.** This is a genuine false positive on a registered apex domain owned by the project and the main finding of the bench on the benign side. The benign false-positive rate as reported is 45 / 69 = 65.2 % (25 / 49 = 51.0 % after removing the conflicting names); this bench's benign set is **not** a production baseline, and the 1,000-domain benign baseline of section 6 remains the reference for false positives.
 - **Accuracy below the majority class.** At the reported operating point, (TP + TN) / total = (1,254 + 24) / 1,397 = 0.9148, below the majority-class rate 1,328 / 1,397 = 0.9506 stored in the raw report: the cascade makes 119 errors where a constant "block everything" classifier would make 69. The number that carries the hostile side is the per-name count (605 / 606), not the accuracy.
 - **The 74 misses** are the 74 queries for `canary.lab.pound2pound.fr`, a one-label short name; the seven other laboratory names and all 598 replayed `tuns.org` labels are blocked by the floppy forged with the whole `redhost-replay` family held out (laboratory names and `tuns.org` labels alike are outside its training).
 - No laboratory name hits a Layer 0 keyword or reflex (`L0 blocks = 0` in both rows); every block comes from the centroid stages. In the raw report, `L1bBlocks` counts hostile and benign blocks together (1,299 = 1,254 + 45) and `L1aPasses` counts the questions passed at stage L1a (11, all benign); neither is a partition of the questions.
 
-### 9.4 Two evasions closed in-sample on our own captures (`c2forge dns-delta`; exit codes in the table, commands and full hashes in `spec/06-motifs-prouves.md`)
+### 9.4 Two Evasions Closed In-Sample on Laboratory Captures
+
+*Evaluated via `c2forge dns-delta`; exit codes in the table, commands and full hashes in `spec/06-motifs-prouves.md`.*
 
 | Pattern | Run | Base N (centroids) | FN on N | N+1 (added) | FN on N+1 | Benign FP N → N+1 | Exit code | Verdict |
 | :--- | :--- | ---: | ---: | ---: | ---: | :--- | ---: | :--- |
@@ -295,34 +442,43 @@ Reading these numbers:
 | `canary.lab.pound2pound.fr`, one-label short name | `replay-20261027T150838Z` | 1,208 | 74 / 598 | +1 | 0 / 598 | 20 → 20 | 0 | closed in-sample |
 | real `tuns.org` labels replayed under the laboratory zone | `replay-tuns-20261027T150942Z` | 1,208 | 0 / 598 | — | — | — | 3 | already covered |
 
-The tool's predicate `Proven` requires an evasion counted on N, `FN = 0` on N+1 and no increase of benign false positives; a run with no evasion is reported as "already covered" (exit code 3), never as a proof. What the predicate establishes is that the differential recompilation closes a measured evasion without touching the benign count; **N+1 is recompiled from the evaded views of a run and then measured on that same run, so the two closed rows are in-sample corrections, not generalisation**. No second `iodine` capture exists to test the new centroids out of sample, and the `canary` row closes a name we invented. The out-of-sample result of this bench is the third row: the 598 `tuns.org` labels, never learned, blocked by the base floppy. The benign FP count of the proofs, 20, differs from the 45 of §9.3 because `dns-delta` evaluates the tunnel head alone: the 20 are the tunnel-shaped queries, the 25 `hazyhaar.fr` blocks belong to the DGA head. Both recompilations were sealed with the public demonstration HMAC key (`WittgensteinFloppyKey`), which section 2.4 refuses in production mode; the tool prints that warning.
+- **Proof predicate (`Proven`):** Requires an evasion counted on `N`, `FN = 0` on `N+1`, and zero increase in benign false positives; a run with no initial evasion is reported as "already covered" (exit code `3`), never as a new proof.
+- **In-sample vs. out-of-sample distinction:** Because `N+1` is recompiled from the evaded views of a run and re-measured on that same run, **the two closed rows are in-sample corrections, not generalization proofs** (no second `iodine` capture existed at that stage to test the new centroids out of sample, and the `canary` row closes a synthetic name forged for the bench). The genuine out-of-sample result of this bench is the third row: all `598` unseen `tuns.org` labels blocked directly by the base floppy.
+- **Head scoping & sealing:** The benign FP count of the proofs (`20`) differs from the `45` in §9.3 because `dns-delta` evaluates the tunnel head alone (`20` tunnel-shaped queries vs `25` `hazyhaar.fr` blocks on the DGA head). Both recompilations were sealed with the public demonstration HMAC key (`WittgensteinFloppyKey`), which Section 2.4 refuses in production mode; the tool prints that warning explicitly.
 
 ### 9.5 Open-source base model (tournament rule; declaration, not a bench measurement)
 
-`c2blue55` declares **Qwen2.5-0.5B-Instruct** (Apache-2.0, GGUF Q4_K_M) as its open-source base model. It is executed by our own pure-Go inference engine `c2slm` (zero CGO, GGUF memory-mapped, AVX2 integer kernels transpiled from C99) as the in-process SLM arbiter of `cmd/c2agent` (`slm_arbitrator.go`), which explains incidents already decided by the deterministic cascade. The deterministic veto stays sovereign: the model never decides a block.
+`c2blue55` declares **Qwen2.5-0.5B-Instruct** (Apache-2.0, GGUF Q4_K_M) as its open-source base model. It is executed by the repository's pure-Go inference engine `c2slm` (zero CGO, GGUF memory-mapped, AVX2 integer kernels transpiled mechanically from C99) as the optional Layer 2 SLM arbiter of `cmd/c2agent` (`slm_arbitrator.go`), which generates human-readable SOC incident narratives for events already decided by the deterministic cascade. The deterministic veto stays sovereign: the language model never decides a block, while `PureGoEncoderArbitrator` handles synchronous gray-zone arbitration at `0 B/op`.
 
-The 512-dimensional feature extractors and the `.c2book` floppies (INT8 decision heads learned on real data by `buildEmpiricalDecisionHead`) are models compiled into Go, not neural networks. A hand-written weight table that used to sit in `encoder_arbitrator.go` is not presented as a model.
+The 512-dimensional feature extractors and the `.c2book` floppies (INT8 decision heads learned on real data by `buildEmpiricalDecisionHead`) are linear models compiled into Go, not deep neural networks. A hand-written weight table that used to sit in `encoder_arbitrator.go` is not presented as a learned model.
 
 ### 9.6 Learned 512-bit projector (strates K-0 to K-2): built, measured, not wired (harness records)
 
-As an experiment in replacing the fixed random projection (`QuantizeFHT512`) by a learned one, we wrote seven float32 kernels in C99, transpiled to Go by `sgoiter` (our C99-to-Go transpiler) with bit-exact parity against `gcc -O2 -ffp-contract=off` (27 frozen tests, finite-difference gradient checks, bit-exact replay; the K-2 stage was audited cross-model, refused once and fixed), and a small model (byte embedding, 1-D convolution, max pooling per label and over labels, two dense layers, 512 `tanh` outputs binarised by sign) trained with AdamW on the real corpora under the same Cold-Family Split. After 3 epochs on 512 examples the separation loss drops from 1.02 to 0.88 and the readout AUC on held-out families is **0.76** (n = 256). The fixed projection reaches, in the Cold-Family Split homologation recorded in the project plan, AUC 0.9932 with `tuns.org` held out (N = 18,504) and 0.9449 over 19 DGA families (N = 3,000). These evaluations differ in size and in held-out sets, so the gap is indicative, not a like-for-like ablation; a like-for-like run was not made. The learned projector is reported as **negative at this stage** and is not wired into the cascade (K-3 pending).
+As an experiment in replacing the fixed random projection (`QuantizeFHT512`) with a learned one:
+- **Transpiled C99 kernels:** Seven `float32` kernels were written in C99 and transpiled to Go by `sgoiter` (the project's C99-to-Go transpiler) with bit-exact parity against `gcc -O2 -ffp-contract=off` (27 frozen tests, finite-difference gradient checks, bit-exact replay; the `K-2` stage was audited cross-model, refused once, and fixed).
+- **Architecture & Cold-Family Split training:** A compact convolutional model (byte embedding, 1-D convolution, max pooling per label and across labels, two dense layers, `512` `tanh` outputs binarized by sign) was trained with AdamW on the real corpora under the same Cold-Family Split.
+- **Measured negative result:** After 3 epochs on `512` examples, separation loss drops from `1.02` to `0.88` and readout `AUC` on held-out families reaches **0.76** (`n = 256`), compared with `0.9932` (`tuns.org` held out, `N = 18,504`) and `0.9449` over 19 DGA families (`N = 3,000`) for the fixed projection. Because those evaluations differ in sample size and held-out partitions, the gap is indicative rather than a like-for-like ablation; the learned projector is recorded as **negative at this stage** and is not wired into the cascade (`K-3` pending).
 
 ### 9.7 Incidents and limits, as recorded
 
 - A capture restart with a changed file-name scheme overwrote one hour of captures (harness record); the campaigns were replayed and the first `tuns.org` run is kept as partial in §9.2, where its 132 names duplicate the complete run.
 - The DGA head blocks `hazyhaar.fr` and `www.hazyhaar.fr` on every query (25/25) in the v2 binary. Nothing in Section 9 corrects it; it is reported as measured at the time (and subsequently resolved in the v8 `splitWireQName` wire parser; see the §9.3 update note).
 - Seven benign names of the bench are also replayed as hostile; the per-question benign metrics of §9.3 inherit that conflict and are given with and without those names.
-- `iodine` and `dns2tcp` do not sustain traffic against a non-cooperating authoritative server; the laboratory therefore measures a handshake shape and replays of real tunnel labels under our own zone, not live tunnels. Running a cooperating tunnel endpoint on our own hosts is deliberately out of scope before the tournament deadline. One `iodine` capture of 5 questions does not establish generalisation to another client or version, and the two "closed" rows of §9.4 are in-sample.
-- The learned projector is reported as negative on an indicative comparison. The bench's benign set is our own traffic (69 queries, 11 names), not production DNS. No alphabet, length or cadence variation campaign was run (`GenerateVariationNames` is shipped and tested, unused).
+- `iodine` and `dns2tcp` do not sustain traffic against a non-cooperating authoritative server; Section 9 therefore measures a handshake shape and replays of real tunnel labels under the laboratory zone rather than live tunnels (subsequently closed with cooperating endpoints in Section 13). Running a cooperating tunnel endpoint on the bench hosts was out of scope for the initial v2 campaign; one `iodine` capture of 5 questions does not establish generalization to another client or version, and the two "closed" rows of §9.4 are in-sample.
+- The learned projector is reported as negative on an indicative comparison. The bench's benign set consists of bench-originated queries (69 queries, 11 names), not production DNS. No alphabet, length or cadence variation campaign was run (`GenerateVariationNames` is shipped and tested, unused).
 - §9.3 and §9.4 are reproducible from the repository with the two `c2forge` subcommands on the captures under `wittgenstein/redhost_lab/`; §9.2 is reproducible from the captures and manifests in the same directory.
 
 ## 10. Addendum v3 (2026-10-29): SOA Modulation in Negative Answers, Measured Through a Recursive Resolver
 
-Sections 1 to 9 score DNS *questions* (names, types, cadence) and, for the response-side patterns of the engine's catalogue, the Answer section. None of the engine's own patterns reads the Authority section of a negative answer. This addendum adds one detector that does, and measures it on our closed bench with a recursive resolver between the emitter and the authoritative server, so that what is measured has crossed a resolver's cache. Whether tools outside this repository (Zeek, RITA, Suricata, Elastic) would see the same pattern was **not tested**; the only claim made here is about this engine.
+Sections 1 to 9 score DNS *questions* (names, types, cadence) and, for the response-side patterns of the engine's catalogue, the Answer section. None of the engine's own patterns reads the Authority section of a negative answer. This addendum adds one detector that does, and measures it on the closed bench with a recursive resolver between the emitter and the authoritative server, so that what is measured has crossed a resolver's cache. Whether tools outside this repository (Zeek, RITA, Suricata, Elastic) would see the same pattern was **not tested** in this section; the only claim made here is about this engine.
 
-Protocol basis, stated narrowly: RFC 2308 §3 requires an authoritative server to put the zone's SOA record in the Authority section of its NXDOMAIN and NODATA answers; §5 and §6 have a caching resolver that answers a negative question from its cache include the cached SOA with a decremented TTL, the cache lifetime being bounded by min(SOA TTL, SOA Minimum). Nothing in the RFC says that every resolver returns the SOA on every negative answer; what is measured below is one resolver, Unbound 1.13.1, in one configuration (§10.1), observed at the authoritative side and, for a handful of manual checks, at the client side. The SOA RDATA carries two names (MNAME, RNAME) and five 32-bit fields.
+**Protocol basis (RFC 2308):** RFC 2308 §3 requires an authoritative server to put the zone's `SOA` record in the `Authority` section of its `NXDOMAIN` and `NODATA` answers; §5 and §6 specify that a caching resolver answering a negative question from cache includes the cached `SOA` with a decremented `TTL`, bounded by `min(SOA TTL, SOA Minimum)`. Nothing in the RFC guarantees that every resolver returns the `SOA` on every negative answer; what is measured below is one resolver, Unbound 1.13.1, in one configuration (§10.1), observed at the authoritative side and spot-checked at the client side. The `SOA` `RDATA` carries two domain names (`MNAME`, `RNAME`) and five 32-bit fields.
 
-**Detector** (`internal/engine/soa_negative.go`, strate N-03, frozen tests committed at `dac3512` before any code and before the campaign of §10.2 was designed). Input: the wire bytes of one answer plus the client IP. The answer is considered only if QR = 1, ANCOUNT = 0, RCODE ∈ {0, 3} and NSCOUNT ≥ 1 (so NXDOMAIN and NODATA; answers that carry records in the Answer section are ignored). Key: FNV-1a 64 of (client IP, *parent*), where parent is the question name minus its first label, lower-cased. Fingerprint: FNV-1a 64 of MNAME, RNAME (both decompressed, pointer chains bounded to 8, lower-cased) and Serial; Refresh, Retry, Expire and Minimum are **not** part of the fingerprint. State: 1,024 direct-mapped slots, one key per slot (a colliding key resets the slot), 8 fingerprints with their last timestamp per slot, entries older than 600 s dropped at each observation. Verdict: `REASON_P20_SOA_NEG_DOWNLINK` whenever a key holds at least 3 live distinct fingerprints. There is no learning and no allocation on this path (`testing.AllocsPerRun` = 0 in the frozen test `TestSOANegativeTracker_ZeroAlloc`, on a compressed-name answer); the two constants (3, 600 s) were chosen by hand and no sensitivity analysis was run. A review after the campaign found that the initial N-03 key ("question name minus its first label" in a 1,024-slot direct-mapped table) is evaded by a sender that varies two labels and lumps distinct apexes under a top-level domain; work stage N-03b (subsequently merged into the shipped `internal/engine/soa_negative.go`, commit `48d394b`) moved the key to `(client IP, SOA owner name)` in bailiwick with at least two labels in a `256 × 4`-way associative table, producing the exact same evaluation counts on all §10.3 captures (`200 / 200 / 198 / 1` on runs A and B, `100 / 100 / 0 / 0` on the benign run).
+**Detector specification (`internal/engine/soa_negative.go`, strate `N-03`, frozen tests committed at `dac3512` prior to code and campaign design):**
+- **Admission filter:** Considers wire answers only when `QR = 1`, `ANCOUNT = 0`, `RCODE ∈ {0, 3}`, and `NSCOUNT ≥ 1` (`NXDOMAIN` and `NODATA`; answers carrying `Answer` records are ignored).
+- **Key & fingerprint:** Initial `N-03` key = FNV-1a 64 of `(client IP, parent)` (question name minus first label, lower-cased). Fingerprint = FNV-1a 64 of `MNAME`, `RNAME` (decompressed with pointer chains bounded to `8` hops, lower-cased) and `Serial` (`Refresh`, `Retry`, `Expire`, and `Minimum` excluded).
+- **Bounded zero-allocation state:** `1,024` direct-mapped slots (`8` timestamped fingerprints per slot, `600 s` expiry, `testing.AllocsPerRun = 0` in `TestSOANegativeTracker_ZeroAlloc`), raising `REASON_P20_SOA_NEG_DOWNLINK` at `>= 3` live distinct fingerprints (hand-chosen constants `3` and `600 s`, no sensitivity sweep).
+- **Post-review hardening (`N-03b`, commit `48d394b`):** Moved the key to in-bailiwick `(client IP, SOA owner name)` (`>= 2` labels) inside a `256 × 4`-way associative table to prevent two-label evasion and TLD lumping, reproducing exact counts on all §10.3 captures (`200 / 200 / 198 / 1` on runs A and B, `100 / 100 / 0 / 0` on the benign run).
 
 ### 10.1 Bench
 
@@ -335,7 +491,9 @@ Protocol basis, stated narrowly: RFC 2308 §3 requires an authoritative server t
 
 The emitter and the resolver run on the same host; the "third component" is a process, not a third machine. Each work stage was written against tests committed before the code, implemented by a model executor (a locally hosted Qwen model for N-04 and N-04b, Gemini 4 for N-01, N-03, N-05a, GPT-6 for N-05b), re-run by the architect with the package suites under the race detector, then merged. `go test -race ./...` passed on the whole repository at commit `157f0dd` (15 packages); N-04b and N-05b were merged after that gate, each with its package suite under the race detector. Commit identifiers in Sections 10 to 15 refer to the development stage history consolidated into the published release commits.
 
-### 10.2 Runs (one `tcpdump` on `wg0` of redhost, file `dnslab-20261029T14Z.pcap`, named after the hour its rotation started; sliced per run on the emitter's manifest windows widened by 1 s before and 1.5 s after, to absorb the sub-second clock offset between the two hosts; capture timestamps are local time, UTC+1)
+### 10.2 Captured Runs
+
+*One `tcpdump` on `wg0` of `redhost` (file `dnslab-20261029T14Z.pcap`, named after the hour its rotation started), sliced per run on the emitter's manifest windows widened by `1 s` before and `1.5 s` after to absorb the sub-second clock offset between the two hosts; capture timestamps are local time (`UTC+1`).*
 
 | Run | Server mode (server seed) | Name seed | Questions sent | Questions reaching redhost | Distinct names | Distinct SOA (MNAME, RNAME, Serial) | SOA Minimum |
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
@@ -345,7 +503,9 @@ The emitter and the resolver run on the same host; the "third component" is a pr
 
 Counts are from the captures (`tcpdump -vv`): the three name sets have no name in common, and the 100 names of each hostile run are exactly the 100 produced by the generator for its seed. The names are `nx-` followed by 16 hexadecimal characters: they were chosen for disjointness between runs, not for stealth. Ingesting the same two captures with the engine's question-side cascade (`RunAgentCLI --pcap`) passes all 400 packets of run A and all 200 of the benign run (`escalated: 0`): on this bench the SOA detector is the only part of the engine that separates the two runs. In `soa-stego` mode Minimum = 1 s, so Unbound forwards the second pass over the names and redhost sees 200 questions carrying 100 distinct SOA (each name gets the same SOA twice); in `soa` mode the negative answer is cached for 300 s and the second pass never reaches redhost. The two denominators (200 and 100) therefore follow from the Minimum value each server mode chooses, not from the detector: a sender that kept Minimum at 300 s would be seen once per name at this capture point. Seen from the client side of Unbound (`dig` on redbo, mode `soa-stego`), the SOA arrives byte-identical to the one redhost emits, TTL 1, different for two different names and identical when a name is repeated. Measured cadence of run A: 200 questions in 40.0 s, 5.00 per second.
 
-### 10.3 Measured (`c2forge soa-eval` on the per-run captures published in `testdata/n04-20261029/`, commit `872cf47`; JSON reports with SHA-256 alongside)
+### 10.3 Detector Evaluation
+
+*Evaluated via `c2forge soa-eval` on the per-run captures published in `testdata/n04-20261029/` (commit `872cf47`); JSON reports with SHA-256 alongside.*
 
 | Capture | Answers | Negative with SOA | Alarm raised | Answers after the alarm | Keys in alarm |
 | :--- | ---: | ---: | :--- | ---: | ---: |
@@ -375,9 +535,14 @@ Reading these numbers:
 
 The engine's packet probe already captures ICMP Echo (types 8 and 0) alongside UDP/53, but nothing scored it. This addendum adds the smallest ICMP rule that the bench can measure and plays it against a laboratory responder that violates the rule on purpose, and against real `ping`.
 
-**Rule** (`internal/engine/icmp_echo.go`, work stage I-02, commit `f0a7c50`, tests committed before the code at `5c073fd`): RFC 792 (Echo or Echo Reply Message): "The data received in the echo message must be returned in the echo reply message." For each Echo Request the tracker stores the FNV-1a fingerprint of the ICMP payload under the key (source, destination, ID, sequence) in a fixed table (1,024 buckets × 4 ways); an Echo Reply is looked up under the key of the request it answers (its destination and source swapped, same ID and sequence), and a reply whose payload fingerprint differs from the stored one, within 60 s, raises `REASON_IC01_ICMP_ECHO_ASYMMETRY`. Replies without a stored request are ignored, and a second, identical reply to the same request is not reported. No allocation per packet (`testing.AllocsPerRun` = 0 in the test `TestICMPEchoParityTracker_ZeroAlloc`). The window (60 s) and the table size were chosen by hand and are not justified by any measurement; one reported reply is one alarm, so a stream of asymmetric replies produces one alarm per reply, not one incident.
+**Rule (`internal/engine/icmp_echo.go`, work stage `I-02`, commit `f0a7c50`, tests committed first at `5c073fd`):**
+- **RFC 792 invariant:** *"The data received in the echo message must be returned in the echo reply message."*
+- **Zero-allocation state (`0 B/op`):** For each `Echo Request`, the tracker stores the FNV-1a fingerprint of the ICMP payload under `(source, destination, ID, sequence)` inside a fixed `1,024 × 4`-way associative table (`testing.AllocsPerRun = 0` in `TestICMPEchoParityTracker_ZeroAlloc`).
+- **Trigger & scoping:** An `Echo Reply` is looked up under the swapped `(destination, source, ID, sequence)` key; a payload fingerprint mismatch within `60 s` raises `REASON_IC01_ICMP_ECHO_ASYMMETRY`. Replies without a stored request are ignored, duplicate identical replies are not reported, and each asymmetric reply emits one alarm (the `60 s` window and table size were chosen manually without empirical sensitivity tuning).
 
-**Laboratory responder and emitter** (`internal/icmplab`, `cmd/c2icmplab-respond`, `cmd/c2icmplab-emit`, work stages I-01 and I-01b, commits `46cf907` and `9fab503`, written by a model executor against tests committed first; evaluator `c2forge icmp-eval`, work stage I-03, commit `532653d`): a responder on redhost answers Echo Requests whose payload starts with `c2il`, from the laboratory network only, with a reply whose payload is XOR-ed with a keyed FNV-1a stream (4-byte prefix kept, involutive); an emitter on redbo sends N requests carrying a counter and seeded bytes, at a bounded rate, to the laboratory network only. This initial synthetic responder is not a full tunnel: in this first controlled step (stage I-03), no command, no data stream and no public tool (`ptunnel`, `icmpsh`) had yet been played; a real public tool (`ptunnel-ng` 1.42, packaged for the hosts' distribution) was then installed and measured end-to-end in the second half of this section below. The responder does not suppress the kernel's own reply, so every request it answers is answered twice: identically by the kernel first (about 50 µs), transformed by the responder second (about 120 µs).
+**Laboratory responder and emitter (`internal/icmplab`, `cmd/c2icmplab-respond`, `cmd/c2icmplab-emit`, stages `I-01`/`I-01b`, commits `46cf907`/`9fab503`; evaluator `c2forge icmp-eval`, stage `I-03`, commit `532653d`):**
+- **Controlled XOR responder:** Answers laboratory-network `Echo Requests` prefixed with `c2il` using a keyed FNV-1a XOR stream (4-byte prefix preserved, involutive), while the emitter on `redbo` sends `N` rate-limited seeded requests.
+- **Dual-reply wire signature:** Because the responder does not suppress the Linux kernel's native reply, each `c2il` request yields two replies: an identical kernel reply (`~50 µs`) followed by the transformed responder reply (`~120 µs`). Stage `I-03` tests this synthetic responder first, followed immediately below by end-to-end evaluation of the public tunnel `ptunnel-ng` 1.42.
 
 **Measured** (one `tcpdump -i wg0 icmp` capture on redhost, sliced per ICMP identifier; `c2forge icmp-eval`, work stage I-03; captures, slices, responder log, manifest and SHA-256 in `testdata/i03-20261029/` and `spec/10-campagne-icmp-echo-20261029.md`):
 
@@ -400,11 +565,15 @@ The 40 reported replies are exactly the 40 transformed ones; the 70 identical re
 
 The same bench as §10 is used, with one more answer field: the low 64 bits of an AAAA record (RFC 3596), which RFC 4291 §2.5.1 calls the interface identifier for addresses under a /64 prefix. A server that answers for a zone can put any sixteen bytes in an AAAA record; the record stays well-formed, this Unbound caches nothing of it when the TTL is 0 (configuration below), and nothing in §§4-10 of this article reads that field. As in §10, no message was encoded, received or decoded, and no throughput was measured: the title says "modulation", not "channel". The code constant is named `REASON_P21_AAAA_IID_DOWNLINK` for what the field can carry, not for what was carried.
 
-**Rule** (`internal/engine/aaaa_iid.go`, work stage A-02, commit `fc89c84`, tests committed before the code at `02388d3`; zero allocation per packet measured by `TestAAAAIIDTracker_ZeroAlloc`): for every NOERROR answer, each AAAA record of the answer section is filed under the key (client, /64 prefix); only identifiers with *no zero byte* count; a fixed ring of 16 timestamped identifiers per key (256 buckets × 4 ways), a 600 s window, and 8 distinct live identifiers raise the reason. The no-zero-byte condition is not a property of interface identifiers (RFC 4291 requires nothing of the kind); it is an engineering choice made on one benign capture, described below, which is then also the benign row of the table: that row is a result on the calibration set, not an independent validation. The threshold 8 is met by construction on the hostile runs (200 distinct identifiers each): any threshold from 1 to 194 would have fired; only the benign capture constrains it (maximum observed: 2).
+**Rule (`internal/engine/aaaa_iid.go`, stage `A-02`, commit `fc89c84`, tests committed first at `02388d3`, `0 B/op` verified by `TestAAAAIIDTracker_ZeroAlloc`):**
+- **Indexing & zero-byte filter:** For every `NOERROR` answer, each `AAAA` record in `Answer` is indexed under `(client, /64 prefix)`, counting **only 64-bit interface identifiers containing no `0x00` byte** inside a fixed ring of `16` timestamped identifiers per key (`256 × 4`-way table, `600 s` window, threshold `8` distinct live identifiers -> `REASON_P21_AAAA_IID_DOWNLINK`).
+- **Calibration caveat:** The no-zero-byte filter is an empirical engineering choice derived from the workstation capture below (which also appears in the summary table as a calibration row, not an independent holdout), rather than an RFC 4291 requirement; any threshold in `1..194` fires on the 200-identifier hostile runs, whereas the benign workstation capture peaked at `2`.
 
-**Laboratory server and campaign** (`dnslab-auth -aaaa none|static|iid-stego`, work stage A-01, commit `9a61da7`, written by a model executor against tests committed first; campaign question type, work stage A-04, commit `4582081`; evaluator `c2forge aaaa-eval`, work stage A-03, commit `c232d42`; `go test -race ./...` green on the 16 packages at commit `a5f918c`): in `iid-stego` mode the server answers every AAAA question in its zone with a fixed prefix (`2001:db8:55::/64`, the documentation prefix) and an identifier derived by FNV-1a from (seed, answer counter, name), so that the same name gets a new address at every answer; a probe through Unbound returned four different addresses for four questions on one name. The campaign emitter reused the contract family `redhost-negative-soa` with question type 28 (no AAAA family was added to the contract) and the `nx-` names of §10's generator, which have no effect in negative mode `none`. Two runs (seeds 0xAAAA1 and 0xAAAA2, 100 names each, 200 questions at 5/s through Unbound 1.13.1, `cache-min-ttl 0`, `serve-expired no`, `prefetch no`, server TTL 0), one benign run (`static`, `2001:db8:55::1`) and, after review, a second benign run (`static`, `2001:db8:55::1234:5678:9abc:def1`, an identifier with no zero byte, repeated) were captured on `wg0` of redhost: the capture point sees Unbound as the client. For that last run the stub side was captured as well on redbo: 200 questions, 200 answers carrying that address. For the two hostile runs, only the probe (4 of 4) shows delivery behind the resolver.
+**Laboratory server and campaign (`dnslab-auth -aaaa none|static|iid-stego`, stage `A-01`, commit `9a61da7`; campaign `QTYPE=28`, stage `A-04`, commit `4582081`; evaluator `c2forge aaaa-eval`, stage `A-03`, commit `c232d42`; `go test -race ./...` green on 16 packages at `a5f918c`):**
+- **`iid-stego` mode:** Answers in-zone `AAAA` queries under documentation prefix `2001:db8:55::/64` with a 64-bit IID derived by FNV-1a from `(seed, answer counter, name)` (`TTL = 0`), verified via Unbound (`4` distinct addresses for `4` queries on one name).
+- **Captured runs:** Two hostile runs (`0xAAAA1`, `0xAAAA2`, `100` `nx-` names each, `200` `AAAA` queries at `5/s` through Unbound 1.13.1 with `cache-min-ttl 0`, `serve-expired no`, `prefetch no`) plus two static benign runs (`2001:db8:55::1` and zero-byte-free `2001:db8:55::1234:5678:9abc:def1`, the latter also verified `200/200` on the `redbo` stub leg).
 
-**The benign capture that set the rule** (`testdata/a03-20261029/`, name list and manifest included): 200 names chosen by the team (large sites, CDNs, universities, administrations), one AAAA question each, sent with `dig` at 5/s from a workstation (192.168.2.50) to its router (192.168.2.1:53), off the bench, over 54 s, with the workstation's own ambient traffic in the same capture: 237 questions (214 AAAA, of which 14 ambient on 12 names such as `github.com` and `mail.google.com`; 10 A; 13 HTTPS), 237 answers, 137 of them carrying 367 AAAA records over 166 /64 prefixes. One prefix, `2606:4700::/64`, carries 27 distinct identifiers, all with zero bytes; no prefix carries more than 2 distinct identifiers without a zero byte, and the capture holds 15 such records in all. A replay of the rule without the no-zero-byte condition (a Python re-implementation that agrees with the Go code on every capture) reports 31 answers at threshold 8 (first at the 11th answer) and 6 at threshold 16 on this capture.
+**Calibration workstation capture (`testdata/a03-20261029/`):** `200` curated domains (large web sites, CDNs, universities, public administrations) queried once via `dig` (`AAAA`, `5/s` over `54 s` from `192.168.2.50` to `192.168.2.1:53`) alongside ambient workstation lookups: `237` questions (`214` `AAAA` incl. `14` ambient on `12` names such as `github.com` and `mail.google.com`; `10` `A`; `13` `HTTPS`), `237` answers, `137` carrying `367` `AAAA` records across `166` `/64` prefixes. Prefix `2606:4700::/64` carried `27` distinct identifiers (all containing zero bytes), while no prefix exceeded `2` zero-byte-free identifiers (`15` records total). Removing the no-zero-byte condition causes `31` false reports at threshold `8` (first at answer `11`) and `6` at threshold `16`.
 
 **Measured** (`spec/11-campagne-aaaa-iid-20261029.md`; captures, manifests, journal, reports and SHA-256 in `testdata/a04-20261029/`):
 
@@ -422,7 +591,7 @@ On each hostile run, reports equal records without zero byte minus seven (194 �
 **What this does not establish.** The workstation capture is both the calibration set and the only benign piece that weighs; it is 54 s of provoked lookups from one client, not enterprise traffic, and not a pool of hosts whose addresses have random or opaque identifiers (RFC 4941 temporary addresses, RFC 7217 stable-per-prefix identifiers, cloud virtual machines) inside one /64: eight such hosts resolved within ten minutes by one client, each answer carrying an identifier without zero byte, would be reported; not measured. At the capture point used here the client is the recursive resolver, so the answers of all stubs behind it add up to the threshold while no single stub reaches it; not measured either. Evasion is trivial: one zero byte per identifier (seven bytes of payload instead of eight) blinds the rule; rotating across several /64 prefixes dilutes the key; and a sender that keeps to seven distinct identifiers per (client, prefix) per 600 s, about 56 bytes per ten minutes per prefix, is never reported. The ring of 16, the 256 × 4 table and their eviction and collision behaviour are not constrained by these captures (one key in alarm); the window is exercised once, by the 677 s gap. Emitter, server and rule were written by the same team on the same day; no public AAAA tunnel tool was replayed, none was looked for in this round, and nothing here shows that an adversary uses this field. The one external real capture at hand (`cyberjonlab/DNS_exfil`, `Normal3.pcapng`, §10) holds no AAAA record and says nothing here. Not compared: Zeek, RITA, Suricata and Elastic were not run; counting distinct identifiers per (client, prefix) over a log of answers is an aggregation any of them could host, and that comparison was not made.
 ## 13. Addendum v1 (2026-10-31): Real DNS Tunnels Through a Recursive Resolver, and an External Real-Tunnel Corpus
 
-Sections 9 to 12 measured modulations produced by our own laboratory authoritative server. They did not contain a single sustained DNS tunnel driven by a public tool: the `iodine` run of 27 October (Section 9) was a failed version handshake of five `NULL` queries. This section closes that gap with two independent sources of real tunnel traffic, both reproducible from the repository.
+Sections 9 to 12 measured modulations produced by the laboratory authoritative server. They did not contain a single sustained DNS tunnel driven by a public tool: the `iodine` run of 27 October (Section 9) was a failed version handshake of five `NULL` queries. This section closes that gap with two independent sources of real tunnel traffic, both reproducible from the repository.
 
 ### 13.1 Own infrastructure: iodine and dns2tcp through Unbound
 
@@ -536,7 +705,7 @@ Root-cause diagnosis of §14.4 resolved Suricata's `app_proto = failed` observat
    - **`CIC DoHlyzer` (patched for `PacketDirection.FORWARD` crash in `packet_flow_key.py:33` and adapted to `TCP/8443`):** Hardcodes IPv4 TCP (`TLSApplicationData`), ships no pre-trained tunnel vs benign-DoH classifier, ignores 100% of UDP/QUIC (`14/19` captures), and labels all 5 TCP `DoH2` captures (`4` tunnels + `1` `benign-dns-doh2`) as `DoH=True`; ranking by extracted clump-sequence count yields **`TP=4, FP=1, TN=5, FN=9, maj=0.6842, ROC AUC=0.5769`** (`45/78` pairs).
    - **`JA4+` (`TShark 4.4.19`, `Suricata 8.0.8`, `FoxIO ja4.py`):** Reference `FoxIO python/ja4.py` outputs `[]` on 100% of QUIC pcaps (`layer_update` sets `x['hl'] = 'quic'` before checking `if x['hl'] == 'tls':`). With native `TShark 4.4.19` decoding, only standalone `dnstt-doh2` (`uTLS` fingerprint `t13i1311h2_f57a46bbacb6_a089bac06eae`) differs (`TP=1, FP=0, TN=6, FN=12, maj=0.6842, ROC AUC=0.5385`); all 12 tunnels routed through a standard `dnsproxy` stub share bit-identical `JA4` fingerprints with benign `DoQ` (`q13i0314dq_55b375c5d22e_7dad20094f23`) and `DoH3` (`q13i0314h3_55b375c5d22e_7dad20094f23`) traffic.
 
-### 15.3 Keyless Encrypted-Transit Kinetics (`V2` $\to$ `V2.1`) and Out-of-Sample Exotic Campaign (`L1-bis`)
+### 15.3 Keyless Encrypted-Transit Kinetics (`V2` to `V2.1`) and Out-of-Sample Exotic Campaign (`L1-bis`)
 
 To inspect encrypted `DoQ`/`DoH2`/`DoH3` transit on the wire without TLS keys and with `0 allocs/op` on packet ingestion, `c2forge encrypted-eval` extracts a 9-component `KineticVector` (`AsymetrieDescendanteLog2`, `FractionQuasiMTUDescendante`, `TournantsParKioPorteur`, `FractionMontanteIntermediaire`, `DebitMontantPorteurLog2`, `PersistanceBidirectionnelle`, `RegulariteInterRafales`, `RegulariteChargeMontante`, `IsochronieMontante`—of which `DebitMontantPorteurLog2` and `IsochronieMontante` are retained as diagnostic coordinates while `ScoreEncryptedWire` weights the other seven) alongside a descriptive four-regime estimator `EstimateEncryptedRegime` (`R0a` short recursive DNS, `R0b` asymmetric HTTP/3 web/bulk, `R1a` sustained bidirectional tunnel requiring `PersistanceBidirectionnelle >= 4.30` and `AsymetrieDescendanteLog2 <= 3.50`, `R1b` slow beacon).
 
@@ -592,3 +761,10 @@ Subsequent sealed strates (`RAT-01` through `RAT-04`, commit `94135a3`) resolved
 1. **Signed-`NXDOMAIN` carrier grammar (`P14`), query-side `EDNS0` (`P9`), `RDATA` renewal (`P15`), and RFC underscore stripping (`StripLeadingRFCUnderscoreLabels`):** `ObserveAndClassify18` detects `RCODE=3 (NXDOMAIN)` carrying non-`CNAME`/`DNAME`/`RRSIG` `Answer` payloads (`REASON_P14_NXDOMAIN_ANSWER_PAYLOAD`, `TP = 40/40, FP = 0/200` on `soar-signed-nxdomain-cache-auth.pcap`, mirrored by `NegativeAnswerPayloadPackets` in `soa-eval`), evaluates `HasPrivateEDNS0Option` on `QR = 0` queries (`25/25` on `OPT 65001`), tracks cross-response `RDATA` renewal (`SuiveurRenouvellementRData`, `REASON_P15_RDATA_RENEWAL`, `TP = 99/99` on `vaydns-caa-unbound-clear.pcap` with `0/200` FP), and strips leading RFC 2782/8552 service labels (including Active Directory `_gc`, `_msdcs`, `_sites`), reducing `EvaluateDNSView` false positives on `benign-rrtypes-clear.pcap` `SRV` queries from `50/50` to `0/50` while retaining `TP = 349/366` on `vaydns-srv-clear.pcap`.
 2. **Fail-closed malformed DNS escalation (`RAT-02a`) and cross-resolver host aggregation (`encrypted-eval -hote -doh-ports 8443,9443,9444`, `RAT-02b`):** `EvaluateDNSMessageWithReason` escalates malformed or oversize frames (`REASON_MALFORMED_OR_OVERSIZE_DNS`) instead of skipping classification, and host-level aggregation across concurrent `DoQ`/`DoH2`/`DoH3` resolvers (`AgregateurHoteChiffre`, `/64` prefix grouping for IPv6) lifts `slipstream-2doq-multipath-transit.pcap` (`PersistanceBidirectionnelleHote = 4.7705`, `SynchroniePermille = 833`) into `R1a` (`REASON_HOST_MULTIPATH_TUNNEL`), yielding `slipstream` `TP = 3/3, FP = 0/11` (`ROC AUC = 1.0000`) and `vaydns` `TP = 6/6, FP = 0/11` (`ROC AUC = 1.0000`) on `joint35`. Same-connection HTTP/3 + DoH3 co-multiplexing (`doh3-shared-conn-vaydns-transit.pcap`) remains bounded by keyless wire observability and delegates to host kinetics.
 3. **12-ratio host kinetics (`part_resolveur_permille`, `RAT-03`) and monograph parity (`RAT-04`):** `internal/cinetique` adds resolver-confinement tracking, expands the recent DNS tuple cache to `1,024` entries, fixes `ConnexionSansDNS` attribution, and `monograph_truthfulness_test.go` seals `docs/why_micro_optimization_is_a_security_choice.{md,docx}` against the 4,096-byte arena, `GOEXPERIMENT=simd` vs scalar `i9-14900K` benchmarks, and `v8.2` OOS boundaries.
+
+> [!TIP]
+> **Reproducibility & Companion Publications:** Every laboratory PCAP, manifest, and JSON report referenced in Sections 9 to 15 can be re-evaluated locally without network access or external models via `c2forge` (`lab-eval -tolerant`, `dns-delta`, `soa-eval`, `icmp-eval`, `aaaa-eval`, `encrypted-eval -hote`). For the 60-second sustained-load comparison (`3,011,298` packets across 7 stacks), see [`dns_detection_solutions_benchmark.md`](dns_detection_solutions_benchmark.md); for the systems-engineering rationale behind the `0 B/op` hot path, see [`why_micro_optimization_is_a_security_choice.md`](why_micro_optimization_is_a_security_choice.md).
+
+---
+
+**Navigation:** [Back to Top](#c2blue55-a-cpu-native-dual-layer-threat-detection-engine-for-the-wittgenstein-ai-tournament) · [Version française](c2blue55_wittgenstein_article.fr.md) · [Word Edition (.docx)](c2blue55_wittgenstein_article.docx) · [Repository Overview](../README.md) · [Micro-Optimization & Security](why_micro_optimization_is_a_security_choice.md) · [7-Stack DNS Benchmark](dns_detection_solutions_benchmark.md)
