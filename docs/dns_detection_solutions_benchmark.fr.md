@@ -7,6 +7,7 @@
 | Paramètre | Valeur vérifiée sur le banc |
 | :--- | :--- |
 | **Date & version** | `2026-11-01 — c2blue55 v8.2` (`94135a3`) |
+| **Révision** | `2026-11-06` — règles de décision des piles tierces et réglage `internal_subnets` de RITA explicités (sections 2.3 et 8.1) après un rejeu automatisé complet du lot `L1` ; aucun compte modifié |
 | **Matériel, OS & chaîne Go** | `Linux 6.14.0-37-generic` (`Linux 6.14 x86_64`), `Intel(R) Core(TM) i9-14900K`, `Go 1.27` (`GOAMD64=v3`, `GOEXPERIMENT=simd`), exécution séquentielle stricte sans contention |
 | **Piles évaluées (`7`)** | `Suricata 8.0.8 + Emerging Threats Open (53 323 règles)`, `Zeek 9.0.1` (natif & `+ hhzzk/dns-tunnels`), `ActiveCM RITA v5.1.2 + ClickHouse 24.1.6`, `Wireshark / TShark 4.4.19 + FoxIO JA4+`, `CIC DoHlyzer`, `Stratosphere Linux IPS (Slips) v1.1.24` et `c2blue55 v8.2` (`94135a3`) |
 | **Corpus & paliers de charge** | `5` jeux DNS d'entreprise externes (`netrack/learn`), suites DNS clair `L1` classique & `L1-bis` hors-distribution (`61` PCAP), `35` PCAP chiffrés `joint35` (`19 L1` en-échantillon + `16 L1-bis` hors-échantillon), socket `UDP/53` actif `60 s` (`2k` & `45k paq/s`), rejeu PCAP multiprotocole `60 s` (`normal-60s.pcap` `147 020` paq. & `extreme-60s.pcap` `3 011 298` paq.) |
@@ -48,6 +49,7 @@
   - [7.1 Récapitulatif des signalements par projet amont](#71-récapitulatif-des-signalements-par-projet-amont)
   - [7.2 Bibliographie des issues et traqueurs amont (`[1]..[24]`)](#72-bibliographie-des-issues-et-traqueurs-amont-124)
 - [8. Commandes de reproductibilité](#8-commandes-de-reproductibilité)
+  - [8.1 Règles de décision et configuration des piles tierces (`L1`, section 2.3)](#81-règles-de-décision-et-configuration-des-piles-tierces-l1-section-23)
 
 ---
 
@@ -184,10 +186,10 @@ Confrontées au **Lot `L1-bis`** (`61` captures hors-distribution engendrées pa
 
 | Pile | `L1` DNS clair classique (`5` PCAP tunnels + `1` bénin, Maj. `0,8333`) | `L1` ROC AUC | `L1-bis` DNS clair évasif hors-distribution (`Slipstream`, `VayDNS`, `NoizDNS`, `Soar` + bénins/témoins) | `L1-bis` ROC AUC | Enseignement d'ingénierie principal |
 | :--- | :--- | :---: | :--- | :---: | :--- |
-| **`RITA v5.1.2 + ClickHouse`** | `TP=5/5, FP=0/1, TN=1/1, FN=0/5` | **`1,0000`** | `TP=6/19, FP=1/2, TN=1/2, FN=13/19` (Maj. `0,9048` sur sous-ensemble port 53) | `0,4737` | Référence sur tunnels longs (`> 100` sous-domaines, `> 1 h`) ; aveugle sous `100` sous-domaines `[19]` et sur Base128 `\x` `[1]`. |
+| **`RITA v5.1.2 + ClickHouse`** | `TP=5/5, FP=0/1, TN=1/1, FN=0/5` (décision `max(c2_over_dns_score, beacon_threat_score, long_conn_score) > 0` ; `periodic-slow-20m-clear` rattrapé par `beacon_score = 0,945` avec `internal_subnets = ["10.55.0.2/32"]`, section 8.1) | **`1,0000`** | `TP=6/19, FP=1/2, TN=1/2, FN=13/19` (Maj. `0,9048` sur sous-ensemble port 53) | `0,4737` | Référence sur tunnels longs (`> 100` sous-domaines, `> 1 h`) ; aveugle sous `100` sous-domaines `[19]` et sur Base128 `\x` `[1]`. |
 | **`Zeek 9.0.1 + hhzzk/dns-tunnels`** | `TP=5/5, FP=1/1, TN=0/1, FN=0/5` (`2` avis bénins de volume) | `1,0000`* | `TP=24/24` (port 53), `FP=8/21, TN=13/21, FN=0/24` (Maj. `0,5333`) | `0,7000` | Détecte les QNAME Base32 courts (`NoizDNS`), mais la division entière `[12]` et le compteur global à `100` requêtes génèrent de nombreux FP. |
 | **`Suricata 8.0.8 + ET Open`** | `TP=2/5, FP=0/1, TN=1/1, FN=3/5` (`803` alertes `iodine` + `2` `dns2tcp`) | `0,7000` | `TP=0/40, FP=0/21, TN=21/21, FN=40/40` (Maj. `0,6557`) | `0,5000` (0 sig.) | Zéro faux positif sur les SID de tunnels ; `4` règles candidates (`SID 9900001..9900004`) soumises en amont `[18]` (`6/6` TP, `0/5` FP). |
-| **`Stratosphere Slips v1.1.24`** | `TP=3/5, FP=1/1, TN=0/1, FN=2/5` (`90` FP bénins `INVALID_DNS`) | `0,4000` | Inexploitable sur le lot de `61` PCAP (gel d'arrêt `> 10 h` en mode hors ligne `[9]`) | `N/A` (gel `[9]`) | N'inspecte que l'entropie des réponses `TXT` `[8]`, manquant `dnstt` (`QNAME`) et `iodine` (`NULL`). |
+| **`Stratosphere Slips v1.1.24`** | `TP=3/5, FP=1/1, TN=0/1, FN=2/5` (décision sur toute ligne d'`alerts.json`, preuves comprises : `90` preuves `INVALID_DNS_RESOLUTION` sur le témoin bénin ; avec la décision agrégée propre à Slips la ligne devient `TP=1/5, FP=0/1, TN=1/1, FN=4/5`, ROC AUC `0,6000`, section 8.1) | `0,4000` | Inexploitable sur le lot de `61` PCAP (gel d'arrêt `> 10 h` en mode hors ligne `[9]`) | `N/A` (gel `[9]`) | N'inspecte que l'entropie des réponses `TXT` `[8]`, manquant `dnstt` (`QNAME`) et `iodine` (`NULL`). |
 | **`c2blue55 v8.2` (`94135a3`)** | Par message : `2 083 Block + 679 Q / 2 763` (`FN=1`), `FP=0/270` (`TN=270`, Maj. `0,9110`) | **`1,0000`** | `Slipstream` `419/419` ; `Soar` `40/40` P14 (`FP=0/200, TN=200, Maj.=0,8333`) ; `NoizDNS` `461/462` ; `VayDNS CAA` `99/99` P15 ; `SRV` `349/366 TP, 0/50 FP` (`TN=50, FN=17, Maj.=0,8798`) | **`0,9842–1,0000`** | Grammaire filaire `0 B/op` (`P14/P15`) + `.c2book` `RaBitQ` ; requiert une calibration locale `dns-delta` sur zones d'entreprise tierces (section 6). |
 | **`Zeek 9.0.1` (natif)** | **`N/A`** (moteur télémétrique : `100 %` `UDP/TCP 53` journalisés) | `N/A` | **`N/A`** (moteur télémétrique : réponses `CAA` vides `[16]`, `NXDOMAIN+TXT` muet `[17]`) | `N/A` | Analyseur de référence ; gestionnaire `dns_CAA_reply` de `4` lignes `[16]` et anomalie `NXDOMAIN` `[17]` transmis en amont. |
 
@@ -465,7 +467,16 @@ go test -race -count=1 -run "TestMonographTruthfulnessAndDocxParity|TestRunIRL17
 /tmp/c2forge encrypted-eval -hote -doh-ports 8443,8853,9443,9444 \
   -manifest ../wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/encrypted-manifest-joint35.json \
   -report /tmp/enc-joint35.json
+
 ```
+
+### 8.1 Règles de décision et configuration des piles tierces (`L1`, section 2.3)
+
+Rejouer le lot `L1` sur les piles tierces exige les règles de décision et les détails de configuration que la campagne a appliqués ; un rejeu automatisé complet des six captures `L1` le `2026-11-06` (règles ET Open du jour, `69 345` règles) n'a reproduit exactement les quatre lignes tierces de la section 2.3 qu'une fois ces éléments fixés :
+
+- **`RITA v5.1.2 + ClickHouse 24.1.6`** : journaux Zeek `9` (`zeek -C -r <pcap>`) importés par `rita import --rebuild --logs <dir> --database <db>` ; le verdict se lit dans `<db>.threat_mixtape` (`clickhouse-client -q "SELECT fqdn, c2_over_dns_score, beacon_score, beacon_threat_score, long_conn_score FROM <db>.threat_mixtape FORMAT JSONEachRow"`, car `rita view` masque les captures DNS infra-horaires `[2]`) avec la règle `max(c2_over_dns_score, beacon_threat_score, long_conn_score) > 0`. `config.hjson` est le fichier amont avec `update_check_enabled: false`, `threat_intel.online_feeds: []` et **`filtering.internal_subnets: ["10.55.0.2/32"]`** (le seul client du tunnel). Avec la liste RFC 1918 amont, le flux client → résolveur `10.55.0.2 -> 10.55.0.15` est interne→interne, RITA l'écarte de l'analyse de balisage et `periodic-slow-20m-clear.pcap` ne produit aucune ligne `threat_mixtape` (`TP=4/5`) ; avec le seul sous-réseau client, tout le reste égal, il produit `beacon_score = 0,945` (`26` sessions UDP) comme indiqué en section 2.3.
+- **`Stratosphere Slips v1.1.24`** : `./slips.py -f <pcap> -o <out> -e 0` dans `stratosphereips/slips:latest` avec `--network none` ; une capture compte comme détectée dès que `<out>/alerts/alerts.json` contient au moins une ligne IDEA, preuve (`evidence_type`) ou alerte agrégée (`accumulated_threat_level` sans `evidence_type`). Lignes brutes sur `L1` : `benign-dns-clear` `90` (`INVALID_DNS_RESOLUTION`), `c2dnslab-replay-clear` `271` (`258` `INVALID_DNS_RESOLUTION` + `13` `DGA_NXDOMAINS`), `dns2tcp-clear` `2 302` (`2 294` `HIGH_ENTROPY_DNS_ANSWER` + `8` agrégées), `dnstt-clear` `0`, `iodine-clear` `0`, `periodic-slow-20m-clear` `13`. En ne comptant que les alertes agrégées, la ligne devient `TP=1/5, FP=0/1, TN=1/1, FN=4/5` (ROC AUC `0,6000`, `dns2tcp` seul) ; le constat qualitatif `[8]` (`dnstt` et `iodine` manqués, bruit `INVALID_DNS_RESOLUTION` sur le témoin bénin) tient sous les deux lectures.
+- **`Suricata 8.0.8 + ET Open`** et **`Zeek 9.0.1 + hhzzk/dns-tunnels`** : détection dès qu'au moins une alerte hors décodeur (`sid` hors `2200000..2299999`) ou au moins un avis `DNS_TUNNELS` (`OvermuchNumber`, `RequestCountOverload`) est émis sur la capture ; les deux lignes de la section 2.3 se reproduisent avec le jeu de règles ET Open courant.
 
 ---
 

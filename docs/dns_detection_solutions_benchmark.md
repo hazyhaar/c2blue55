@@ -7,6 +7,7 @@
 | Parameter | Verified Testbed Value |
 | :--- | :--- |
 | **Date & Release** | `2026-11-01 — c2blue55 v8.2` (`94135a3`) |
+| **Revision** | `2026-11-06` — third-party decision rules and RITA `internal_subnets` setting made explicit (Sections 2.3 and 8.1) after a full automated replay of the `L1` lot; no count changed |
 | **Hardware, OS & Toolchain** | `Linux 6.14.0-37-generic` (`Linux 6.14 x86_64`), `Intel(R) Core(TM) i9-14900K`, `Go 1.27` (`GOAMD64=v3`, `GOEXPERIMENT=simd`), zero-contention strict sequential execution |
 | **Evaluated Stacks (`7`)** | `Suricata 8.0.8 + Emerging Threats Open (53,323 rules)`, `Zeek 9.0.1` (native & `+ hhzzk/dns-tunnels`), `ActiveCM RITA v5.1.2 + ClickHouse 24.1.6`, `Wireshark / TShark 4.4.19 + FoxIO JA4+`, `CIC DoHlyzer`, `Stratosphere Linux IPS (Slips) v1.1.24`, and `c2blue55 v8.2` (`94135a3`) |
 | **Corpora & Load Tiers** | `5` external enterprise DNS sets (`netrack/learn`), classical `L1` & `61`-PCAP out-of-distribution `L1-bis` clear-DNS suites, `35` encrypted PCAPs `joint35` (`19 L1` in-sample + `16 L1-bis` out-of-sample), `60 s` live `UDP/53` socket (`2k` & `45k pkt/s`), `60 s` multi-protocol PCAP replay (`normal-60s.pcap` `147,020` pkts & `extreme-60s.pcap` `3,011,298` pkts) |
@@ -48,6 +49,7 @@
   - [7.1 Summary of Disclosures by Upstream Project](#71-summary-of-disclosures-by-upstream-project)
   - [7.2 Upstream Issue & Tracker Bibliography (`[1]..[24]`)](#72-upstream-issue--tracker-bibliography-124)
 - [8. Reproducibility Commands](#8-reproducibility-commands)
+  - [8.1 Third-Party Stack Decision Rules & Configuration (`L1`, Section 2.3)](#81-third-party-stack-decision-rules--configuration-l1-section-23)
 
 ---
 
@@ -184,10 +186,10 @@ When confronted with **Lot `L1-bis`** (`61` out-of-distribution captures generat
 
 | Stack | `L1` Classical Clear DNS (`5` tunnel PCAPs + `1` benign, Maj. Rate `0.8333`) | `L1` ROC AUC | `L1-bis` Evasive OOD Clear DNS (`Slipstream`, `VayDNS`, `NoizDNS`, `Soar` + benign/controls) | `L1-bis` ROC AUC | Key Engineering Takeaway |
 | :--- | :--- | :---: | :--- | :---: | :--- |
-| **`RITA v5.1.2 + ClickHouse`** | `TP=5/5, FP=0/1, TN=1/1, FN=0/5` | **`1.0000`** | `TP=6/19, FP=1/2, TN=1/2, FN=13/19` (Maj. `0.9048` on port-53 subset) | `0.4737` | Gold standard on long tunnels (`> 100` subdomains, `> 1 h`); blinded below `100` subdomains `[19]` and on `\x` Base128 `[1]`. |
+| **`RITA v5.1.2 + ClickHouse`** | `TP=5/5, FP=0/1, TN=1/1, FN=0/5` (decision `max(c2_over_dns_score, beacon_threat_score, long_conn_score) > 0`; `periodic-slow-20m-clear` caught by `beacon_score = 0.945` with `internal_subnets = ["10.55.0.2/32"]`, Section 8.1) | **`1.0000`** | `TP=6/19, FP=1/2, TN=1/2, FN=13/19` (Maj. `0.9048` on port-53 subset) | `0.4737` | Gold standard on long tunnels (`> 100` subdomains, `> 1 h`); blinded below `100` subdomains `[19]` and on `\x` Base128 `[1]`. |
 | **`Zeek 9.0.1 + hhzzk/dns-tunnels`** | `TP=5/5, FP=1/1, TN=0/1, FN=0/5` (`2` benign volume notices) | `1.0000`* | `TP=24/24` (port 53), `FP=8/21, TN=13/21, FN=0/24` (Maj. `0.5333`) | `0.7000` | Catches short Base32 QNAMEs (`NoizDNS`), but integer division `[12]` and host-wide `100`-req counter cause heavy benign FPs. |
 | **`Suricata 8.0.8 + ET Open`** | `TP=2/5, FP=0/1, TN=1/1, FN=3/5` (`803` `iodine` + `2` `dns2tcp` alerts) | `0.7000` | `TP=0/40, FP=0/21, TN=21/21, FN=40/40` (Maj. `0.6557`) | `0.5000` (0 sigs) | Zero false positives on curated tunnel SIDs; `4` candidate rules (`SID 9900001..9900004`) contributed upstream `[18]` (`6/6` TP, `0/5` FP). |
-| **`Stratosphere Slips v1.1.24`** | `TP=3/5, FP=1/1, TN=0/1, FN=2/5` (`90` benign `INVALID_DNS` FPs) | `0.4000` | Unusable across `61`-PCAP batch (`> 10 h` offline shutdown hang `[9]`) | `N/A` (hang `[9]`) | Inspects `TXT` answer entropy only `[8]`, missing `dnstt` (`QNAME`) and `iodine` (`NULL`). |
+| **`Stratosphere Slips v1.1.24`** | `TP=3/5, FP=1/1, TN=0/1, FN=2/5` (decision on any `alerts.json` line, evidence included: `90` benign `INVALID_DNS_RESOLUTION` evidences; under Slips' own aggregated-alert decision the row reads `TP=1/5, FP=0/1, TN=1/1, FN=4/5`, ROC AUC `0.6000`, Section 8.1) | `0.4000` | Unusable across `61`-PCAP batch (`> 10 h` offline shutdown hang `[9]`) | `N/A` (hang `[9]`) | Inspects `TXT` answer entropy only `[8]`, missing `dnstt` (`QNAME`) and `iodine` (`NULL`). |
 | **`c2blue55 v8.2` (`94135a3`)** | Message-level: `2,083 Block + 679 Q / 2,763` (`FN=1`), `FP=0/270` (`TN=270`, Maj. `0.9110`) | **`1.0000`** | `Slipstream` `419/419`; `Soar` `40/40` P14 (`FP=0/200, TN=200, Maj.=0.8333`); `NoizDNS` `461/462`; `VayDNS CAA` `99/99` P15; `SRV` `349/366 TP, 0/50 FP` (`TN=50, FN=17, Maj.=0.8798`) | **`0.9842–1.0000`** | `0 B/op` wire grammar (`P14/P15`) + `.c2book` `RaBitQ`; requires local `dns-delta` calibration on foreign enterprise zones (Section 6). |
 | **`Zeek 9.0.1` (native)** | **`N/A`** (telemetry engine: `100%` `UDP/TCP 53` logged) | `N/A` | **`N/A`** (telemetry engine: `CAA` blank answers `[16]`, silent `NXDOMAIN+TXT` `[17]`) | `N/A` | Reference parser; `4`-line `dns_CAA_reply` handler `[16]` and `NXDOMAIN` weird `[17]` submitted upstream. |
 
@@ -466,6 +468,14 @@ go test -race -count=1 -run "TestMonographTruthfulnessAndDocxParity|TestRunIRL17
   -manifest ../wittgenstein/redhost_lab/banc-exotiques-quic-2026-11/encrypted-manifest-joint35.json \
   -report /tmp/enc-joint35.json
 ```
+
+### 8.1 Third-Party Stack Decision Rules & Configuration (`L1`, Section 2.3)
+
+Replaying the `L1` lot against the third-party stacks requires the decision rules and the configuration details the campaign applied; a full automated replay of the six `L1` captures on `2026-11-06` (ET Open rules of that day, `69,345` rules) reproduced the four third-party rows of Section 2.3 exactly only once these were fixed:
+
+- **`RITA v5.1.2 + ClickHouse 24.1.6`:** Zeek `9` logs (`zeek -C -r <pcap>`) imported with `rita import --rebuild --logs <dir> --database <db>`; the verdict is read from `<db>.threat_mixtape` (`clickhouse-client -q "SELECT fqdn, c2_over_dns_score, beacon_score, beacon_threat_score, long_conn_score FROM <db>.threat_mixtape FORMAT JSONEachRow"`, because `rita view` hides sub-hourly DNS-only captures `[2]`) with the rule `max(c2_over_dns_score, beacon_threat_score, long_conn_score) > 0`. `config.hjson` is the upstream file with `update_check_enabled: false`, `threat_intel.online_feeds: []` and **`filtering.internal_subnets: ["10.55.0.2/32"]`** (the tunnel client only). With the upstream RFC 1918 list instead, the client-to-resolver flow `10.55.0.2 -> 10.55.0.15` is internal-to-internal, RITA drops it from beacon analysis and `periodic-slow-20m-clear.pcap` yields no `threat_mixtape` row (`TP=4/5`); with the client-only subnet, all else equal, it yields `beacon_score = 0.945` (`26` UDP sessions) as reported in Section 2.3.
+- **`Stratosphere Slips v1.1.24`:** `./slips.py -f <pcap> -o <out> -e 0` inside `stratosphereips/slips:latest` with `--network none`; a capture counts as detected when `<out>/alerts/alerts.json` holds at least one IDEA line, evidence (`evidence_type`) or aggregated alert (`accumulated_threat_level` without `evidence_type`). Raw line counts on `L1`: `benign-dns-clear` `90` (`INVALID_DNS_RESOLUTION`), `c2dnslab-replay-clear` `271` (`258` `INVALID_DNS_RESOLUTION` + `13` `DGA_NXDOMAINS`), `dns2tcp-clear` `2,302` (`2,294` `HIGH_ENTROPY_DNS_ANSWER` + `8` aggregated), `dnstt-clear` `0`, `iodine-clear` `0`, `periodic-slow-20m-clear` `13`. Counting aggregated alerts only gives `TP=1/5, FP=0/1, TN=1/1, FN=4/5` (ROC AUC `0.6000`, `dns2tcp` alone); the qualitative finding `[8]` (`dnstt` and `iodine` missed, `INVALID_DNS_RESOLUTION` noise on the benign control) holds under both readings.
+- **`Suricata 8.0.8 + ET Open`** and **`Zeek 9.0.1 + hhzzk/dns-tunnels`:** detected when at least one non-decoder alert (`sid` outside `2200000..2299999`) or at least one `DNS_TUNNELS` notice (`OvermuchNumber`, `RequestCountOverload`) is emitted on the capture; both rows of Section 2.3 reproduce with the current ET Open rule set.
 
 ---
 
