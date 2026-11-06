@@ -1,0 +1,383 @@
+{
+ "schema_version": 1,
+ "fresh_data": true,
+ "published_results_reused": false,
+ "scope": {
+  "external_targets": 0,
+  "network": "client host -> server host over private 10.55.0.0/24 and loopback only",
+  "capture_mode": "kernel-tcpdump-wg0",
+  "public_dns_changed": false,
+  "firewall_changed": false,
+  "systemd_configuration_changed": false
+ },
+ "tools": [
+  "dns2tcp",
+  "dnstt",
+  "iodine",
+  "noizdns",
+  "slipstream",
+  "soar",
+  "vaydns"
+ ],
+ "offensive_tools_count": 7,
+ "offensive_runs_total": 18,
+ "offensive_runs_detected": 18,
+ "offensive_runs": [
+  {
+   "tool": "dnstt",
+   "case": "clear",
+   "pcap": "dnstt-clear.pcap",
+   "pcap_sha256": "e74b19f594e9640928ad411462e48d8a0fbd79c716bc9e7e8c091d8293f8f02c",
+   "pcap_bytes": 65897,
+   "replay_exit_code": 0,
+   "observations": 196,
+   "states": {
+    "observed": 196
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 22,
+    "REASON_M02_HIGH_ENTROPY": 22,
+    "REASON_P1_DOWNLINK_EXFIL": 139,
+    "REASON_P15_RDATA_RENEWAL": 5
+   },
+   "detected": true
+  },
+  {
+   "tool": "iodine",
+   "case": "clear",
+   "pcap": "iodine-clear.pcap",
+   "pcap_sha256": "2e577ec46d905dfa5eee108336b8e4409807229aae1cb4516a7f3c74e475b9fc",
+   "pcap_bytes": 39141,
+   "replay_exit_code": 0,
+   "observations": 240,
+   "states": {
+    "observed": 240
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 60,
+    "REASON_M02_HIGH_ENTROPY": 2,
+    "REASON_P1_DOWNLINK_EXFIL": 7
+   },
+   "detected": true
+  },
+  {
+   "tool": "dns2tcp",
+   "case": "clear",
+   "pcap": "dns2tcp-clear.pcap",
+   "pcap_sha256": "db193972a44f6f1f563a7a936886ad7ad795bac99338adf27c2dc95fae7b1ca0",
+   "pcap_bytes": 78203,
+   "replay_exit_code": 0,
+   "observations": 282,
+   "states": {
+    "observed": 282
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 4,
+    "REASON_P1_DOWNLINK_EXFIL": 271,
+    "REASON_P15_RDATA_RENEWAL": 1
+   },
+   "detected": true
+  },
+  {
+   "tool": "slipstream",
+   "case": "mpfix-mono",
+   "pcap": "slipstream-mpfix-mono.pcap",
+   "pcap_sha256": "b5ca94d9d0202a7edaa488f13764e5dace778041e354b9039c92d567a9a71cf3",
+   "pcap_bytes": 35286,
+   "replay_exit_code": 0,
+   "observations": 126,
+   "states": {
+    "observed": 126
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 101,
+    "REASON_P1_DOWNLINK_EXFIL": 8,
+    "REASON_P15_RDATA_RENEWAL": 17
+   },
+   "detected": true
+  },
+  {
+   "tool": "slipstream",
+   "case": "mpfix-dual",
+   "pcap": "slipstream-mpfix-dual.pcap",
+   "pcap_sha256": "b01d40617ee5eed2bb20f4a646dbfd4b89c8dc006adf4fb4fc7531983debfd25",
+   "pcap_bytes": 39567,
+   "replay_exit_code": 0,
+   "observations": 140,
+   "states": {
+    "observed": 140
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 117,
+    "REASON_P1_DOWNLINK_EXFIL": 9,
+    "REASON_P15_RDATA_RENEWAL": 14
+   },
+   "detected": true
+  },
+  {
+   "tool": "slipstream",
+   "case": "official-mono",
+   "pcap": "slipstream-official-mono.pcap",
+   "pcap_sha256": "27b80de25083264ca41707902aecacee1a8c2653e113a17b72e3d873622244bc",
+   "pcap_bytes": 35954,
+   "replay_exit_code": 0,
+   "observations": 130,
+   "states": {
+    "observed": 130
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 106,
+    "REASON_P1_DOWNLINK_EXFIL": 8,
+    "REASON_P15_RDATA_RENEWAL": 16
+   },
+   "detected": true
+  },
+  {
+   "tool": "vaydns",
+   "case": "txt-r3",
+   "pcap": "vaydns-txt-r3.pcap",
+   "pcap_sha256": "8c6bd1284915bd1a746415e57411b5589125cc238b9126b5070546a61a2108de",
+   "pcap_bytes": 22230,
+   "replay_exit_code": 0,
+   "observations": 118,
+   "states": {
+    "observed": 118
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 78,
+    "REASON_P1_DOWNLINK_EXFIL": 6,
+    "REASON_P15_RDATA_RENEWAL": 4
+   },
+   "detected": true
+  },
+  {
+   "tool": "vaydns",
+   "case": "caa-r3",
+   "pcap": "vaydns-caa-r3.pcap",
+   "pcap_sha256": "aa8ec2e6d703e21d96a1043b9446753429db498a0cc559aa6f52d59f5a1d01be",
+   "pcap_bytes": 25548,
+   "replay_exit_code": 0,
+   "observations": 130,
+   "states": {
+    "observed": 130
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 87,
+    "REASON_P15_RDATA_RENEWAL": 8
+   },
+   "detected": true
+  },
+  {
+   "tool": "vaydns",
+   "case": "srv-r3",
+   "pcap": "vaydns-srv-r3.pcap",
+   "pcap_sha256": "b854da9f2b57361d620e06d74a8b24eac63c68ebcfe6f84b5b9810dbced6b371",
+   "pcap_bytes": 65368,
+   "replay_exit_code": 0,
+   "observations": 308,
+   "states": {
+    "observed": 308
+   },
+   "reasons": {
+    "REASON_P7_SRV_C2": 98
+   },
+   "detected": true
+  },
+  {
+   "tool": "vaydns",
+   "case": "mx-r3",
+   "pcap": "vaydns-mx-r3.pcap",
+   "pcap_sha256": "6ddf8fbe419a3797af568d991e5f3117decc627bf8bbca148816c847f3b72b01",
+   "pcap_bytes": 60898,
+   "replay_exit_code": 0,
+   "observations": 288,
+   "states": {
+    "observed": 288
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 53,
+    "REASON_P15_RDATA_RENEWAL": 69,
+    "REASON_P1_DOWNLINK_EXFIL": 143
+   },
+   "detected": true
+  },
+  {
+   "tool": "vaydns",
+   "case": "ns-r3",
+   "pcap": "vaydns-ns-r3.pcap",
+   "pcap_sha256": "4da93576c0847e2c2c692caf9643cf37f3bff9aa33d14bbb6a6d32ffd6cb5e11",
+   "pcap_bytes": 72784,
+   "replay_exit_code": 0,
+   "observations": 332,
+   "states": {
+    "observed": 332
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 64,
+    "REASON_P15_RDATA_RENEWAL": 90,
+    "REASON_P1_DOWNLINK_EXFIL": 152
+   },
+   "detected": true
+  },
+  {
+   "tool": "vaydns",
+   "case": "caa-shared-r3",
+   "pcap": "vaydns-caa-shared-r3.pcap",
+   "pcap_sha256": "8f6eb31ed044aa2db4510110ce28d3c8c67fdccd6b4ec2cc429a61f5e95ab490",
+   "pcap_bytes": 22178,
+   "replay_exit_code": 0,
+   "observations": 116,
+   "states": {
+    "observed": 116
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 78,
+    "REASON_P15_RDATA_RENEWAL": 7
+   },
+   "detected": true
+  },
+  {
+   "tool": "noizdns",
+   "case": "fixed63-r3",
+   "pcap": "noizdns-fixed63-r3.pcap",
+   "pcap_sha256": "9d1780db37898511c74704d706374dce5bbb657c2e61ad4996cf45e6ffe2e77d",
+   "pcap_bytes": 14370,
+   "replay_exit_code": 0,
+   "observations": 58,
+   "states": {
+    "observed": 58
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 30,
+    "REASON_M02_HIGH_ENTROPY": 16,
+    "REASON_P1_DOWNLINK_EXFIL": 6,
+    "REASON_P15_RDATA_RENEWAL": 3
+   },
+   "detected": true
+  },
+  {
+   "tool": "noizdns",
+   "case": "var1540-nocover-r3",
+   "pcap": "noizdns-var1540-nocover-r3.pcap",
+   "pcap_sha256": "4afbfd41e5826fe3574d85318ff61dfd5371eb5101f19110308a2d6b82fa2d6f",
+   "pcap_bytes": 14362,
+   "replay_exit_code": 0,
+   "observations": 58,
+   "states": {
+    "observed": 58
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 27,
+    "REASON_M02_HIGH_ENTROPY": 13,
+    "REASON_P1_DOWNLINK_EXFIL": 6,
+    "REASON_P15_RDATA_RENEWAL": 4
+   },
+   "detected": true
+  },
+  {
+   "tool": "noizdns",
+   "case": "var1540-private-cover-r3",
+   "pcap": "noizdns-var1540-private-cover-r3.pcap",
+   "pcap_sha256": "92b4d4291f1367164e12977673a53f323090a636c156ebface47ce6bc024bd0d",
+   "pcap_bytes": 15291,
+   "replay_exit_code": 0,
+   "observations": 68,
+   "states": {
+    "observed": 68
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 26,
+    "REASON_M02_HIGH_ENTROPY": 24,
+    "REASON_P1_DOWNLINK_EXFIL": 6,
+    "REASON_P15_RDATA_RENEWAL": 4
+   },
+   "detected": true
+  },
+  {
+   "tool": "noizdns",
+   "case": "var1540-roundrobin-r3",
+   "pcap": "noizdns-var1540-roundrobin-r3.pcap",
+   "pcap_sha256": "3541fbfea39782dacba4e54a57924e85e1b1df4f467e548798ea47b3290c5c75",
+   "pcap_bytes": 26005,
+   "replay_exit_code": 0,
+   "observations": 132,
+   "states": {
+    "observed": 132
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 61,
+    "REASON_M02_HIGH_ENTROPY": 19,
+    "REASON_P1_DOWNLINK_EXFIL": 6
+   },
+   "detected": true
+  },
+  {
+   "tool": "soar",
+   "case": "heldpoll-r6",
+   "pcap": "soar-heldpoll-r6.pcap",
+   "pcap_sha256": "f2936722244f0df077d90a41ed0b450ab3f0f231e9225fa0dc2f6bf728336bdc",
+   "pcap_bytes": 22789,
+   "replay_exit_code": 0,
+   "observations": 85,
+   "states": {
+    "observed": 85
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 16,
+    "REASON_M02_HIGH_ENTROPY": 3,
+    "REASON_P1_DOWNLINK_EXFIL": 41,
+    "REASON_P15_RDATA_RENEWAL": 20,
+    "REASON_P14_NXDOMAIN_ANSWER_PAYLOAD": 1
+   },
+   "detected": true
+  },
+  {
+   "tool": "soar",
+   "case": "double-resolvers-r6",
+   "pcap": "soar-double-resolvers-r6.pcap",
+   "pcap_sha256": "06a39a6061aaacc2cc93340bc0c65b07a773579025b70a186a11a660e6f9bb74",
+   "pcap_bytes": 26932,
+   "replay_exit_code": 0,
+   "observations": 109,
+   "states": {
+    "observed": 109
+   },
+   "reasons": {
+    "REASON_M01_LONG_LABEL": 23,
+    "REASON_M02_HIGH_ENTROPY": 12,
+    "REASON_P1_DOWNLINK_EXFIL": 51,
+    "REASON_P15_RDATA_RENEWAL": 19,
+    "REASON_P14_NXDOMAIN_ANSWER_PAYLOAD": 1
+   },
+   "detected": true
+  }
+ ],
+ "benign_distributed": {
+  "pcap": "benign-distributed-apex.pcap",
+  "pcap_sha256": "598a107a97218e052055d8e44f0ae499fa1a59a55392e9db4c9898e15f7b8970",
+  "observations": 400,
+  "reason_counts": {},
+  "queries": 200,
+  "responses": 200,
+  "effective_apexes": 200
+ },
+ "mono_apex_control": {
+  "pcap": "benign-mono-apex-burst.pcap",
+  "pcap_sha256": "53bffac2e144ee3a889f2da4c1f3082bdfc0da29b97e1354d64c9029c6bd22c1",
+  "observations": 400,
+  "reason_counts": {
+   "REASON_M03_HIGH_FREQ_BURST": 136
+  },
+  "note": "A separate single-parent dig burst triggers M-03; the distributed benign control has zero alerts."
+ },
+ "operational_notes": [
+  "iodine: 3 ICMP transfers of 1024 bytes verified; HTTP forwarding attempts failed and remain documented.",
+  "Slipstream dual: transfer succeeds but a common CID across resolvers is not established.",
+  "Soar dual: two UDP relay endpoints reach one Soar server, not two autonomous recursive resolvers.",
+  "VayDNS CAA: 65 source ports for 65 queries, compared with 1 source port for 58 queries in shared-socket mode.",
+  "NoizDNS round-robin: 33 queries per resolver.",
+  "Soar: one signed NXDOMAIN with REASON_P14_NXDOMAIN_ANSWER_PAYLOAD in each retained run.",
+  "Multiple failed attempts are retained in the source manifests and not counted as successes."
+ ],
+ "note": "Public copy: per-run replay directories removed; digests, observations and reasons unchanged."
+}
