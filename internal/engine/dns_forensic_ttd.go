@@ -623,8 +623,8 @@ func (st *StreamingDNS18State) ObserveAndClassify18(wirePacket []byte, tsNs int6
 			qtDistinct := 0
 			var intervals [8]int64
 			for k := uint8(0); k < slot.p3Cnt; k++ {
-				if k > 0 {
-					intervals[k] = slot.p3TS[k] - slot.p3TS[k-1]
+				if k+1 < slot.p3Cnt {
+					intervals[k] = slot.p3TS[k+1] - slot.p3TS[k]
 				}
 				qt := slot.p3QT[k]
 				found := false
