@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/badge/release-v8.2-0f766e?style=flat)](../README.md) [![Pure Go](https://img.shields.io/badge/Go%201.27-0%25%20CGo%20%7C%200%25%20GPU-00ADD8?style=flat)](#31-synchronous-hot-path-0-bop-vs-off-path-allocations) [![Hotpath Alloc](https://img.shields.io/badge/hotpath%20alloc-0%20B%2Fop-b45309?style=flat)](#43-layer-1b-quantized-int8-linear-heads-apex-protection-and-measured-latency) [![Payload Window](https://img.shields.io/badge/arena%20slot-4%2C096%20B%20seqlock-1d4ed8?style=flat)](#32-lock-free-payload-passing-the-4-mib-atomic-seqlock-ring-arenapool) [![Forensics](https://img.shields.io/badge/forensics-Ed25519%20%28230%20B%29-6d28d9?style=flat)](#61-self-contained-230-byte-receipt-forensicproof) [![License: MIT](https://img.shields.io/badge/license-MIT-334155?style=flat)](../LICENSE)
 
-**Navigation:** [Version française](why_micro_optimization_is_a_security_choice.fr.md) · [Word Edition (.docx)](why_micro_optimization_is_a_security_choice.docx) · [Repository Overview](../README.md) · [7-Stack DNS Benchmark](dns_detection_solutions_benchmark.md) · [Wittgenstein Architecture Monograph](c2blue55_wittgenstein_article.md)
+**Navigation:** [Version française](why_micro_optimization_is_a_security_choice.fr.md) · [Word Edition (.docx)](why_micro_optimization_is_a_security_choice.docx) · [Repository Overview](../README.md) · [Centroid Geometry & Formulas](centroid_geometry_and_formulas.md) · [7-Stack DNS Benchmark](dns_detection_solutions_benchmark.md) · [Wittgenstein Architecture Monograph](c2blue55_wittgenstein_article.md)
 
 | Engineering Parameter | Verified Specification |
 | :--- | :--- |

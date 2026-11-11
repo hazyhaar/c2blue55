@@ -252,6 +252,10 @@ c2blue55/
 │   ├── c2blue55_wittgenstein_article.docx          # Word edition of the full monograph (EN)
 │   ├── c2blue55_wittgenstein_article.fr.md         # Full §1–§15 architecture & lab monograph (FR)
 │   ├── c2blue55_wittgenstein_article.fr.docx       # Word edition of the full monograph (FR)
+│   ├── centroid_geometry_and_formulas.md           # Centroid geometry & exact mathematical formulas (EN)
+│   ├── centroid_geometry_and_formulas.pdf          # PDF edition of the centroid mathematical note (EN)
+│   ├── centroid_geometry_and_formulas.fr.md        # Centroid geometry & exact mathematical formulas (FR)
+│   ├── centroid_geometry_and_formulas.fr.pdf       # PDF edition of the centroid mathematical note (FR)
 │   ├── dns_detection_solutions_benchmark.md        # 7-stack clear/encrypted & 60s load benchmark (EN)
 │   ├── dns_detection_solutions_benchmark.docx      # Word edition of the 7-stack benchmark (EN)
 │   ├── dns_detection_solutions_benchmark.fr.md     # 7-stack clear/encrypted & 60s load benchmark (FR)
@@ -276,6 +280,7 @@ c2blue55/
 - [**Benchmark of 7 Open-Source DNS & Encrypted-Resolver Stacks (`v8.2`)**](docs/dns_detection_solutions_benchmark.md) ([Word EN](docs/dns_detection_solutions_benchmark.docx) · [Version française](docs/dns_detection_solutions_benchmark.fr.md) · [Word FR](docs/dns_detection_solutions_benchmark.fr.docx)): Reproducible competence, out-of-distribution (`Slipstream`, `VayDNS`, `NoizDNS`, `Soar`), and 60-second sustained-load evaluation across `Suricata 8.0.8 + ET Open`, `Zeek 9.0.1 + hhzzk`, `RITA v5.1.2 + ClickHouse`, `TShark 4.4.19 / FoxIO JA4+`, `CIC DoHlyzer`, `Stratosphere Slips v1.1.24`, and `c2blue55 v8.2`, accompanied by 24 verified upstream bug/enhancement reports (`[1]..[24]`: `20` published GitHub issues—including the `4` Slips sustained-load explanatory issues `#2159..#2162`—and `4` prepared sheets for external Redmine/GitLab/Discourse trackers).
 - [**Why Micro-Optimization is a Fundamental Security Choice**](docs/why_micro_optimization_is_a_security_choice.md) ([Word EN](docs/why_micro_optimization_is_a_security_choice.docx) · [Version française](docs/why_micro_optimization_is_a_security_choice.fr.md) · [Word FR](docs/why_micro_optimization_is_a_security_choice.fr.docx)): Technical monograph on architectural determinism, zero-allocation hot paths, sustained-load survivability, and falsifiable detection boundaries.
 - [**Full `c2blue55` Monograph — CPU-Native Dual-Layer Architecture & Laboratory Evaluations (`v8.2`)**](docs/c2blue55_wittgenstein_article.md) ([Word EN](docs/c2blue55_wittgenstein_article.docx) · [Version française](docs/c2blue55_wittgenstein_article.fr.md) · [Word FR](docs/c2blue55_wittgenstein_article.fr.docx)): Complete technical paper (§1–§15, 18 empirical tables) covering the `L0 -> L1a -> L1b -> L2` cascade, 512-bit `.c2book` floppies, non-circularity proofs, and DNS/ICMP/IPv6/DoQ/DoH3 campaigns.
+- [**Centroid Geometry and Exact Mathematical Formulations (`v8.2`)**](docs/centroid_geometry_and_formulas.md) ([PDF EN](docs/centroid_geometry_and_formulas.pdf) · [Version française](docs/centroid_geometry_and_formulas.fr.md) · [PDF FR](docs/centroid_geometry_and_formulas.fr.pdf)): Standalone mathematical reference detailing the 512D analytical prior centroid $\mu_{\text{ref}}$, orthonormal Rademacher-Hadamard 1-bit RaBitQ quantization (`FHT512`), conformal veto radius calibration ($R_{\text{block}}$), `INT8` empirical class-centroid linear heads, and offline `CUSUM` anti-poisoning drift guards.
 - [**Inter-Channel C2 Roadmap (`IC-01..IC-06`)**](docs/inter_channel_c2_roadmap.md): Engineering invariants for ICMP, jittered HTTP/HTTPS, NTP, SMB/RPC, local IPC, and MQTT/QUIC covert channels.
 
 ---

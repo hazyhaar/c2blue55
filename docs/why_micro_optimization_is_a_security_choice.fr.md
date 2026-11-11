@@ -4,7 +4,7 @@
 
 [![Version](https://img.shields.io/badge/version-v8.2-0f766e?style=flat)](../README.fr.md) [![Go Pur](https://img.shields.io/badge/Go%201.27-0%25%20CGo%20%7C%200%25%20GPU-00ADD8?style=flat)](#31-chemin-critique-synchrone-0-bop-contre-allocations-hors-chemin) [![Allocation Chemin Critique](https://img.shields.io/badge/chemin%20critique-0%20B%2Fop-b45309?style=flat)](#43-étage-l1b--têtes-linéaires-quantifiées-int8-protection-des-domaines-dapex-et-latence-mesurée) [![Fenêtre Charge](https://img.shields.io/badge/fente%20ar%C3%A8ne-4%20096%20o%20seqlock-1d4ed8?style=flat)](#32-passage-de-charges-utiles-sans-verrou--lanneau-atomique-seqlock-de-4-mio-arenapool) [![Forensique](https://img.shields.io/badge/forensique-Ed25519%20%28230%20o%29-6d28d9?style=flat)](#61-reçu-binaire-autonome-de-230-octets-forensicproof) [![Licence : MIT](https://img.shields.io/badge/licence-MIT-334155?style=flat)](../LICENSE)
 
-**Navigation :** [English Edition](why_micro_optimization_is_a_security_choice.md) · [Édition Word (.docx)](why_micro_optimization_is_a_security_choice.fr.docx) · [Présentation du dépôt](../README.fr.md) · [Banc comparatif 7 piles DNS](dns_detection_solutions_benchmark.fr.md) · [Monographie d'architecture Wittgenstein](c2blue55_wittgenstein_article.fr.md)
+**Navigation :** [English Edition](why_micro_optimization_is_a_security_choice.md) · [Édition Word (.docx)](why_micro_optimization_is_a_security_choice.fr.docx) · [Présentation du dépôt](../README.fr.md) · [Géométrie & formules des centroïdes](centroid_geometry_and_formulas.fr.md) · [Banc comparatif 7 piles DNS](dns_detection_solutions_benchmark.fr.md) · [Monographie d'architecture Wittgenstein](c2blue55_wittgenstein_article.fr.md)
 
 | Paramètre d'ingénierie | Spécification vérifiée |
 | :--- | :--- |

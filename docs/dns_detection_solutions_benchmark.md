@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/badge/release-v8.2-0f766e?style=flat)](../README.md) [![Stacks Evaluated](https://img.shields.io/badge/stacks%20evaluated-7-1d4ed8?style=flat)](#11-architectural-scope-fairness-contract) [![Sustained Load](https://img.shields.io/badge/sustained%20load-60s%20%2845k%20pkt%2Fs%20%26%203.01M%20PCAP%29-b45309?style=flat)](#4-60-second-sustained-load--survivability-benchmark-normal--extreme-tiers) [![Upstream Issues](https://img.shields.io/badge/upstream%20disclosures-24%20%2820%20GitHub%20live%29-6d28d9?style=flat)](#7-dedicated-20-case-reproducer-matrix-w-01w-20--24-upstream-reports-124) [![License: MIT](https://img.shields.io/badge/license-MIT-334155?style=flat)](../LICENSE)
 
-**Language & Companion Publications:** **English** · [Édition française](dns_detection_solutions_benchmark.fr.md) · [Word Edition (.docx)](dns_detection_solutions_benchmark.docx) · [Repository README](../README.md) · [Micro-Optimization & Security](why_micro_optimization_is_a_security_choice.md) · [Full Wittgenstein Monograph](c2blue55_wittgenstein_article.md)
+**Language & Companion Publications:** **English** · [Édition française](dns_detection_solutions_benchmark.fr.md) · [Word Edition (.docx)](dns_detection_solutions_benchmark.docx) · [Repository README](../README.md) · [Centroid Geometry & Formulas](centroid_geometry_and_formulas.md) · [Micro-Optimization & Security](why_micro_optimization_is_a_security_choice.md) · [Full Wittgenstein Monograph](c2blue55_wittgenstein_article.md)
 
 | Parameter | Verified Testbed Value |
 | :--- | :--- |

@@ -4,7 +4,7 @@
 
 [![Tournament](https://img.shields.io/badge/Wittgenstein-AI%20Tournament-0f766e?style=flat)](../README.md) [![Release](https://img.shields.io/badge/release-v8.2-1d4ed8?style=flat)](#156-post-mythos-ratio--wire-grammar-hardening-v82-2026-11-01) [![Pure Go](https://img.shields.io/badge/Go%201.27-0%25%20CGo%20%7C%200%25%20GPU-00ADD8?style=flat)](#2-zero-allocation-hot-path-and-in-memory-architecture) [![Hotpath Alloc](https://img.shields.io/badge/hotpath%20alloc-0%20B%2Fop-b45309?style=flat)](#21-zero-heap-allocation-0-bop) [![Lab PCAPs](https://img.shields.io/badge/lab%20captures-86%2B%20verified%20PCAPs-6d28d9?style=flat)](#15-addendum-v1-2026-10-31-seven-detector-parity-bench-non-ldh-wire-closure-keyless-encrypted-transit-kinetics-and-out-of-sample-exotic-quicdns-experiments) [![License: MIT](https://img.shields.io/badge/license-MIT-334155?style=flat)](../LICENSE)
 
-**Navigation:** [Version française](c2blue55_wittgenstein_article.fr.md) · [Word Edition (.docx)](c2blue55_wittgenstein_article.docx) · [Repository Overview](../README.md) · [Micro-Optimization & Security](why_micro_optimization_is_a_security_choice.md) · [7-Stack DNS Benchmark](dns_detection_solutions_benchmark.md)
+**Navigation:** [Version française](c2blue55_wittgenstein_article.fr.md) · [Word Edition (.docx)](c2blue55_wittgenstein_article.docx) · [Repository Overview](../README.md) · [Centroid Geometry & Formulas](centroid_geometry_and_formulas.md) · [Micro-Optimization & Security](why_micro_optimization_is_a_security_choice.md) · [7-Stack DNS Benchmark](dns_detection_solutions_benchmark.md)
 
 | Engineering Parameter | Verified Specification |
 | :--- | :--- |

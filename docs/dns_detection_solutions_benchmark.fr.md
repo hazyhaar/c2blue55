@@ -2,7 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-v8.2-0f766e?style=flat)](../README.fr.md) [![Piles évaluées](https://img.shields.io/badge/piles%20%C3%A9valu%C3%A9es-7-1d4ed8?style=flat)](#11-périmètre-architectural--contrat-déquité) [![Charge soutenue](https://img.shields.io/badge/charge%20soutenue-60s%20%2845k%20paq%2Fs%20%26%203%2C01M%20PCAP%29-b45309?style=flat)](#4-banc-de-charge-soutenue-de-60-secondes-et-de-survie-opérationnelle-paliers-normal--extrême) [![Signalements amont](https://img.shields.io/badge/signalements%20amont-24%20%2820%20GitHub%20en%20ligne%29-6d28d9?style=flat)](#7-matrice-dédiée-des-20-reproducteurs-w-01w-20-et-bibliographie-des-24-signalements-amont-124) [![Licence : MIT](https://img.shields.io/badge/licence-MIT-334155?style=flat)](../LICENSE)
 
-**Langue & Publications associées :** [English edition](dns_detection_solutions_benchmark.md) · **Français** · [Édition Word (.docx)](dns_detection_solutions_benchmark.fr.docx) · [README du dépôt](../README.fr.md) · [Micro-optimisation & Sécurité](why_micro_optimization_is_a_security_choice.fr.md) · [Monographie complète Wittgenstein](c2blue55_wittgenstein_article.fr.md)
+**Langue & Publications associées :** [English edition](dns_detection_solutions_benchmark.md) · **Français** · [Édition Word (.docx)](dns_detection_solutions_benchmark.fr.docx) · [README du dépôt](../README.fr.md) · [Géométrie & formules des centroïdes](centroid_geometry_and_formulas.fr.md) · [Micro-optimisation & Sécurité](why_micro_optimization_is_a_security_choice.fr.md) · [Monographie complète Wittgenstein](c2blue55_wittgenstein_article.fr.md)
 
 | Paramètre | Valeur vérifiée sur le banc |
 | :--- | :--- |

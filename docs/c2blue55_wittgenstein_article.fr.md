@@ -4,7 +4,7 @@
 
 [![Tournoi](https://img.shields.io/badge/Wittgenstein-AI%20Tournament-0f766e?style=flat)](../README.fr.md) [![Version](https://img.shields.io/badge/version-v8.2-1d4ed8?style=flat)](#156-durcissement-des-quotients-cinétiques-et-de-la-grammaire-filaire-v82-2026-11-01) [![Go Pur](https://img.shields.io/badge/Go%201.27-0%25%20CGo%20%7C%200%25%20GPU-00ADD8?style=flat)](#2-chemin-critique-sans-allocation-et-architecture-en-mémoire) [![Chemin Critique](https://img.shields.io/badge/chemin%20critique-0%20B%2Fop-b45309?style=flat)](#21-zéro-allocation-sur-le-tas-0-bop) [![Captures Labo](https://img.shields.io/badge/captures%20labo-86%2B%20PCAP%20v%C3%A9rifi%C3%A9s-6d28d9?style=flat)](#15-addendum-v1-2026-10-31--banc-de-parité-à-sept-détecteurs-fermeture-filaire-non-ldh-cinétique-de-transit-chiffré-sans-clé-et-expériences-exotiques-quicdns-hors-échantillon) [![Licence : MIT](https://img.shields.io/badge/licence-MIT-334155?style=flat)](../LICENSE)
 
-**Navigation :** [English Edition](c2blue55_wittgenstein_article.md) · [Édition Word (.docx)](c2blue55_wittgenstein_article.fr.docx) · [Présentation du dépôt](../README.fr.md) · [Micro-optimisation & sécurité](why_micro_optimization_is_a_security_choice.fr.md) · [Banc comparatif 7 piles DNS](dns_detection_solutions_benchmark.fr.md)
+**Navigation :** [English Edition](c2blue55_wittgenstein_article.md) · [Édition Word (.docx)](c2blue55_wittgenstein_article.fr.docx) · [Présentation du dépôt](../README.fr.md) · [Géométrie & formules des centroïdes](centroid_geometry_and_formulas.fr.md) · [Micro-optimisation & sécurité](why_micro_optimization_is_a_security_choice.fr.md) · [Banc comparatif 7 piles DNS](dns_detection_solutions_benchmark.fr.md)
 
 | Paramètre d'ingénierie | Spécification vérifiée |
 | :--- | :--- |
