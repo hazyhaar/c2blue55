@@ -8,12 +8,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -76,7 +78,7 @@ const (
 )
 
 type liveHarness struct {
-	service         *dnslive.Service
+	serviceLive     *dnslive.ServiceLive
 	udpAddr         *net.UDPAddr
 	httpBase        string
 	evidenceDir     string
@@ -98,22 +100,22 @@ func startLiveHarness(t *testing.T, adjust func(*dnslive.Config)) *liveHarness {
 	if adjust != nil {
 		adjust(&cfg)
 	}
-	service, err := dnslive.New(cfg)
+	serviceLive, err := dnslive.New(cfg)
 	if err != nil {
 		t.Fatalf("dnslive.New: %v", err)
 	}
-	if err := service.Start(); err != nil {
+	if err := serviceLive.Start(); err != nil {
 		t.Fatalf("Service.Start: %v", err)
 	}
-	udpAddr, err := net.ResolveUDPAddr("udp", service.UDPAddr())
+	udpAddr, err := net.ResolveUDPAddr("udp", serviceLive.UDPAddr())
 	if err != nil {
-		t.Fatalf("Service.UDPAddr %q: %v", service.UDPAddr(), err)
+		t.Fatalf("Service.UDPAddr %q: %v", serviceLive.UDPAddr(), err)
 	}
 	transport := &http.Transport{DisableKeepAlives: true}
 	harness := &liveHarness{
-		service:     service,
+		serviceLive: serviceLive,
 		udpAddr:     udpAddr,
-		httpBase:    "http://" + service.HTTPAddr(),
+		httpBase:    "http://" + serviceLive.HTTPAddr(),
 		evidenceDir: cfg.EvidenceDir,
 		transport:   transport,
 	}
@@ -136,7 +138,7 @@ func (h *liveHarness) close() error {
 	h.closeOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		h.closeErr = h.service.Close(ctx)
+		h.closeErr = h.serviceLive.Close(ctx)
 		h.transport.CloseIdleConnections()
 	})
 	return h.closeErr
@@ -161,7 +163,7 @@ func (h *liveHarness) request(t *testing.T, method, path string, body []byte, au
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	const maxResponseBytes = 8 << 20
 	payload, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
@@ -175,10 +177,8 @@ func (h *liveHarness) request(t *testing.T, method, path string, body []byte, au
 
 func fixtureExpectStatus(t *testing.T, got int, want ...int) {
 	t.Helper()
-	for _, candidate := range want {
-		if got == candidate {
-			return
-		}
+	if slices.Contains(want, got) {
+		return
 	}
 	t.Fatalf("statut HTTP %d, attendu %v", got, want)
 }
@@ -569,7 +569,7 @@ func TestSameIPDifferentPortsHaveIndependentPipelines(t *testing.T) {
 	registerLiveRun(t, harness, "run-a", "M-04", addrA)
 	registerLiveRun(t, harness, "run-b", "M-04", addrB)
 	queries := fixtureM04Queries(t)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		exchangeLiveUDP(t, clientA, queries[i])
 	}
 
@@ -674,7 +674,7 @@ func TestGracefulShutdownLeavesNoGoroutine(t *testing.T) {
 		t.Fatalf("requête post-fermeture: %v", err)
 	}
 	if resp, err := harness.client.Do(req); err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatalf("healthz encore accessible après Service.Close: %s", resp.Status)
 	}
 
@@ -696,12 +696,66 @@ func TestGracefulShutdownLeavesNoGoroutine(t *testing.T) {
 	}
 }
 
+const p3CadenceTolerance = 3 * time.Millisecond
+
+func countP3Detections(events []liveEvent) int {
+	detections := 0
+	for _, event := range events {
+		if event.Class == "P3" && event.ReasonCode == engine.ReasonP3BeaconMarkov {
+			detections++
+		}
+	}
+	return detections
+}
+
+// Le scénario régulier est cadencé à 100 QPS : les neuf intervalles
+// inter-requêtes sont donc tous proches de 10 ms. Chaque instant d'émission
+// réel est noté pour mesurer l'écart entre l'intervalle tenu et le pas voulu.
+func emitLiveBeaconScenario(t *testing.T, client *net.UDPConn, qtypes []uint16, pas func(i int) time.Duration) []time.Time {
+	t.Helper()
+	emissions := make([]time.Time, 0, len(qtypes))
+	nextStep := time.Now()
+	for i, qtype := range qtypes {
+		if i > 0 {
+			delay := 10 * time.Millisecond
+			if pas != nil {
+				delay = pas(i)
+			}
+			nextStep = nextStep.Add(delay)
+			select {
+			case <-t.Context().Done():
+				t.Fatalf("attente du pas de cadence: %v", t.Context().Err())
+			case <-time.After(time.Until(nextStep)):
+			}
+		}
+		query := fixtureQuery(t, uint16(0x1700+i), "rotate.beacon.example", qtype)
+		emissions = append(emissions, time.Now())
+		exchangeLiveUDP(t, client, query)
+	}
+	return emissions
+}
+
+func largestP3IntervalDeviation(emissions []time.Time, pas func(i int) time.Duration) time.Duration {
+	wantedInterval := 10 * time.Millisecond
+	worst := time.Duration(0)
+	for i := range len(emissions) - 1 {
+		wanted := wantedInterval
+		if pas != nil {
+			wanted = pas(i + 1)
+		}
+		held := emissions[i+1].Sub(emissions[i])
+		worst = max(worst, max(held-wanted, wanted-held))
+	}
+	return worst
+}
+
 func TestLiveP3BeaconMarkovAt100QPS(t *testing.T) {
 	scenarios := []struct {
 		name   string
 		runID  string
 		qtypes []uint16
 		wantP3 bool
+		pas    func(i int) time.Duration
 	}{
 		{
 			name:   "rotation A CNAME AAAA TXT MX NS",
@@ -715,44 +769,64 @@ func TestLiveP3BeaconMarkovAt100QPS(t *testing.T) {
 			qtypes: []uint16{1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
 			wantP3: false,
 		},
+		{
+			// Les intervalles adjacents alternent 10/30 ms (CV ≈ 0,5, hors
+			// seuil) alors que les différences à deux positions seraient
+			// parfaitement régulières à 40 ms : seul un calcul sur
+			// événements consécutifs doit refuser la détection.
+			name:   "témoin négatif à cadence régulière par sauts",
+			runID:  "run-p3-skip-regular",
+			qtypes: []uint16{1, 5, 28, 16, 15, 2, 1, 5, 28, 16},
+			wantP3: false,
+			pas: func(i int) time.Duration {
+				if i%2 == 0 {
+					return 10 * time.Millisecond
+				}
+				return 30 * time.Millisecond
+			},
+		},
 	}
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
+			if scenario.wantP3 {
+				const maxAttempts = 8
+				detected := false
+				for attempt := 1; attempt <= maxAttempts && !detected; attempt++ {
+					harness := startLiveHarness(t, nil)
+					client := dialLiveUDP(t, harness)
+					runID := fmt.Sprintf("%s-%d", scenario.runID, attempt)
+					registerLiveRun(t, harness, runID, "P3", client.LocalAddr().(*net.UDPAddr))
+					emissions := emitLiveBeaconScenario(t, client, scenario.qtypes, scenario.pas)
+					events := fetchLiveEvents(t, harness, runID, 0)
+					if len(events) != 2*len(scenario.qtypes) {
+						t.Fatalf("tentative %d: événements live = %d, attendu %d questions et réponses", attempt, len(events), 2*len(scenario.qtypes))
+					}
+					if countP3Detections(events) > 0 {
+						detected = true
+						break
+					}
+					deviation := largestP3IntervalDeviation(emissions, scenario.pas)
+					if deviation <= p3CadenceTolerance {
+						t.Fatalf("tentative %d: cadence tenue (plus grand écart %s ≤ %s) sans aucune détection P3", attempt, deviation, p3CadenceTolerance)
+					}
+					t.Logf("tentative %d: aucun P3 et cadence non tenue (plus grand écart %s), rejeu sur serveur neuf", attempt, deviation)
+					_ = harness.close()
+				}
+				if !detected {
+					t.Fatalf("cadence jamais tenue en %d tentatives : aucune détection P3 après dix requêtes régulières à 100 QPS par tentative", maxAttempts)
+				}
+				return
+			}
 			harness := startLiveHarness(t, nil)
 			client := dialLiveUDP(t, harness)
 			registerLiveRun(t, harness, scenario.runID, "P3", client.LocalAddr().(*net.UDPAddr))
-
-			// Les dix départs sur socket réelle sont cadencés à 100 QPS : les
-			// neuf intervalles inter-requêtes sont donc tous proches de 10 ms.
-			ticker := time.NewTicker(10 * time.Millisecond)
-			defer ticker.Stop()
-			for i, qtype := range scenario.qtypes {
-				if i > 0 {
-					select {
-					case <-t.Context().Done():
-						t.Fatalf("attente du pas de 100 QPS: %v", t.Context().Err())
-					case <-ticker.C:
-					}
-				}
-				query := fixtureQuery(t, uint16(0x1700+i), "rotate.beacon.example", qtype)
-				exchangeLiveUDP(t, client, query)
-			}
-
+			emitLiveBeaconScenario(t, client, scenario.qtypes, scenario.pas)
 			events := fetchLiveEvents(t, harness, scenario.runID, 0)
 			if len(events) != 2*len(scenario.qtypes) {
 				t.Fatalf("événements live = %d, attendu %d questions et réponses", len(events), 2*len(scenario.qtypes))
 			}
-			detections := 0
-			for _, event := range events {
-				if event.Class == "P3" && event.ReasonCode == engine.ReasonP3BeaconMarkov {
-					detections++
-				}
-			}
-			if scenario.wantP3 && detections == 0 {
-				t.Fatalf("class=P3 reason_code=%s absent des %d événements après dix requêtes régulières à 100 QPS", engine.ReasonP3BeaconMarkov, len(events))
-			}
-			if !scenario.wantP3 && detections != 0 {
-				t.Fatalf("témoin à QTYPE constant: %d détections P3, attendu 0", detections)
+			if detections := countP3Detections(events); detections != 0 {
+				t.Fatalf("témoin négatif %s: %d détections P3, attendu 0", scenario.runID, detections)
 			}
 		})
 	}

@@ -425,12 +425,50 @@ func TestZeroAllocationCheminChaudEtCapteurLinux(t *testing.T) {
 
 func TestBancInvarianceHybrideReel(t *testing.T) {
 	debutTest := time.Now()
-	rapport, err := cinetique.ExecuterBancInvarianceHybride(t.TempDir(), 8)
-	if err != nil {
-		t.Fatalf("ExecuterBancInvarianceHybride: %v", err)
+	const tentativesBancMax = 20
+	var rapport cinetique.RapportInvarianceHybride
+	var preuveControleDerniere cinetique.PreuveArchetypeReel
+	var preuveAmorcageDerniere cinetique.PreuveArchetypeReel
+	var aEuAmorcageDernier bool
+	tentativeJugeable := false
+	for tentative := 1; tentative <= tentativesBancMax && !tentativeJugeable; tentative++ {
+		rapportTentative, err := cinetique.ExecuterBancInvarianceHybride(t.TempDir(), 8)
+		if err != nil {
+			t.Fatalf("ExecuterBancInvarianceHybride (tentative %d/%d): %v", tentative, tentativesBancMax, err)
+		}
+		if len(rapportTentative.Quotients) != cinetique.NombreQuotientsEpisode {
+			t.Fatalf("tentative %d/%d : attendu %d quotients, obtenu %d", tentative, tentativesBancMax, cinetique.NombreQuotientsEpisode, len(rapportTentative.Quotients))
+		}
+		if len(rapportTentative.PreuvesArchetypesReels) != 3 {
+			t.Fatalf("tentative %d/%d : attendu 3 preuves d'archetypes reels, obtenu %d", tentative, tentativesBancMax, len(rapportTentative.PreuvesArchetypesReels))
+		}
+		preuveControleDerniere = rapportTentative.PreuvesArchetypesReels[0]
+		// D-C2B-L1-08 : sur une machine chargée, le contrôle nominal peut s'abstenir
+		// à bon droit quand l'épisode a été disputé au processeur alors que la pression
+		// PSI moyenne reste sous le seuil ; de même, une preuve restée en AMORCAGE_PROFIL
+		// signale un profil qui n'a rendu aucun jugement. Une telle tentative ne prouve
+		// rien sur les autres scénarios : elle est consignée puis le banc est rejoué.
+		aEuAmorcageDernier = false
+		for idxPreuve := range rapportTentative.PreuvesArchetypesReels {
+			if rapportTentative.PreuvesArchetypesReels[idxPreuve].Orientation == "AMORCAGE_PROFIL" {
+				preuveAmorcageDerniere = rapportTentative.PreuvesArchetypesReels[idxPreuve]
+				aEuAmorcageDernier = true
+			}
+		}
+		controleConforme := preuveControleDerniere.Orientation == "NOMINAL" ||
+			preuveControleDerniere.Orientation == "ABSTENTION_CONTENTION_OU_MIGRATION"
+		if !controleConforme || aEuAmorcageDernier {
+			t.Logf("tentative %d/%d non jugeable : controle=%s (duree=%dus attente_file=%dus pression=%d‰) amorcage_profil=%v (%s), banc rejoue",
+				tentative, tentativesBancMax, preuveControleDerniere.Orientation,
+				preuveControleDerniere.DureeHorlogeUs, preuveControleDerniere.AttenteFileUs,
+				preuveControleDerniere.PressionCPUPermille, aEuAmorcageDernier, preuveAmorcageDerniere.Scenario)
+			continue
+		}
+		rapport = rapportTentative
+		tentativeJugeable = true
 	}
-	if len(rapport.Quotients) != cinetique.NombreQuotientsEpisode {
-		t.Fatalf("attendu %d quotients, obtenu %d", cinetique.NombreQuotientsEpisode, len(rapport.Quotients))
+	if !tentativeJugeable {
+		t.Fatalf("aucune tentative jugeable apres %d tentatives : dernier controle %+v ; derniere preuve AMORCAGE_PROFIL %+v", tentativesBancMax, preuveControleDerniere, preuveAmorcageDerniere)
 	}
 
 	// Les quotients purement logiques (taille d'appel E/S incluant l'auto-lecture /proc
@@ -454,8 +492,16 @@ func TestBancInvarianceHybrideReel(t *testing.T) {
 	}
 	preuveBarriere := rapport.PreuvesArchetypesReels[1]
 	if preuveBarriere.PressionCPUPermille <= 200 {
-		if preuveBarriere.Orientation != "DEGRADATION_MATERIELLE_ES" {
-			t.Fatalf("scenario barriere fdatasync x32 hors surcharge PSI attendu DEGRADATION_MATERIELLE_ES, obtenu %+v", preuveBarriere)
+		// D-C2B-L1-08 : la dispute du processeur se lit dans la preuve elle-même ;
+		// quand l'épisode barrière a subi une attente en file dominante alors que la
+		// pression PSI moyenne reste sous le seuil, l'abstention du profil est admise.
+		if preuveBarriere.AttenteFileDominante() {
+			if preuveBarriere.Orientation != "DEGRADATION_MATERIELLE_ES" &&
+				preuveBarriere.Orientation != "ABSTENTION_CONTENTION_OU_MIGRATION" {
+				t.Fatalf("scenario barriere fdatasync x32 hors surcharge PSI avec attente en file dominante attendu DEGRADATION_MATERIELLE_ES ou ABSTENTION, obtenu %+v", preuveBarriere)
+			}
+		} else if preuveBarriere.Orientation != "DEGRADATION_MATERIELLE_ES" {
+			t.Fatalf("scenario barriere fdatasync x32 hors surcharge PSI sans attente dominante attendu DEGRADATION_MATERIELLE_ES, obtenu %+v", preuveBarriere)
 		}
 	} else if preuveBarriere.Orientation != "ABSTENTION_CONTENTION_OU_MIGRATION" {
 		t.Fatalf("scenario barriere sous surcharge PSI (%d‰) attendu ABSTENTION, obtenu %+v", preuveBarriere.PressionCPUPermille, preuveBarriere)

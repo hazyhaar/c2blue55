@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/hazyhaar/pkg/ecritureatomique"
 )
@@ -39,29 +40,31 @@ type evidenceManifest struct {
 }
 
 type evidenceSession struct {
-	directory     string
-	runID         string
-	jsonlName     string
-	pcapName      string
-	manifestName  string
-	jsonlFile     *os.File
-	pcapFile      *os.File
-	jsonlWriter   *bufio.Writer
-	pcapWriter    *bufio.Writer
-	appended      uint64
-	closed        bool
-	finishErr     error
-	writeManifest bool
+	directory      string
+	runID          string
+	jsonlName      string
+	pcapName       string
+	manifestName   string
+	jsonlFile      *os.File
+	pcapFile       *os.File
+	jsonlWriter    *bufio.Writer
+	pcapWriter     *bufio.Writer
+	appended       uint64
+	closed         bool
+	finishErr      error
+	writeManifest  bool
+	lastActivityNS int64
 }
 
 func openEvidenceSession(directory, runID, stem string) (*evidenceSession, error) {
 	session := &evidenceSession{
-		directory:     directory,
-		runID:         runID,
-		jsonlName:     stem + ".jsonl",
-		pcapName:      stem + ".pcap",
-		manifestName:  stem + ".manifest.json",
-		writeManifest: runID != "",
+		directory:      directory,
+		runID:          runID,
+		jsonlName:      stem + ".jsonl",
+		pcapName:       stem + ".pcap",
+		manifestName:   stem + ".manifest.json",
+		writeManifest:  runID != "",
+		lastActivityNS: time.Now().UnixNano(),
 	}
 	jsonlPath := filepath.Join(directory, session.jsonlName)
 	jsonlFile, err := os.OpenFile(jsonlPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
@@ -155,6 +158,23 @@ func wrapEvidenceError(operation string, err error) error {
 		return nil
 	}
 	return fmt.Errorf("dnslive: %s: %w", operation, err)
+}
+
+// flush vide les tampons de la session vers le disque. Un échec interdit
+// l'émission de la réponse UDP correspondante : échec de journal = pas de
+// réponse, appliqué à chaque datagramme et non seulement à la clôture.
+func (session *evidenceSession) flush() error {
+	if session.closed || session.jsonlWriter == nil || session.jsonlFile == nil ||
+		session.pcapWriter == nil || session.pcapFile == nil {
+		return errors.New("dnslive: vider une preuve déjà fermée")
+	}
+	err := errors.Join(
+		session.jsonlWriter.Flush(),
+		session.jsonlFile.Sync(),
+		session.pcapWriter.Flush(),
+		session.pcapFile.Sync(),
+	)
+	return wrapEvidenceError("vider la preuve avant réponse", err)
 }
 
 func (session *evidenceSession) closeFiles() error {

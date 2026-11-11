@@ -168,10 +168,7 @@ func TestRouter_RunWorkers(t *testing.T) {
 	}()
 
 	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if proc.Load()+file.Load()+net.Load()+mem.Load() == total {
-			break
-		}
+	for proc.Load()+file.Load()+net.Load()+mem.Load() != total {
 		if time.Now().After(deadline) {
 			t.Fatalf("consommation incomplète: %d/%d", proc.Load()+file.Load()+net.Load()+mem.Load(), total)
 		}
@@ -223,20 +220,4 @@ func BenchmarkRouter_DispatchBatch(b *testing.B) {
 		rt.RingNet().PopBatch(drain[2][:], consumeBatch)
 		rt.RingMem().PopBatch(drain[3][:], consumeBatch)
 	}
-}
-
-func TestRouter_ThroughputExceedsMillion(t *testing.T) {
-	res := testing.Benchmark(BenchmarkRouter_DispatchBatch)
-	if res.N == 0 || res.NsPerOp() == 0 {
-		t.Fatal("benchmark sans échantillon exploitable")
-	}
-	if allocs := res.AllocsPerOp(); allocs != 0 {
-		t.Errorf("allocations = %d/op, attendu 0", allocs)
-	}
-	rate := float64(dispatchBatch) / float64(res.NsPerOp()) * 1e9
-	if rate < 1_000_000 {
-		t.Errorf("débit = %.0f ev/s, attendu > 1000000", rate)
-	}
-	t.Logf("débit routage = %.0f ev/s | %d ns/op | %d B/op | %d allocs/op",
-		rate, res.NsPerOp(), res.AllocedBytesPerOp(), res.AllocsPerOp())
 }

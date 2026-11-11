@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hazyhaar/c2blue55"
@@ -21,41 +22,100 @@ import (
 	"github.com/hazyhaar/c2blue55/internal/engine"
 )
 
+const (
+	unregisteredSessionCap    = 32
+	unregisteredIdleExpiry    = 60 * time.Second
+	unregisteredSweepInterval = 10 * time.Second
+)
+
+var errUnregisteredCapped = errors.New("dnslive: plafond des sources non enregistrées atteint")
+
+// Le struct Service est gelé : le compteur des datagrammes de sources non
+// enregistrées jetés au-delà du plafond vit hors instance, indexé par
+// l'adresse du service, et disparaît à la clôture.
+var (
+	unregisteredDropMu      sync.Mutex
+	unregisteredDropCounter = make(map[*ServiceLive]*uint64)
+)
+
+// Le struct Service étant gelé, le signal d'arrêt du balayage vit lui aussi
+// hors instance, indexé par l'adresse du service : l'entrée est posée au
+// démarrage et retirée à la clôture.
+var (
+	sweeperStopMu      sync.Mutex
+	sweeperStopSignals = make(map[*ServiceLive]chan struct{})
+)
+
+func (serviceLive *ServiceLive) armSweeperStop() chan struct{} {
+	sweeperStopMu.Lock()
+	defer sweeperStopMu.Unlock()
+	stop := make(chan struct{})
+	sweeperStopSignals[serviceLive] = stop
+	return stop
+}
+
+func (serviceLive *ServiceLive) fireSweeperStop() {
+	sweeperStopMu.Lock()
+	stop, found := sweeperStopSignals[serviceLive]
+	delete(sweeperStopSignals, serviceLive)
+	sweeperStopMu.Unlock()
+	if found {
+		close(stop)
+	}
+}
+
+func (serviceLive *ServiceLive) countUnregisteredDropLocked() {
+	unregisteredDropMu.Lock()
+	defer unregisteredDropMu.Unlock()
+	counter, found := unregisteredDropCounter[serviceLive]
+	if !found {
+		counter = new(uint64)
+		unregisteredDropCounter[serviceLive] = counter
+	}
+	*counter++
+}
+
+func (serviceLive *ServiceLive) forgetUnregisteredDropCounter() {
+	unregisteredDropMu.Lock()
+	delete(unregisteredDropCounter, serviceLive)
+	unregisteredDropMu.Unlock()
+}
+
 // New valide la configuration et assemble un service sans ouvrir de socket.
-func New(cfg Config) (*Service, error) {
+func New(cfg Config) (*ServiceLive, error) {
 	if strings.TrimSpace(cfg.UDPListen) == "" || strings.TrimSpace(cfg.HTTPListen) == "" ||
 		strings.TrimSpace(cfg.EvidenceDir) == "" || strings.TrimSpace(cfg.DashboardToken) == "" {
 		return nil, ErrLiveConfig
 	}
-	service := &Service{
+	serviceLive := &ServiceLive{
 		cfg:     cfg,
 		events:  make([]liveEvent, 0, liveEventMemoryLimit),
 		sources: make(map[netip.AddrPort]*liveSource),
 		runs:    make(map[string]*liveRunHistory),
 	}
-	service.httpServer = &http.Server{
-		Handler:           service.routes(),
+	serviceLive.httpServer = &http.Server{
+		Handler:           serviceLive.routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       30 * time.Second,
 		MaxHeaderBytes:    32 << 10,
 	}
-	return service, nil
+	return serviceLive, nil
 }
 
 // Start ouvre les écoutes UDP et HTTP puis lance leurs deux boucles propres.
-func (service *Service) Start() error {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	if service.started {
+func (serviceLive *ServiceLive) Start() error {
+	serviceLive.mu.Lock()
+	defer serviceLive.mu.Unlock()
+	if serviceLive.started {
 		return ErrLiveStarted
 	}
-	if service.closing {
+	if serviceLive.closing {
 		return ErrLiveNotStart
 	}
-	if err := os.MkdirAll(service.cfg.EvidenceDir, 0o700); err != nil {
+	if err := os.MkdirAll(serviceLive.cfg.EvidenceDir, 0o700); err != nil {
 		return fmt.Errorf("dnslive: créer le répertoire de preuves: %w", err)
 	}
-	udpAddress, err := net.ResolveUDPAddr("udp", service.cfg.UDPListen)
+	udpAddress, err := net.ResolveUDPAddr("udp", serviceLive.cfg.UDPListen)
 	if err != nil {
 		return fmt.Errorf("dnslive: résoudre l'écoute UDP: %w", err)
 	}
@@ -63,70 +123,97 @@ func (service *Service) Start() error {
 	if err != nil {
 		return fmt.Errorf("dnslive: écouter en UDP: %w", err)
 	}
-	httpListener, err := net.Listen("tcp", service.cfg.HTTPListen)
+	httpListener, err := net.Listen("tcp", serviceLive.cfg.HTTPListen)
 	if err != nil {
 		return errors.Join(fmt.Errorf("dnslive: écouter en HTTP: %w", err), udpConn.Close())
 	}
-	service.udpConn = udpConn
-	service.httpListener = httpListener
-	service.started = true
-	service.workerWG.Go(service.serveUDP)
-	service.workerWG.Go(service.serveHTTP)
+	serviceLive.udpConn = udpConn
+	serviceLive.httpListener = httpListener
+	serviceLive.started = true
+	sweeperStop := serviceLive.armSweeperStop()
+	serviceLive.workerWG.Go(func() { serviceLive.sweepUnregistered(sweeperStop) })
+	serviceLive.workerWG.Go(serviceLive.serveUDP)
+	serviceLive.workerWG.Go(serviceLive.serveHTTP)
 	return nil
 }
 
+// sweepUnregistered balaye périodiquement, toutes les unregisteredSweepInterval,
+// les sources non enregistrées afin de finaliser celles inactives au-delà de
+// unregisteredIdleExpiry, indépendamment de l'arrivée de nouveaux datagrammes.
+// Le balayage démarre avec le service et retourne dès le signal d'arrêt posé
+// par Close : aucune goroutine n'est retenue après la clôture.
+func (serviceLive *ServiceLive) sweepUnregistered(stop <-chan struct{}) {
+	ticker := time.NewTicker(unregisteredSweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			serviceLive.mu.Lock()
+			if serviceLive.closing {
+				serviceLive.mu.Unlock()
+				return
+			}
+			serviceLive.expireUnregisteredLocked(now)
+			serviceLive.mu.Unlock()
+		case <-stop:
+			return
+		}
+	}
+}
+
 // UDPAddr rend l'adresse UDP effective, y compris le port alloué avec :0.
-func (service *Service) UDPAddr() string {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	if service.udpConn == nil {
+func (serviceLive *ServiceLive) UDPAddr() string {
+	serviceLive.mu.Lock()
+	defer serviceLive.mu.Unlock()
+	if serviceLive.udpConn == nil {
 		return ""
 	}
-	return service.udpConn.LocalAddr().String()
+	return serviceLive.udpConn.LocalAddr().String()
 }
 
 // HTTPAddr rend l'adresse HTTP effective, y compris le port alloué avec :0.
-func (service *Service) HTTPAddr() string {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	if service.httpListener == nil {
+func (serviceLive *ServiceLive) HTTPAddr() string {
+	serviceLive.mu.Lock()
+	defer serviceLive.mu.Unlock()
+	if serviceLive.httpListener == nil {
 		return ""
 	}
-	return service.httpListener.Addr().String()
+	return serviceLive.httpListener.Addr().String()
 }
 
-func (service *Service) serveHTTP() {
-	err := service.httpServer.Serve(service.httpListener)
+func (serviceLive *ServiceLive) serveHTTP() {
+	err := serviceLive.httpServer.Serve(serviceLive.httpListener)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		service.recordAsynchronousError(fmt.Errorf("dnslive: serveur HTTP: %w", err))
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: serveur HTTP: %w", err))
 	}
 }
 
-func (service *Service) serveUDP() {
+func (serviceLive *ServiceLive) serveUDP() {
 	storage := make([]byte, 65535)
 	for {
-		read, sourceAddress, err := service.udpConn.ReadFromUDP(storage)
+		read, sourceAddress, err := serviceLive.udpConn.ReadFromUDP(storage)
 		if err != nil {
-			service.mu.Lock()
-			closing := service.closing
-			service.mu.Unlock()
+			serviceLive.mu.Lock()
+			closing := serviceLive.closing
+			serviceLive.mu.Unlock()
 			if closing || errors.Is(err, net.ErrClosed) {
 				return
 			}
-			service.recordAsynchronousError(fmt.Errorf("dnslive: lecture UDP: %w", err))
+			serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: lecture UDP: %w", err))
 			return
 		}
-		service.handleDatagram(storage[:read], sourceAddress)
+		serviceLive.handleDatagram(storage[:read], sourceAddress)
 	}
 }
 
-func (service *Service) recordAsynchronousError(err error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	if service.closing && errors.Is(err, net.ErrClosed) {
+func (serviceLive *ServiceLive) recordAsynchronousError(err error) {
+	serviceLive.mu.Lock()
+	defer serviceLive.mu.Unlock()
+	if serviceLive.closing && errors.Is(err, net.ErrClosed) {
 		return
 	}
-	service.asynchronousErr = errors.Join(service.asynchronousErr, err)
+	serviceLive.asynchronousErr = errors.Join(serviceLive.asynchronousErr, err)
 }
 
 func udpNetipAddress(address *net.UDPAddr) (netip.AddrPort, error) {
@@ -145,7 +232,7 @@ func addressAs16(address netip.Addr) [16]byte {
 	return address.Unmap().As16()
 }
 
-func (service *Service) newSourceLocked(sourceAddress netip.AddrPort, runID, kind string, ordinal uint64) (*liveSource, error) {
+func (serviceLive *ServiceLive) newSourceLocked(sourceAddress netip.AddrPort, runID, kind string, ordinal uint64) (*liveSource, error) {
 	pipeline, err := c2blue55.NewPipeline(c2blue55.PipelineConfig{}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("dnslive: créer le pipeline du run: %w", err)
@@ -167,7 +254,7 @@ func (service *Service) newSourceLocked(sourceAddress netip.AddrPort, runID, kin
 	if runID == "" {
 		stem += "-" + strconv.FormatUint(ordinal, 10)
 	}
-	evidence, err := openEvidenceSession(service.cfg.EvidenceDir, runID, stem)
+	evidence, err := openEvidenceSession(serviceLive.cfg.EvidenceDir, runID, stem)
 	if err != nil {
 		return nil, errors.Join(err, pipeline.Close())
 	}
@@ -182,46 +269,84 @@ func (service *Service) newSourceLocked(sourceAddress netip.AddrPort, runID, kin
 	}, nil
 }
 
-func (service *Service) sourceForDatagramLocked(sourceAddress netip.AddrPort) (*liveSource, error) {
-	if source := service.sources[sourceAddress]; source != nil {
+func (serviceLive *ServiceLive) sourceForDatagramLocked(sourceAddress netip.AddrPort, arrival time.Time) (*liveSource, error) {
+	serviceLive.expireUnregisteredLocked(arrival)
+	if source := serviceLive.sources[sourceAddress]; source != nil {
+		source.evidence.lastActivityNS = arrival.UnixNano()
 		return source, nil
 	}
-	service.runOrdinal++
-	source, err := service.newSourceLocked(sourceAddress, "", unregisteredKind, service.runOrdinal)
+	if serviceLive.countUnregisteredLocked() >= unregisteredSessionCap {
+		serviceLive.countUnregisteredDropLocked()
+		return nil, errUnregisteredCapped
+	}
+	serviceLive.runOrdinal++
+	source, err := serviceLive.newSourceLocked(sourceAddress, "", unregisteredKind, serviceLive.runOrdinal)
 	if err != nil {
 		return nil, err
 	}
-	service.sources[sourceAddress] = source
+	serviceLive.sources[sourceAddress] = source
 	return source, nil
 }
 
-func (service *Service) handleDatagram(wirePacket []byte, sourceAddress *net.UDPAddr) {
+func (serviceLive *ServiceLive) countUnregisteredLocked() int {
+	nombreSourcesNonEnregistrees := 0
+	for _, source := range serviceLive.sources {
+		if !source.registered {
+			nombreSourcesNonEnregistrees++
+		}
+	}
+	return nombreSourcesNonEnregistrees
+}
+
+// expireUnregisteredLocked finalise la preuve des sessions de sources non
+// enregistrées inactives depuis plus de unregisteredIdleExpiry. Les échecs
+// propres à ces sources ne touchent jamais l'erreur globale de journal.
+func (serviceLive *ServiceLive) expireUnregisteredLocked(arrival time.Time) {
+	for key, source := range serviceLive.sources {
+		if source.registered || source.finished {
+			continue
+		}
+		if arrival.Sub(time.Unix(0, source.evidence.lastActivityNS)) < unregisteredIdleExpiry {
+			continue
+		}
+		if err := errors.Join(source.pipeline.Close(), source.evidence.finish(context.Background())); err != nil {
+			serviceLive.asynchronousErr = errors.Join(serviceLive.asynchronousErr,
+				fmt.Errorf("dnslive: expirer la session d'une source non enregistrée: %w", err))
+		}
+		source.finished = true
+		delete(serviceLive.sources, key)
+	}
+}
+
+func (serviceLive *ServiceLive) handleDatagram(wirePacket []byte, sourceAddress *net.UDPAddr) {
 	sourceKey, err := udpNetipAddress(sourceAddress)
 	if err != nil {
-		service.recordAsynchronousError(err)
+		serviceLive.recordAsynchronousError(err)
 		return
 	}
-	localKey, err := udpNetipAddress(service.udpConn.LocalAddr().(*net.UDPAddr))
+	localKey, err := udpNetipAddress(serviceLive.udpConn.LocalAddr().(*net.UDPAddr))
 	if err != nil {
-		service.recordAsynchronousError(err)
+		serviceLive.recordAsynchronousError(err)
 		return
 	}
 	queryPacket := append([]byte(nil), wirePacket...)
 	queryTime := time.Now().UnixNano()
 
-	service.mu.Lock()
-	if service.closing {
-		service.mu.Unlock()
+	serviceLive.mu.Lock()
+	if serviceLive.closing {
+		serviceLive.mu.Unlock()
 		return
 	}
-	if service.journalErr != nil {
-		service.mu.Unlock()
+	if serviceLive.journalErr != nil {
+		serviceLive.mu.Unlock()
 		return
 	}
-	source, err := service.sourceForDatagramLocked(sourceKey)
+	source, err := serviceLive.sourceForDatagramLocked(sourceKey, time.Unix(0, queryTime))
 	if err != nil {
-		service.journalErr = errors.Join(service.journalErr, err)
-		service.mu.Unlock()
+		if !errors.Is(err, errUnregisteredCapped) {
+			serviceLive.asynchronousErr = errors.Join(serviceLive.asynchronousErr, err)
+		}
+		serviceLive.mu.Unlock()
 		return
 	}
 	verdict, className, reasonCode, evaluationErr := source.pipeline.EvaluateDNSMessageWithReason(
@@ -230,13 +355,13 @@ func (service *Service) handleDatagram(wirePacket []byte, sourceAddress *net.UDP
 		addressAs16(sourceKey.Addr()),
 		addressAs16(localKey.Addr()),
 	)
-	queryEvent := service.buildEventLocked(source, queryPacket, queryTime, queryDirection, sourceKey, localKey, verdict.Decision, className, reasonCode, evaluationErr)
-	if err := service.journalEventLocked(source, queryEvent, queryPacket); err != nil {
-		service.mu.Unlock()
+	queryEvent := serviceLive.buildEventLocked(source, queryPacket, queryTime, queryDirection, sourceKey, localKey, verdict.Decision, className, reasonCode, evaluationErr)
+	if err := serviceLive.journalEventLocked(source, queryEvent, queryPacket); err != nil {
+		serviceLive.mu.Unlock()
 		return
 	}
 	if evaluationErr != nil {
-		service.mu.Unlock()
+		serviceLive.mu.Unlock()
 		return
 	}
 
@@ -251,8 +376,8 @@ func (service *Service) handleDatagram(wirePacket []byte, sourceAddress *net.UDP
 		if err == nil {
 			err = errors.New("dnslive: répondeur sans réponse pour une question valide")
 		}
-		service.asynchronousErr = errors.Join(service.asynchronousErr, fmt.Errorf("dnslive: construire la réponse: %w", err))
-		service.mu.Unlock()
+		serviceLive.asynchronousErr = errors.Join(serviceLive.asynchronousErr, fmt.Errorf("dnslive: construire la réponse: %w", err))
+		serviceLive.mu.Unlock()
 		return
 	}
 	responsePacket := append([]byte(nil), responseStorage[:responseLength]...)
@@ -277,27 +402,32 @@ func (service *Service) handleDatagram(wirePacket []byte, sourceAddress *net.UDP
 			responseVerdict.Decision = c2blue55.DecisionEscalateSLM
 		}
 	}
-	responseEvent := service.buildEventLocked(source, responsePacket, responseTime, responseDirection, localKey, sourceKey, responseVerdict.Decision, responseClass, responseReason, responseEvaluationErr)
-	if err := service.journalEventLocked(source, responseEvent, responsePacket); err != nil {
-		service.mu.Unlock()
+	responseEvent := serviceLive.buildEventLocked(source, responsePacket, responseTime, responseDirection, localKey, sourceKey, responseVerdict.Decision, responseClass, responseReason, responseEvaluationErr)
+	if err := serviceLive.journalEventLocked(source, responseEvent, responsePacket); err != nil {
+		serviceLive.mu.Unlock()
 		return
 	}
-	service.mu.Unlock()
+	if err := source.evidence.flush(); err != nil {
+		_ = serviceLive.noteJournalFailureLocked(source, fmt.Errorf("dnslive: journal obligatoire: %w", err))
+		serviceLive.mu.Unlock()
+		return
+	}
+	serviceLive.mu.Unlock()
 
-	written, err := service.udpConn.WriteToUDP(responsePacket, sourceAddress)
+	written, err := serviceLive.udpConn.WriteToUDP(responsePacket, sourceAddress)
 	if err != nil {
-		service.recordAsynchronousError(fmt.Errorf("dnslive: écriture UDP: %w", err))
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écriture UDP: %w", err))
 		return
 	}
 	if written != len(responsePacket) {
-		service.recordAsynchronousError(fmt.Errorf("dnslive: écriture UDP courte: %w", io.ErrShortWrite))
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écriture UDP courte: %w", io.ErrShortWrite))
 	}
 }
 
-func (service *Service) buildEventLocked(source *liveSource, wirePacket []byte, timestampNS int64, direction string, sourceAddress, destinationAddress netip.AddrPort, decision uint8, className, reasonCode string, evaluationErr error) liveEvent {
+func (serviceLive *ServiceLive) buildEventLocked(source *liveSource, wirePacket []byte, timestampNS int64, direction string, sourceAddress, destinationAddress netip.AddrPort, decision uint8, className, reasonCode string, evaluationErr error) liveEvent {
 	digest := sha256.Sum256(wirePacket)
 	event := liveEvent{
-		Sequence:     service.sequence + 1,
+		Sequence:     serviceLive.sequence + 1,
 		RunID:        source.runID,
 		Kind:         source.kind,
 		TimestampNS:  timestampNS,
@@ -339,40 +469,54 @@ func (service *Service) buildEventLocked(source *liveSource, wirePacket []byte, 
 	return event
 }
 
-func (service *Service) journalEventLocked(source *liveSource, event liveEvent, wirePacket []byte) error {
+func (serviceLive *ServiceLive) journalEventLocked(source *liveSource, event liveEvent, wirePacket []byte) error {
 	line, err := source.evidence.append(event, wirePacket)
-	if err == nil && service.cfg.EventWriter != nil {
-		err = writeEntirely(service.cfg.EventWriter, line)
+	if err == nil && serviceLive.cfg.EventWriter != nil {
+		err = writeEntirely(serviceLive.cfg.EventWriter, line)
 	}
 	if err != nil {
-		service.journalErr = errors.Join(service.journalErr, fmt.Errorf("dnslive: journal obligatoire: %w", err))
-		return service.journalErr
+		return serviceLive.noteJournalFailureLocked(source, fmt.Errorf("dnslive: journal obligatoire: %w", err))
 	}
-	service.sequence = event.Sequence
-	if len(service.events) == liveEventMemoryLimit {
-		copy(service.events, service.events[1:])
-		clear(service.events[len(service.events)-1:])
-		service.events = service.events[:len(service.events)-1]
-		service.eventsEvicted++
+	serviceLive.sequence = event.Sequence
+	if len(serviceLive.events) == liveEventMemoryLimit {
+		copy(serviceLive.events, serviceLive.events[1:])
+		clear(serviceLive.events[len(serviceLive.events)-1:])
+		serviceLive.events = serviceLive.events[:len(serviceLive.events)-1]
+		serviceLive.eventsEvicted++
 	}
-	service.events = append(service.events, event)
+	serviceLive.events = append(serviceLive.events, event)
 	return nil
+}
+
+// noteJournalFailureLocked positionne l'erreur globale de journal pour un
+// run enregistré uniquement. Un échec propre à une source non enregistrée
+// est rapporté hors journal : il ne doit pas supprimer les réponses des
+// runs enregistrés. L'appelant détient service.mu.
+func (serviceLive *ServiceLive) noteJournalFailureLocked(source *liveSource, err error) error {
+	if source.registered {
+		serviceLive.journalErr = errors.Join(serviceLive.journalErr, err)
+		return serviceLive.journalErr
+	}
+	serviceLive.asynchronousErr = errors.Join(serviceLive.asynchronousErr, err)
+	return err
 }
 
 // Close arrête les écoutes, attend les boucles, synchronise puis ferme toutes
 // les preuves et tous les pipelines. Toute panne de journal y est rapportée.
-func (service *Service) Close(ctx context.Context) error {
-	service.closeOnce.Do(func() {
-		service.mu.Lock()
-		if !service.started {
-			service.closeErr = ErrLiveNotStart
-			service.mu.Unlock()
+func (serviceLive *ServiceLive) Close(ctx context.Context) error {
+	serviceLive.closeOnce.Do(func() {
+		serviceLive.mu.Lock()
+		serviceLive.closing = true
+		if !serviceLive.started {
+			serviceLive.closeErr = ErrLiveNotStart
+			serviceLive.mu.Unlock()
+			serviceLive.forgetUnregisteredDropCounter()
 			return
 		}
-		service.closing = true
-		udpConn := service.udpConn
-		httpServer := service.httpServer
-		service.mu.Unlock()
+		udpConn := serviceLive.udpConn
+		httpServer := serviceLive.httpServer
+		serviceLive.mu.Unlock()
+		serviceLive.fireSweeperStop()
 
 		var lifecycleErr error
 		if err := udpConn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -384,15 +528,16 @@ func (service *Service) Close(ctx context.Context) error {
 				lifecycleErr = errors.Join(lifecycleErr, fmt.Errorf("dnslive: forcer l'arrêt HTTP: %w", closeErr))
 			}
 		}
-		service.workerWG.Wait()
+		serviceLive.workerWG.Wait()
+		serviceLive.forgetUnregisteredDropCounter()
 
-		service.mu.Lock()
-		defer service.mu.Unlock()
-		uniqueSources := make(map[*liveSource]struct{}, len(service.sources)+len(service.runs))
-		for _, source := range service.sources {
+		serviceLive.mu.Lock()
+		defer serviceLive.mu.Unlock()
+		uniqueSources := make(map[*liveSource]struct{}, len(serviceLive.sources)+len(serviceLive.runs))
+		for _, source := range serviceLive.sources {
 			uniqueSources[source] = struct{}{}
 		}
-		for _, history := range service.runs {
+		for _, history := range serviceLive.runs {
 			uniqueSources[history.source] = struct{}{}
 		}
 		for source := range uniqueSources {
@@ -401,14 +546,14 @@ func (service *Service) Close(ctx context.Context) error {
 				source.finished = true
 			}
 		}
-		service.closeErr = errors.Join(service.journalErr, service.asynchronousErr, lifecycleErr)
+		serviceLive.closeErr = errors.Join(serviceLive.journalErr, serviceLive.asynchronousErr, lifecycleErr)
 	})
-	return service.closeErr
+	return serviceLive.closeErr
 }
 
 // finishSourceLocked clôt un run et détache son couple IP:port. L'appelant
 // détient service.mu ; les paquets ultérieurs deviennent explicitement inconnus.
-func (service *Service) finishSourceLocked(ctx context.Context, source *liveSource) error {
+func (serviceLive *ServiceLive) finishSourceLocked(ctx context.Context, source *liveSource) error {
 	if source.finished {
 		return nil
 	}
@@ -417,9 +562,9 @@ func (service *Service) finishSourceLocked(ctx context.Context, source *liveSour
 		return err
 	}
 	source.finished = true
-	delete(service.sources, source.key)
+	delete(serviceLive.sources, source.key)
 	if source.registered {
-		service.runs[source.runID].public.Finished = true
+		serviceLive.runs[source.runID].public.Finished = true
 	}
 	return nil
 }

@@ -35,24 +35,55 @@ var (
 )
 
 func FilterLine(line []byte) (forward bool, vetoResponse []byte, incident *socagent.Dossier) {
+	const texteVetoNonAnalysable = `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid or ambiguous JSON-RPC request"}}`
 	method, idRaw, name, args, hasID, ok := parseMCPCall(line)
 	if !ok {
-		return false, []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid or ambiguous JSON-RPC request"}}`), nil
+		return false, []byte(texteVetoNonAnalysable), nil
+	}
+	if len(method) == 0 {
+		var cles map[string]json.RawMessage
+		if json.Unmarshal(line, &cles) == nil {
+			_, identifiantPresent := cles["id"]
+			_, resultatPresent := cles["result"]
+			_, erreurPresente := cles["error"]
+			_, paramsPresents := cles["params"]
+			if identifiantPresent && resultatPresent != erreurPresente && !paramsPresents {
+				return true, nil, nil
+			}
+		}
+		return false, []byte(texteVetoNonAnalysable), nil
 	}
 	if !bytes.Equal(method, methodToolsCall) {
+		if !methodeTransmissible(method, hasID) {
+			refusee := method
+			if len(refusee) > 64 {
+				refusee = refusee[:64]
+			}
+			_, _ = fmt.Fprintf(os.Stderr, "mcp-guard: méthode refusée: %q\n", refusee)
+			if !hasID {
+				return false, nil, nil
+			}
+			veto := []byte(`{"jsonrpc":"2.0","id":`)
+			veto = append(veto, idRaw...)
+			veto = append(veto, `,"error":{"code":-32601,"message":"Method not allowed by guard"}}`...)
+			return false, veto, nil
+		}
 		return true, nil, nil
 	}
 	var arguments any
 	decoder := json.NewDecoder(bytes.NewReader(args))
 	decoder.UseNumber()
 	if err := decoder.Decode(&arguments); err != nil {
-		fmt.Fprintf(os.Stderr, "mcp-guard: invalid arguments json: %v\n", err)
-		return false, encodeVeto(idRaw, name, 0), nil
+		_, _ = fmt.Fprintf(os.Stderr, "mcp-guard: invalid arguments json: %v\n", err)
+		vetoResponse = encodeVeto(idRaw, name, 0)
+		return
 	}
 	args, _ = json.Marshal(arguments)
 	djs, flags, vetoJSON := c2blue55.EvalToolCall(bytesString(name), args)
-	if vetoJSON == nil && flags&(c2blue55.FlagAnomaly|c2blue55.FlagSuspiciousMCP|c2blue55.FlagBlocked) == 0 {
-		return true, nil, nil
+	if vetoJSON == nil {
+		if flags&(c2blue55.FlagAnomaly|c2blue55.FlagSuspiciousMCP|c2blue55.FlagBlocked) == 0 {
+			return true, nil, nil
+		}
 	}
 	if hasID {
 		vetoResponse = encodeVeto(idRaw, name, djs)
@@ -72,6 +103,14 @@ func FilterLine(line []byte) (forward bool, vetoResponse []byte, incident *socag
 		}
 	}
 	return false, vetoResponse, incident
+}
+
+func methodeTransmissible(methode []byte, avecIdentifiant bool) bool {
+	switch string(methode) {
+	case "initialize", "ping", "tools/list":
+		return true
+	}
+	return !avecIdentifiant && bytes.HasPrefix(methode, []byte("notifications/")) && len(methode) > len("notifications/")
 }
 
 func RunRelay(in io.Reader, out io.Writer, backendIn io.Writer, backendOut io.Reader) error {
@@ -168,7 +207,9 @@ func relayRequests(in io.Reader, out io.Writer, backendIn io.Writer, outMu *sync
 }
 
 func writeMessage(out io.Writer, line []byte) error {
-	message := append(append(make([]byte, 0, len(line)+1), line...), '\n')
+	message := make([]byte, len(line), len(line)+1)
+	copy(message, line)
+	message = append(message, '\n')
 	n, err := out.Write(message)
 	if err == nil && n != len(message) {
 		return io.ErrShortWrite

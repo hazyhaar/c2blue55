@@ -51,7 +51,11 @@ const (
 )
 
 // Assertion de compilation : les régions pavent exactement 512 dimensions.
-var _ = [1]struct{}{}[EmbeddingDim-(aggregateBase+aggregateDims)]
+// Si la somme des régions est inférieure à 512, la seconde constante est
+// négative ; si elle est supérieure, la première l'est ; dans les deux cas la
+// conversion vers uint déborde et la compilation échoue.
+const _ = uint(EmbeddingDim - (aggregateBase + aggregateDims))
+const _ = uint((aggregateBase + aggregateDims) - EmbeddingDim)
 
 // Indices des métadonnées d'en-tête.
 const (
@@ -451,23 +455,20 @@ func extractPayloadFeatures(payload []byte, dst []float32) {
 	dst[headerBase+hdrPayloadUsed] = float32(used) / float32(PageSize)
 }
 
-// fillEventHeader projette les métadonnées d'en-tête et la fusion action ×
-// sous-système.
+// fillEventHeader projette les métadonnées d'en-tête admissibles et la fusion
+// action × sous-système. Les composantes hdrPIDFresh, hdrPIDLow, hdrSrcClass et
+// hdrSrcLow ne sont plus écrites : elles demeurent à la valeur zéro posée par
+// extractPayloadFeatures, quelle que soit la valeur de ev.Pid et de ev.Src, de
+// sorte que le vecteur ne dépend ni du numéro de processus ni de l'adresse
+// source. Les indices de ces composantes sont conservés pour ne pas déplacer
+// les autres. Seul le drapeau de charge longue est compté dans hdrFlagPopcount :
+// les autres bits de ev.Flags n'influencent pas le vecteur.
 func fillEventHeader(ev *Event, dst []float32) {
-	h := headerBase
-	dst[h+hdrAction] = float32(ev.Action) / 65535.0
-	dst[h+hdrSubsystem] = float32(ev.Subsystem) / 65535.0
-	if ev.Pid != 0 {
-		dst[h+hdrPIDFresh] = 1
-	}
-	dst[h+hdrPIDLow] = float32(ev.Pid&0xFF) / 255.0
-	dst[h+hdrFlagPopcount] = float32(bits.OnesCount32(ev.Flags)) / 32.0
-	srcClass := float32(ev.Src >> 32)
-	if srcClass > 8 {
-		srcClass = 8
-	}
-	dst[h+hdrSrcClass] = srcClass / 8.0
-	dst[h+hdrSrcLow] = float32(uint32(ev.Src)) / 4294967295.0
+	// aggregateBase vaut headerBase + headerDims.
+	entete := dst[headerBase:aggregateBase]
+	entete[hdrAction] = float32(ev.Action) / 65535.0
+	entete[hdrSubsystem] = float32(ev.Subsystem) / 65535.0
+	entete[hdrFlagPopcount] = float32(bits.OnesCount32(ev.Flags&FlagLongPayload)) / 32.0
 	dst[aggregateBase+aggHeaderFusion] = (float32(ev.Action) / 65535.0) * (float32(ev.Subsystem) / 65535.0)
 }
 

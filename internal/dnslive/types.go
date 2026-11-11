@@ -102,9 +102,9 @@ type liveRunHistory struct {
 	ordinal uint64
 }
 
-// Service détient tout l'état mutable du serveur. Aucun état de détection ou de
+// ServiceLive détient tout l'état mutable du serveur. Aucun état de détection ou de
 // journalisation n'est partagé entre instances.
-type Service struct {
+type ServiceLive struct {
 	cfg Config
 
 	mu              sync.Mutex

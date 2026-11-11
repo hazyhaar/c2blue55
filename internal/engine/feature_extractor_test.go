@@ -67,7 +67,7 @@ func TestFeatureExtractorCentering(t *testing.T) {
 func TestFeatureExtractorHeaderMetadata(t *testing.T) {
 	fe := NewFeatureExtractor()
 	var dst [EmbeddingDim]float32
-	ev := Event{Action: 3, Subsystem: 4, Pid: 4321, Flags: 0x0004}
+	ev := Event{Action: 3, Subsystem: 4, Pid: 4321, Flags: 0x0004, Src: 1<<32 | 0xC0A80117}
 	if !fe.ExtractTo(&ev, dst[:]) {
 		t.Fatal("ExtractTo refusé")
 	}
@@ -77,11 +77,20 @@ func TestFeatureExtractorHeaderMetadata(t *testing.T) {
 	if math.Abs(float64(dst[headerBase+hdrSubsystem])-4.0/65535.0) > 1e-6 {
 		t.Fatal("sous-système non projeté")
 	}
-	if dst[headerBase+hdrPIDFresh] != 1 {
-		t.Fatal("indicateur PID absent")
+	if dst[headerBase+hdrPIDFresh] != 0 {
+		t.Fatal("indicateur PID non neutralisé")
 	}
-	if math.Abs(float64(dst[headerBase+hdrPIDLow])-float64(4321&0xFF)/255.0) > 1e-6 {
-		t.Fatal("octet bas de PID non projeté")
+	if dst[headerBase+hdrPIDLow] != 0 {
+		t.Fatal("octet bas de PID non neutralisé")
+	}
+	if dst[headerBase+hdrSrcClass] != 0 {
+		t.Fatal("classe de source non neutralisée")
+	}
+	if dst[headerBase+hdrSrcLow] != 0 {
+		t.Fatal("octet bas de source non neutralisé")
+	}
+	if dst[headerBase+hdrFlagPopcount] != 0 {
+		t.Fatal("compteur de drapeaux alimenté par un bit autre que FlagLongPayload")
 	}
 }
 

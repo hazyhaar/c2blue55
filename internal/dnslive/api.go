@@ -8,13 +8,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
+
+const registrationBodyDeadline = 5 * time.Second
 
 type registrationRequest struct {
 	RunID      string `json:"run_id"`
@@ -23,27 +28,33 @@ type registrationRequest struct {
 	SourcePort uint16 `json:"source_port"`
 }
 
-func (service *Service) routes() http.Handler {
+func (serviceLive *ServiceLive) routes() http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.URL.Path == "/healthz":
-			service.handleHealth(writer, request)
+			serviceLive.handleHealth(writer, request)
 		case request.URL.Path == "/":
-			service.handleDashboard(writer, request)
+			serviceLive.handleDashboard(writer, request)
+		case request.URL.Path == "/dashboard/api/runs":
+			serviceLive.handleDashboardRuns(writer, request)
+		case request.URL.Path == "/dashboard/api/events":
+			serviceLive.handleDashboardEvents(writer, request)
+		case request.URL.Path == "/dashboard/api/reasons":
+			serviceLive.handleDashboardReasons(writer, request)
 		case request.URL.Path == "/api/v1/registrations":
-			service.handleRegistrations(writer, request)
+			serviceLive.handleRegistrations(writer, request)
 		case strings.HasPrefix(request.URL.Path, "/api/v1/registrations/"):
-			service.handleFinish(writer, request)
+			serviceLive.handleFinish(writer, request)
 		case request.URL.Path == "/api/v1/runs":
-			service.handleRuns(writer, request)
+			serviceLive.handleRuns(writer, request)
 		case request.URL.Path == "/api/v1/events":
-			service.handleEvents(writer, request)
+			serviceLive.handleEvents(writer, request)
 		case request.URL.Path == "/api/v1/reasons":
-			service.handleReasons(writer, request)
+			serviceLive.handleReasons(writer, request)
 		case strings.HasPrefix(request.URL.Path, "/api/v1/evidence/"):
-			service.handleEvidence(writer, request)
+			serviceLive.handleEvidence(writer, request)
 		default:
-			writeJSONError(service, writer, http.StatusNotFound, "ressource inconnue")
+			writeJSONError(serviceLive, writer, http.StatusNotFound, "ressource inconnue")
 		}
 	})
 }
@@ -54,54 +65,62 @@ func tokenMatches(provided, expected string) bool {
 	return subtle.ConstantTimeCompare(providedDigest[:], expectedDigest[:]) == 1
 }
 
-func (service *Service) bearerAuthorized(request *http.Request) bool {
-	authorization := request.Header.Get("Authorization")
-	if token, found := strings.CutPrefix(authorization, "Bearer "); found && tokenMatches(token, service.cfg.DashboardToken) {
-		return true
-	}
-	_, password, found := request.BasicAuth()
-	return found && tokenMatches(password, service.cfg.DashboardToken)
+func (serviceLive *ServiceLive) bearerAuthorized(request *http.Request) bool {
+	token, found := strings.CutPrefix(request.Header.Get("Authorization"), "Bearer ")
+	return found && tokenMatches(token, serviceLive.cfg.DashboardToken)
 }
 
-func (service *Service) basicAuthorized(request *http.Request) bool {
+func (serviceLive *ServiceLive) basicAuthorized(request *http.Request) bool {
 	_, password, found := request.BasicAuth()
-	return found && tokenMatches(password, service.cfg.DashboardToken)
+	return found && tokenMatches(password, serviceLive.cfg.DashboardToken)
 }
 
-func requireBearer(service *Service, writer http.ResponseWriter, request *http.Request) bool {
-	if service.bearerAuthorized(request) {
+func requireBearer(serviceLive *ServiceLive, writer http.ResponseWriter, request *http.Request) bool {
+	if serviceLive.bearerAuthorized(request) {
 		return true
 	}
 	writer.Header().Set("WWW-Authenticate", `Bearer realm="c2blue-dns-live"`)
-	writeJSONError(service, writer, http.StatusUnauthorized, "authentification Bearer requise")
+	writeJSONError(serviceLive, writer, http.StatusUnauthorized, "authentification Bearer requise")
 	return false
 }
 
-func methodAllowed(service *Service, writer http.ResponseWriter, request *http.Request, method string) bool {
+// requireBasicDashboard protège les routes de données du tableau : le tableau
+// authentifié en Basic ne peut pas porter un jeton Bearer, ces routes sont
+// donc servies sous la même authentification Basic que la page elle-même.
+func requireBasicDashboard(serviceLive *ServiceLive, writer http.ResponseWriter, request *http.Request) bool {
+	if serviceLive.basicAuthorized(request) {
+		return true
+	}
+	writer.Header().Set("WWW-Authenticate", `Basic realm="c2blue-dns-live", charset="UTF-8"`)
+	writeJSONError(serviceLive, writer, http.StatusUnauthorized, "authentification Basic requise")
+	return false
+}
+
+func methodAllowed(serviceLive *ServiceLive, writer http.ResponseWriter, request *http.Request, method string) bool {
 	if request.Method == method {
 		return true
 	}
 	writer.Header().Set("Allow", method)
-	writeJSONError(service, writer, http.StatusMethodNotAllowed, "méthode non autorisée")
+	writeJSONError(serviceLive, writer, http.StatusMethodNotAllowed, "méthode non autorisée")
 	return false
 }
 
-func (service *Service) handleHealth(writer http.ResponseWriter, request *http.Request) {
-	if !methodAllowed(service, writer, request, http.MethodGet) {
+func (serviceLive *ServiceLive) handleHealth(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) {
 		return
 	}
-	writeJSON(service, writer, http.StatusOK, struct {
+	writeJSON(serviceLive, writer, http.StatusOK, struct {
 		Status string `json:"status"`
 	}{Status: "ok"})
 }
 
-func (service *Service) handleDashboard(writer http.ResponseWriter, request *http.Request) {
-	if !methodAllowed(service, writer, request, http.MethodGet) {
+func (serviceLive *ServiceLive) handleDashboard(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) {
 		return
 	}
-	if !service.basicAuthorized(request) {
+	if !serviceLive.basicAuthorized(request) {
 		writer.Header().Set("WWW-Authenticate", `Basic realm="c2blue-dns-live", charset="UTF-8"`)
-		writeJSONError(service, writer, http.StatusUnauthorized, "authentification Basic requise")
+		writeJSONError(serviceLive, writer, http.StatusUnauthorized, "authentification Basic requise")
 		return
 	}
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -109,77 +128,94 @@ func (service *Service) handleDashboard(writer http.ResponseWriter, request *htt
 	writer.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'")
 	writer.WriteHeader(http.StatusOK)
 	page := dashboardHTML
-	if service.cfg.Language == "en" {
+	if serviceLive.cfg.Language == "en" {
 		page = dashboardHTMLEnglish
 	}
 	if _, err := io.WriteString(writer, page); err != nil {
-		service.recordAsynchronousError(fmt.Errorf("dnslive: écrire le tableau de bord: %w", err))
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écrire le tableau de bord: %w", err))
 	}
 }
 
-func (service *Service) handleRegistrations(writer http.ResponseWriter, request *http.Request) {
-	if !methodAllowed(service, writer, request, http.MethodPost) {
+func (serviceLive *ServiceLive) handleRegistrations(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodPost) {
 		return
 	}
-	if !requireBearer(service, writer, request) {
+	if !requireBearer(serviceLive, writer, request) {
 		return
 	}
 	request.Body = http.MaxBytesReader(writer, request.Body, 64<<10)
+	controller := http.NewResponseController(writer)
+	if err := controller.SetReadDeadline(time.Now().Add(registrationBodyDeadline)); err != nil {
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: poser l'échéance du corps d'enregistrement: %w", err))
+	}
+	bodyTimedOut := false
 	defer func() {
-		if err := request.Body.Close(); err != nil {
-			service.recordAsynchronousError(fmt.Errorf("dnslive: fermer le corps d'enregistrement: %w", err))
+		if err := request.Body.Close(); err != nil && !bodyTimedOut {
+			serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: fermer le corps d'enregistrement: %w", err))
 		}
 	}()
 	body, err := readRegistrationBody(request.Body)
-	if err != nil || len(body) > 64<<10 {
-		writeJSONError(service, writer, http.StatusBadRequest, "corps JSON borné à 64 Kio requis")
+	if err != nil {
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			bodyTimedOut = true
+			serviceLive.abandonSlowBody(writer, "corps d'enregistrement non terminé avant l'échéance")
+			return
+		}
+		writeJSONError(serviceLive, writer, http.StatusBadRequest, "corps JSON borné à 64 Kio requis")
+		return
+	}
+	if err := controller.SetReadDeadline(time.Time{}); err != nil {
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: lever l'échéance du corps d'enregistrement: %w", err))
+	}
+	if len(body) > 64<<10 {
+		writeJSONError(serviceLive, writer, http.StatusBadRequest, "corps JSON borné à 64 Kio requis")
 		return
 	}
 	if err := validateSingleJSONValue(json.NewDecoder(bytes.NewReader(body))); err != nil {
-		writeJSONError(service, writer, http.StatusBadRequest, "JSON unique sans clé dupliquée requis")
+		writeJSONError(serviceLive, writer, http.StatusBadRequest, "JSON unique sans clé dupliquée requis")
 		return
 	}
 	registration, err := decodeRegistration(bytes.NewReader(body))
 	if err != nil {
-		writeJSONError(service, writer, http.StatusBadRequest, "contrat JSON d'enregistrement non respecté")
+		writeJSONError(serviceLive, writer, http.StatusBadRequest, "contrat JSON d'enregistrement non respecté")
 		return
 	}
 	sourceKey, err := normalizeRegistration(registration)
 	if err != nil {
-		writeJSONError(service, writer, http.StatusBadRequest, "identité d'enregistrement invalide")
+		writeJSONError(serviceLive, writer, http.StatusBadRequest, "identité d'enregistrement invalide")
 		return
 	}
 
-	service.mu.Lock()
-	if service.closing {
-		service.mu.Unlock()
-		writeJSONError(service, writer, http.StatusServiceUnavailable, "service en arrêt")
+	serviceLive.mu.Lock()
+	if serviceLive.closing {
+		serviceLive.mu.Unlock()
+		writeJSONError(serviceLive, writer, http.StatusServiceUnavailable, "service en arrêt")
 		return
 	}
-	if service.runs[registration.RunID] != nil {
-		service.mu.Unlock()
-		writeJSONError(service, writer, http.StatusConflict, "run_id déjà utilisé")
+	if serviceLive.runs[registration.RunID] != nil {
+		serviceLive.mu.Unlock()
+		writeJSONError(serviceLive, writer, http.StatusConflict, "run_id déjà utilisé")
 		return
 	}
-	if previous := service.sources[sourceKey]; previous != nil {
+	if previous := serviceLive.sources[sourceKey]; previous != nil {
 		if previous.registered {
-			service.mu.Unlock()
-			writeJSONError(service, writer, http.StatusConflict, "couple IP:port déjà enregistré")
+			serviceLive.mu.Unlock()
+			writeJSONError(serviceLive, writer, http.StatusConflict, "couple IP:port déjà enregistré")
 			return
 		}
-		if err := service.finishSourceLocked(request.Context(), previous); err != nil {
-			service.journalErr = errors.Join(service.journalErr, err)
-			service.mu.Unlock()
-			writeJSONError(service, writer, http.StatusInternalServerError, "clôture de la source inconnue impossible")
+		if err := serviceLive.finishSourceLocked(request.Context(), previous); err != nil {
+			serviceLive.asynchronousErr = errors.Join(serviceLive.asynchronousErr, err)
+			serviceLive.mu.Unlock()
+			writeJSONError(serviceLive, writer, http.StatusInternalServerError, "clôture de la source inconnue impossible")
 			return
 		}
 	}
-	service.runOrdinal++
-	source, err := service.newSourceLocked(sourceKey, registration.RunID, registration.Kind, service.runOrdinal)
+	serviceLive.runOrdinal++
+	source, err := serviceLive.newSourceLocked(sourceKey, registration.RunID, registration.Kind, serviceLive.runOrdinal)
 	if err != nil {
-		service.journalErr = errors.Join(service.journalErr, err)
-		service.mu.Unlock()
-		writeJSONError(service, writer, http.StatusInternalServerError, "création du run impossible")
+		serviceLive.journalErr = errors.Join(serviceLive.journalErr, err)
+		serviceLive.mu.Unlock()
+		writeJSONError(serviceLive, writer, http.StatusInternalServerError, "création du run impossible")
 		return
 	}
 	publicRun := liveRun{
@@ -188,10 +224,10 @@ func (service *Service) handleRegistrations(writer http.ResponseWriter, request 
 		SourceIP:   sourceKey.Addr().String(),
 		SourcePort: sourceKey.Port(),
 	}
-	service.sources[sourceKey] = source
-	service.runs[registration.RunID] = &liveRunHistory{public: publicRun, source: source, ordinal: service.runOrdinal}
-	service.mu.Unlock()
-	writeJSON(service, writer, http.StatusCreated, publicRun)
+	serviceLive.sources[sourceKey] = source
+	serviceLive.runs[registration.RunID] = &liveRunHistory{public: publicRun, source: source, ordinal: serviceLive.runOrdinal}
+	serviceLive.mu.Unlock()
+	writeJSON(serviceLive, writer, http.StatusCreated, publicRun)
 }
 
 func validateSingleJSONValue(decoder *json.Decoder) error {
@@ -252,35 +288,35 @@ func consumeJSONValue(decoder *json.Decoder) error {
 	}
 }
 
-func (service *Service) handleFinish(writer http.ResponseWriter, request *http.Request) {
-	if !methodAllowed(service, writer, request, http.MethodPost) {
+func (serviceLive *ServiceLive) handleFinish(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodPost) {
 		return
 	}
-	if !requireBearer(service, writer, request) {
+	if !requireBearer(serviceLive, writer, request) {
 		return
 	}
 	remainder := strings.TrimPrefix(request.URL.Path, "/api/v1/registrations/")
 	runID, found := strings.CutSuffix(remainder, "/finish")
 	if !found || !validRunID(runID) {
-		writeJSONError(service, writer, http.StatusNotFound, "run inconnu")
+		writeJSONError(serviceLive, writer, http.StatusNotFound, "run inconnu")
 		return
 	}
-	service.mu.Lock()
-	history := service.runs[runID]
+	serviceLive.mu.Lock()
+	history := serviceLive.runs[runID]
 	if history == nil {
-		service.mu.Unlock()
-		writeJSONError(service, writer, http.StatusNotFound, "run inconnu")
+		serviceLive.mu.Unlock()
+		writeJSONError(serviceLive, writer, http.StatusNotFound, "run inconnu")
 		return
 	}
-	if err := service.finishSourceLocked(request.Context(), history.source); err != nil {
-		service.journalErr = errors.Join(service.journalErr, err)
-		service.mu.Unlock()
-		writeJSONError(service, writer, http.StatusInternalServerError, "finalisation de la preuve impossible")
+	if err := serviceLive.finishSourceLocked(request.Context(), history.source); err != nil {
+		serviceLive.journalErr = errors.Join(serviceLive.journalErr, err)
+		serviceLive.mu.Unlock()
+		writeJSONError(serviceLive, writer, http.StatusInternalServerError, "finalisation de la preuve impossible")
 		return
 	}
 	publicRun := history.public
-	service.mu.Unlock()
-	writeJSON(service, writer, http.StatusOK, publicRun)
+	serviceLive.mu.Unlock()
+	writeJSON(serviceLive, writer, http.StatusOK, publicRun)
 }
 
 func validRunID(runID string) bool {
@@ -309,13 +345,26 @@ func validKind(kind string) bool {
 	return true
 }
 
-func (service *Service) handleRuns(writer http.ResponseWriter, request *http.Request) {
-	if !methodAllowed(service, writer, request, http.MethodGet) || !requireBearer(service, writer, request) {
+func (serviceLive *ServiceLive) handleRuns(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) || !requireBearer(serviceLive, writer, request) {
 		return
 	}
-	service.mu.Lock()
-	histories := make([]*liveRunHistory, 0, len(service.runs))
-	for _, history := range service.runs {
+	serviceLive.serveRuns(writer)
+}
+
+func (serviceLive *ServiceLive) handleDashboardRuns(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) || !requireBasicDashboard(serviceLive, writer, request) {
+		return
+	}
+	serviceLive.serveRuns(writer)
+}
+
+// serveRuns porte la charge utile commune aux routes Bearer /api/v1/runs et
+// Basic /dashboard/api/runs : mêmes historiques, même tri par ordinal.
+func (serviceLive *ServiceLive) serveRuns(writer http.ResponseWriter) {
+	serviceLive.mu.Lock()
+	histories := make([]*liveRunHistory, 0, len(serviceLive.runs))
+	for _, history := range serviceLive.runs {
 		histories = append(histories, history)
 	}
 	sort.Slice(histories, func(first, second int) bool {
@@ -325,73 +374,126 @@ func (service *Service) handleRuns(writer http.ResponseWriter, request *http.Req
 	for _, history := range histories {
 		runs = append(runs, history.public)
 	}
-	service.mu.Unlock()
-	writeJSON(service, writer, http.StatusOK, runs)
+	serviceLive.mu.Unlock()
+	writeJSON(serviceLive, writer, http.StatusOK, runs)
 }
 
-func (service *Service) handleEvents(writer http.ResponseWriter, request *http.Request) {
-	if !methodAllowed(service, writer, request, http.MethodGet) || !requireBearer(service, writer, request) {
+func (serviceLive *ServiceLive) handleEvents(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) || !requireBearer(serviceLive, writer, request) {
 		return
 	}
+	serviceLive.serveEvents(writer, request)
+}
+
+func (serviceLive *ServiceLive) handleDashboardEvents(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) || !requireBasicDashboard(serviceLive, writer, request) {
+		return
+	}
+	serviceLive.serveEvents(writer, request)
+}
+
+// serveEvents porte la charge utile commune aux routes Bearer /api/v1/events
+// et Basic /dashboard/api/events : même borne after, même filtre run_id, même
+// fenêtre mémoire et même en-tête X-Events-Evicted.
+func (serviceLive *ServiceLive) serveEvents(writer http.ResponseWriter, request *http.Request) {
 	after := uint64(0)
 	if text := request.URL.Query().Get("after"); text != "" {
 		parsed, err := strconv.ParseUint(text, 10, 64)
 		if err != nil {
-			writeJSONError(service, writer, http.StatusBadRequest, "after doit être un entier non signé")
+			writeJSONError(serviceLive, writer, http.StatusBadRequest, "after doit être un entier non signé")
 			return
 		}
 		after = parsed
 	}
 	runID := request.URL.Query().Get("run_id")
-	service.mu.Lock()
-	events := make([]liveEvent, 0)
-	for _, event := range service.events {
+	serviceLive.mu.Lock()
+	events := make([]liveEvent, 0, len(serviceLive.events))
+	for _, event := range serviceLive.events {
 		if event.Sequence > after && (runID == "" || event.RunID == runID) {
 			events = append(events, event)
 		}
 	}
-	eventsEvicted := service.eventsEvicted
-	service.mu.Unlock()
+	eventsEvicted := serviceLive.eventsEvicted
+	serviceLive.mu.Unlock()
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.Header().Set("X-Events-Evicted", strconv.FormatUint(eventsEvicted, 10))
-	writeJSON(service, writer, http.StatusOK, events)
-}
-
-func (service *Service) handleReasons(writer http.ResponseWriter, request *http.Request) {
-	if !methodAllowed(service, writer, request, http.MethodGet) || !requireBearer(service, writer, request) {
+	writer.WriteHeader(http.StatusOK)
+	if err := writeEntirely(writer, []byte{'['}); err != nil {
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écrire la réponse d'événements: %w", err))
 		return
 	}
-	writeJSON(service, writer, http.StatusOK, reasonGuidesForLanguage(service.cfg.Language))
+	for index, event := range events {
+		if index > 0 {
+			if err := writeEntirely(writer, []byte{','}); err != nil {
+				serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écrire la réponse d'événements: %w", err))
+				return
+			}
+		}
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: encoder l'événement %d: %w", event.Sequence, err))
+			return
+		}
+		if err := writeEntirely(writer, encoded); err != nil {
+			serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écrire la réponse d'événements: %w", err))
+			return
+		}
+	}
+	if err := writeEntirely(writer, []byte("]\n")); err != nil {
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écrire la réponse d'événements: %w", err))
+	}
 }
 
-func (service *Service) handleEvidence(writer http.ResponseWriter, request *http.Request) {
-	if !methodAllowed(service, writer, request, http.MethodGet) || !requireBearer(service, writer, request) {
+func (serviceLive *ServiceLive) handleReasons(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) || !requireBearer(serviceLive, writer, request) {
+		return
+	}
+	serviceLive.serveReasons(writer)
+}
+
+func (serviceLive *ServiceLive) handleDashboardReasons(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) || !requireBasicDashboard(serviceLive, writer, request) {
+		return
+	}
+	serviceLive.serveReasons(writer)
+}
+
+// serveReasons porte la charge utile commune aux routes Bearer /api/v1/reasons
+// et Basic /dashboard/api/reasons : mêmes guides, dans la langue configurée.
+func (serviceLive *ServiceLive) serveReasons(writer http.ResponseWriter) {
+	writeJSON(serviceLive, writer, http.StatusOK, reasonGuidesForLanguage(serviceLive.cfg.Language))
+}
+
+func (serviceLive *ServiceLive) handleEvidence(writer http.ResponseWriter, request *http.Request) {
+	if !methodAllowed(serviceLive, writer, request, http.MethodGet) || !requireBearer(serviceLive, writer, request) {
 		return
 	}
 	runID := strings.TrimPrefix(request.URL.Path, "/api/v1/evidence/")
 	if !validRunID(runID) {
-		writeJSONError(service, writer, http.StatusNotFound, "preuve inconnue")
+		writeJSONError(serviceLive, writer, http.StatusNotFound, "preuve inconnue")
 		return
 	}
-	service.mu.Lock()
-	history := service.runs[runID]
+	serviceLive.mu.Lock()
+	history := serviceLive.runs[runID]
 	if history == nil || !history.source.finished {
-		service.mu.Unlock()
-		writeJSONError(service, writer, http.StatusNotFound, "preuve non finalisée")
+		serviceLive.mu.Unlock()
+		writeJSONError(serviceLive, writer, http.StatusNotFound, "preuve non finalisée")
 		return
 	}
 	manifest, err := history.source.evidence.manifest()
-	service.mu.Unlock()
+	serviceLive.mu.Unlock()
 	if err != nil {
-		writeJSONError(service, writer, http.StatusInternalServerError, "manifeste indisponible")
+		writeJSONError(serviceLive, writer, http.StatusInternalServerError, "manifeste indisponible")
 		return
 	}
-	writeJSON(service, writer, http.StatusOK, manifest)
+	writeJSON(serviceLive, writer, http.StatusOK, manifest)
 }
 
-func writeJSON(service *Service, writer http.ResponseWriter, status int, payload any) {
+func writeJSON(serviceLive *ServiceLive, writer http.ResponseWriter, status int, payload any) {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		writeJSONError(service, writer, http.StatusInternalServerError, "encodage JSON impossible")
+		writeJSONError(serviceLive, writer, http.StatusInternalServerError, "encodage JSON impossible")
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -399,23 +501,23 @@ func writeJSON(service *Service, writer http.ResponseWriter, status int, payload
 	writer.WriteHeader(status)
 	encoded = append(encoded, '\n')
 	if err := writeEntirely(writer, encoded); err != nil {
-		service.recordAsynchronousError(fmt.Errorf("dnslive: écrire la réponse HTTP: %w", err))
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écrire la réponse HTTP: %w", err))
 	}
 }
 
-func writeJSONError(service *Service, writer http.ResponseWriter, status int, message string) {
+func writeJSONError(serviceLive *ServiceLive, writer http.ResponseWriter, status int, message string) {
 	encoded, err := json.Marshal(struct {
 		Error string `json:"error"`
 	}{Error: message})
 	if err != nil {
-		service.recordAsynchronousError(fmt.Errorf("dnslive: encoder une erreur HTTP: %w", err))
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: encoder une erreur HTTP: %w", err))
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.WriteHeader(status)
 	if err := writeEntirely(writer, append(encoded, '\n')); err != nil {
-		service.recordAsynchronousError(fmt.Errorf("dnslive: écrire une erreur HTTP: %w", err))
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: écrire une erreur HTTP: %w", err))
 	}
 }
 
@@ -445,4 +547,37 @@ func normalizeRegistration(registration registrationRequest) (netip.AddrPort, er
 
 func readRegistrationBody(body io.Reader) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(body, (64<<10)+1))
+}
+
+// abandonSlowBody ferme une requête dont le corps n'a pas été terminé avant
+// l'échéance : réponse 408 puis clôture RST de la connexion, sans goroutine
+// ni connexion retenue indéfiniment. À défaut de détournement, la réponse
+// 408 passe par le rédacteur standard.
+func (serviceLive *ServiceLive) abandonSlowBody(writer http.ResponseWriter, message string) {
+	controller := http.NewResponseController(writer)
+	conn, buffered, err := controller.Hijack()
+	if err != nil {
+		writeJSONError(serviceLive, writer, http.StatusRequestTimeout, message)
+		return
+	}
+	var abandonErr error
+	payload, marshalErr := json.Marshal(struct {
+		Error string `json:"error"`
+	}{Error: message})
+	if marshalErr == nil {
+		payload = append(payload, '\n')
+		head := fmt.Sprintf("HTTP/1.1 408 Request Timeout\r\nContent-Type: application/json; charset=utf-8\r\nX-Content-Type-Options: nosniff\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", len(payload))
+		abandonErr = errors.Join(writeEntirely(buffered, append([]byte(head), payload...)), buffered.Flush())
+	}
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		if lingerErr := tcp.SetLinger(0); lingerErr != nil {
+			abandonErr = errors.Join(abandonErr, fmt.Errorf("dnslive: poser SO_LINGER 0: %w", lingerErr))
+		}
+	}
+	if closeErr := conn.Close(); closeErr != nil {
+		abandonErr = errors.Join(abandonErr, fmt.Errorf("dnslive: fermer la connexion lente: %w", closeErr))
+	}
+	if abandonErr != nil {
+		serviceLive.recordAsynchronousError(fmt.Errorf("dnslive: abandonner le corps lent: %w", abandonErr))
+	}
 }

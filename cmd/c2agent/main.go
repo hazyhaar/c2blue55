@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -147,10 +148,8 @@ func main() {
 	fmt.Printf("[c2agent] Écoute active sur %s (Journal: %s)\n", *listenAddr, *logPath)
 	fmt.Println("[c2agent] Observation UDP passive uniquement: aucune capture generale, resolution, transmission ou protection active; aucun blocage reseau")
 
-	// Compteurs atomiques de métrologie
-	var countFastPass atomic.Uint64
-	var countFastDrop atomic.Uint64
-	var countEscalated atomic.Uint64
+	// Compteur d'écoute : chaque datagramme reçu est classé dans une issue exactement.
+	compteurs := &compteursEcoute{}
 
 	// Capture des signaux d'arrêt
 	sigChan := make(chan os.Signal, 1)
@@ -171,6 +170,9 @@ func main() {
 		if err != nil {
 			select {
 			case <-ctx.Done():
+				if err := compteurs.ecrireBilan(os.Stdout); err != nil {
+					_, _ = fmt.Fprintf(os.Stderr, "c2agent: bilan non écrit: %v\n", err)
+				}
 				return
 			default:
 				continue
@@ -178,28 +180,90 @@ func main() {
 		}
 
 		nowSec := uint32(time.Now().Unix())
-		res, err := pipeline.EvaluatePacket(packetBuf[:n], nowSec)
-		if err != nil {
-			continue // Paquet corrompu ou non-DNS, ignoré
-		}
-
-		switch res.Decision {
-		case c2blue55.DecisionFastPass:
-			countFastPass.Add(1)
-			if *verbose && res.MatchedDomain != "" {
-				fmt.Printf("[PASS] %s (Raison: %d)\n", res.MatchedDomain, res.MatchedCategory)
-			}
-		case c2blue55.DecisionFastDrop:
-			countFastDrop.Add(1)
-			fmt.Printf("[OBSERVATION: REFUS RECOMMANDE, NON APPLIQUE] %s (correspondance reputation)\n", res.MatchedDomain)
-		case c2blue55.DecisionEscalateSLM:
-			countEscalated.Add(1)
-			if res.Incident != nil {
-				fmt.Printf("[GREY ZONE ESCALADE] %s (Entropie: %.2f bits, Jitter: %d%%, Indicateur: %s)\n",
-					res.Incident.FQDN, res.Incident.EntropyBits, res.Incident.JitterPct, res.Incident.SuspectedIndicator)
-			}
-		}
+		traiterDatagramme(pipeline, packetBuf[:n], nowSec, compteurs, os.Stdout, *verbose)
 	}
+}
+
+// compteursEcoute agrège les issues d'écoute de c2agent : chaque datagramme reçu
+// incrémente exactement une des quatre issues (passes, refus, escalades,
+// erreursAnalyse) ; escaladesRejetees trace la part des escalades que la file
+// d'arbitrage bornée a refusées ; journalSignale garantit que l'échec d'écriture
+// du journal d'audit n'est signalé qu'une seule fois, au premier refus concerné.
+type compteursEcoute struct {
+	passes            atomic.Uint64
+	refus             atomic.Uint64
+	escalades         atomic.Uint64
+	erreursAnalyse    atomic.Uint64
+	escaladesRejetees atomic.Uint64
+	journalSignale    atomic.Bool
+}
+
+// traiterDatagramme évalue un datagramme DNS reçu et classe son issue dans les
+// compteurs d'écoute. Une escalade rejetée pour file pleine est comptée dans
+// escalades puis dans escaladesRejetees et est affichée sans être confondue
+// avec un paquet corrompu ; un refus par réputation dont l'écriture du journal
+// d'audit a échoué reste compté dans refus et n'est signalé par la ligne
+// [JOURNAL D'AUDIT EN ERREUR] qu'une seule fois, au premier échec, sans être
+// confondu avec une erreur d'analyse ; une décision inconnue rendue sans erreur
+// est comptée dans erreursAnalyse ; toute autre erreur d'analyse est comptée
+// seule et n'est affichée qu'en mode verbeux (D-C2B-L1-03 : une inondation ne
+// remplit pas la sortie).
+func traiterDatagramme(pipeline *c2blue55.Pipeline, paquet []byte, nowSec uint32, compteurs *compteursEcoute, sortie io.Writer, verbeux bool) {
+	res, err := pipeline.EvaluatePacket(paquet, nowSec)
+	if err != nil {
+		if errors.Is(err, c2blue55.ErrSLMQueueFull) {
+			compteurs.escalades.Add(1)
+			compteurs.escaladesRejetees.Add(1)
+			if res.Incident != nil {
+				_, _ = fmt.Fprintf(sortie, "[ESCALADE REJETEE: FILE PLEINE] %s\n", res.Incident.FQDN)
+			} else {
+				_, _ = fmt.Fprintln(sortie, "[ESCALADE REJETEE: FILE PLEINE]")
+			}
+			return
+		}
+		if res.Decision == c2blue55.DecisionFastDrop {
+			compteurs.refus.Add(1)
+			_, _ = fmt.Fprintf(sortie, "[OBSERVATION: REFUS RECOMMANDE, NON APPLIQUE] %s (correspondance reputation)\n", res.MatchedDomain)
+			if compteurs.journalSignale.CompareAndSwap(false, true) {
+				if _, errSignal := fmt.Fprintf(sortie, "[JOURNAL D'AUDIT EN ERREUR] %v\n", err); errSignal != nil {
+					compteurs.journalSignale.Store(false)
+				}
+			}
+			return
+		}
+		compteurs.erreursAnalyse.Add(1)
+		if verbeux {
+			_, _ = fmt.Fprintf(sortie, "[ERREUR ANALYSE] %v\n", err)
+		}
+		return
+	}
+
+	switch res.Decision {
+	case c2blue55.DecisionFastPass:
+		compteurs.passes.Add(1)
+		if verbeux && res.MatchedDomain != "" {
+			_, _ = fmt.Fprintf(sortie, "[PASS] %s (Raison: %d)\n", res.MatchedDomain, res.MatchedCategory)
+		}
+	case c2blue55.DecisionFastDrop:
+		compteurs.refus.Add(1)
+		_, _ = fmt.Fprintf(sortie, "[OBSERVATION: REFUS RECOMMANDE, NON APPLIQUE] %s (correspondance reputation)\n", res.MatchedDomain)
+	case c2blue55.DecisionEscalateSLM:
+		compteurs.escalades.Add(1)
+		if res.Incident != nil {
+			_, _ = fmt.Fprintf(sortie, "[GREY ZONE ESCALADE] %s (Entropie: %.2f bits, Jitter: %d%%, Indicateur: %s)\n",
+				res.Incident.FQDN, res.Incident.EntropyBits, res.Incident.JitterPct, res.Incident.SuspectedIndicator)
+		}
+	default:
+		compteurs.erreursAnalyse.Add(1)
+	}
+}
+
+// ecrireBilan écrit sur sortie la ligne unique de bilan des issues d'écoute et
+// rend l'erreur d'écriture éventuelle.
+func (c *compteursEcoute) ecrireBilan(sortie io.Writer) error {
+	_, err := fmt.Fprintf(sortie, "[c2agent] bilan: passes=%d refus=%d escalades=%d erreurs_analyse=%d escalades_rejetees=%d\n",
+		c.passes.Load(), c.refus.Load(), c.escalades.Load(), c.erreursAnalyse.Load(), c.escaladesRejetees.Load())
+	return err
 }
 
 // localExpertArbitrator arbitre déterministe local par défaut lorsqu'aucun poids GGUF n'est chargé.

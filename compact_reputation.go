@@ -161,25 +161,39 @@ func (t *ReputationTable) getEntry(idx int, out *CompactEntry) {
 	out.Flags = t.entriesData[off+15]
 }
 
+// cleanDomain rend le nom sans point final et en minuscules ASCII : le
+// point final est d'abord retiré par sous-chaîne, sans copie, puis seules
+// les lettres A-Z sont abaissées, octet par octet, la longueur reste celle
+// du nom reçu (point final retiré) et tout octet hors ASCII est conservé
+// tel quel. La chaîne est rendue sans allocation dès qu'elle ne porte pas
+// de majuscule ASCII : un nom déjà en minuscules, avec ou sans point
+// final, revient en sous-chaîne sans copie ; l'abaissement n'alloue que
+// sur le chemin à majuscules, à partir de la première lettre A-Z trouvée.
 func cleanDomain(fqdn string) string {
 	if len(fqdn) == 0 {
 		return ""
 	}
-	hasUpper := false
-	for i := 0; i < len(fqdn); i++ {
-		if fqdn[i] >= 'A' && fqdn[i] <= 'Z' {
-			hasUpper = true
+	sansPoint := fqdn
+	if sansPoint[len(sansPoint)-1] == '.' {
+		sansPoint = sansPoint[:len(sansPoint)-1]
+	}
+	premiereMajuscule := -1
+	for i := range len(sansPoint) {
+		if b := sansPoint[i]; b >= 'A' && b <= 'Z' {
+			premiereMajuscule = i
 			break
 		}
 	}
-	s := fqdn
-	if hasUpper {
-		s = strings.ToLower(fqdn)
+	if premiereMajuscule < 0 {
+		return sansPoint
 	}
-	if strings.HasSuffix(s, ".") {
-		s = s[:len(s)-1]
+	abaisse := []byte(sansPoint)
+	for i := premiereMajuscule; i < len(abaisse); i++ {
+		if b := abaisse[i]; b >= 'A' && b <= 'Z' {
+			abaisse[i] = b + ('a' - 'A')
+		}
 	}
-	return s
+	return string(abaisse)
 }
 
 func stringEqualBytes(s string, b []byte) bool {
@@ -197,13 +211,20 @@ func stringEqualBytes(s string, b []byte) bool {
 // Match inspecte un FQDN et remonte les labels de droite à gauche.
 // Respect strict des frontières de labels DNS (le point '.').
 // Zéro allocation tas si fqdn est déjà en minuscules (0 B/op).
+// Un label de tête hors grammaire de réputation (tiret en tête ou en queue,
+// '+', '/', '=' non permis) est sauté, jamais normalisé ni réécrit
+// (D-C2B-L1-02) : chaque suffixe à frontière de label est interrogé tel quel,
+// l'égalité textuelle avec une entrée de la table restant l'autorité.
 func (t *ReputationTable) Match(fqdn string) (MatchResult, bool) {
 	var res MatchResult
-	if t == nil || len(fqdn) == 0 || t.numEntries == 0 {
+	if t == nil || t.numEntries == 0 {
 		return res, false
 	}
 	fqdnClean := cleanDomain(fqdn)
-	if !validReputationDomain(fqdnClean) {
+	// Refus d'emblée : nom vide, dépassant 253 octets, point initial ou
+	// label vide (deux points consécutifs).
+	if len(fqdnClean) == 0 || len(fqdnClean) > 253 ||
+		fqdnClean[0] == '.' || strings.Contains(fqdnClean, "..") {
 		return res, false
 	}
 	curr := fqdnClean
@@ -213,7 +234,7 @@ func (t *ReputationTable) Match(fqdn string) (MatchResult, bool) {
 			res = candidate
 		}
 		dotIdx := strings.IndexByte(curr, '.')
-		if dotIdx == -1 || dotIdx+1 >= len(curr) {
+		if dotIdx == -1 {
 			break
 		}
 		curr = curr[dotIdx+1:]

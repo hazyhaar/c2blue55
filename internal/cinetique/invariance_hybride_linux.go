@@ -50,6 +50,14 @@ type PreuveArchetypeReel struct {
 	DifferentielStructure string `json:"differentiel_structure"`
 }
 
+// AttenteFileDominante signale qu'un épisode a été disputé au processeur :
+// l'attente en file d'exécution vaut au moins un dixième de la durée d'horloge
+// de l'épisode, borne incluse. Une durée d'horloge nulle n'a jamais d'attente
+// dominante.
+func (preuve PreuveArchetypeReel) AttenteFileDominante() bool {
+	return preuve.DureeHorlogeUs > 0 && preuve.AttenteFileUs*10 >= preuve.DureeHorlogeUs
+}
+
 // RapportInvarianceHybride regroupe l'état des capteurs noyau, la comparaison
 // réelle P-core vs E-core et les preuves d'orientation causale sur traces OS.
 type RapportInvarianceHybride struct {
