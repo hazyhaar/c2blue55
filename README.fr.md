@@ -219,6 +219,19 @@ La version `v8.2` étend la détection en `0 B/op` face aux tunnels DNS à faibl
 - **Quotients Cinétiques par Processus Hôte Linux (`internal/cinetique`) :**
   - Étend `QuotientsEpisode` à `12` quotients en virgule fixe (`0 B/op` en régime établi grâce au cache `256x4` devant `NETLINK_INET_DIAG`), ajoutant **`part_resolveur_permille`** (indice `10`, plancher `16 384` octets, activant `ConfinementResolveur` pour les binaires C2 autonomes dès `>= 500` permille lorsque `ConnexionsHorsResolveur == 0 && !EcouteDNSClairLocale`, ce qui exempte `unbound`/`systemd-resolved` ; un tunnel logé à l'intérieur d'un navigateur actif avec `ConnexionsHorsResolveur > 0` reste hors de sa portée) et **`absorption_reseau_permille`** (indice `11`, descriptif au-delà de `1 Mio` entrant).
 
+## 4e. Listes Fermées Post-Audit & Vecteur Indépendant de l'En-Tête (2026-11-11, v8.3)
+
+La version `v8.3` est une passe de durcissement après l'audit du 2026-11-10. Elle n'ajoute aucune famille de détection ; elle change quatre comportements :
+
+- **Liste Fermée de Méthodes MCP (`cmd/c2blue-mcp-guard`) :** seules `initialize`, `ping`, `tools/list` et les `notifications/*` sans identifiant sont transmises sans inspection. Toute autre méthode (`resources/read`, `prompts/get`, `completion/complete`, `sampling/createMessage`, ...) est refusée par l'erreur JSON-RPC `-32601` qui reprend l'identifiant de la requête, ou écartée quand elle n'en porte pas. Une ligne sans méthode n'est relayée que si elle a la forme d'une réponse du client (`id` et exactement l'une des clés `result` ou `error`, sans `params`) ; toute autre reçoit `-32600`. `tools/call` reste soumis à la grammaire du catalogue. **Les clients qui comptaient sur le passage de ces méthodes à travers la garde ne passent plus.**
+- **Vecteur de Caractéristiques Indépendant de l'En-Tête (`internal/engine/feature_extractor.go`) :** le numéro de processus (`Pid`) et le champ d'en-tête `Src` ne sont plus projetés dans le vecteur à 512 dimensions : deux événements qui ne diffèrent que par ces champs reçoivent le même vecteur. Les verdicts ne deviennent pas pour autant indépendants du processus : le corrélateur de lot (`C2bt_correlate_event`) tient toujours son état par numéro de processus et peut signaler un événement à lui seul. `Src` n'est une adresse source que sur l'anneau UDP ; les autres sondes y rangent un numéro de processus parent, une paire d'UID, un inode ou une empreinte de chemin. `cmd/c2forge` ne pose pas ces champs en forgeant les disquettes `.c2book` ; une tête de décision entraînée ailleurs sur l'ancien vecteur doit être recalibrée.
+- **Remontée des Suffixes de Réputation (`compact_reputation.go`) :** une entrée de sous-arbre est trouvée quel que soit le label placé devant elle, y compris hors de la grammaire de réputation (`-a.evil.example`, `a-.evil.example`, `ab=.evil.example`). Les noms en minuscules sont nettoyés en `0 B/op`, avec ou sans point final.
+- **Bilan d'Écoute de `c2agent` (`cmd/c2agent`) :** chaque datagramme reçu incrémente exactement l'une de quatre issues (passe, refus, escalade, erreur d'analyse). Les escalades que la file d'arbitrage bornée refuse sont comptées en plus dans un sous-compte des escalades. Les erreurs d'analyse et les escalades refusées ne sont plus jetées en silence, et une ligne de bilan est écrite à l'arrêt.
+
+Refactorisations sans changement de comportement : le type du service DNS live de laboratoire se nomme désormais `ServiceLive` (`internal/dnslive`), et `runService` de `cmd/c2blue-dns-live` reçoit son `context.Context`, les signaux du système restant à `main`.
+
+**Limites connues de `v8.3` :** quatre tests sensibles au temps restent instables dans la suite complète sous le détecteur de courses sur une machine chargée (`TestContextBound_EdgeCases`, `TestBancChaineCompleteBoutEnBout`, `TestLiveP3BeaconMarkovAt100QPS`, `TestBancInvarianceHybrideReel`) ; ils passent quand ils tournent seuls. Les lignes d'observation par événement de `c2agent` ignorent leur erreur d'écriture : sur une sortie standard rompue, seul le bilan d'arrêt la rapporte.
+
 ---
 
 ## 5. Structure de l'Arborescence
@@ -228,6 +241,7 @@ c2blue55/
 ├── cmd/
 │   ├── c2agent/               # Démon autonome (.c2book embarqués + tête vectorielle c2slm 0 B/op)
 │   ├── c2blue-arena-web/      # Visualiseur web temps réel de l'arène ArenaPool et de la télémétrie
+│   ├── c2blue-dns-live/       # Service DNS live de laboratoire (capture UDP, tableau de bord à jeton)
 │   ├── c2blue-mcp-guard/      # Mandataire MCP inspectant les appels d'outils d'agents IA
 │   ├── c2cinetique/           # Outil CLI autonome de télémétrie cinétique par processus Linux
 │   ├── c2dnslab-emit/         # Émetteur de campagnes DNS sur banc fermé (authentifié Bearer)
@@ -240,7 +254,9 @@ c2blue55/
 ├── internal/
 │   ├── cinetique/             # 12 quotients cinétiques hôtes, cache socket 256x4 et arbitre SLM
 │   ├── dnslab/                # Orchestration de campagnes DNS et PatternCatalog29
+│   ├── dnslive/               # Service DNS live : registre des runs, journal d'événements, preuves
 │   ├── engine/                # Cascade 0 B/op, mmap .c2book, grammaire DNS P1..P15, Ed25519
+│   ├── enveloppedepot/        # Localise l'enveloppe du projet depuis tout arbre de travail Git lié
 │   ├── goclassifier/          # Noyau FHT512 & sonde conforme RaBitQ autonome (MIT)
 │   ├── icmplab/               # Suivi de parité ICMP Echo et réponses non sollicitées
 │   ├── probes/                # Sondes hôtes Linux (cn_proc, fanotify, inet_diag, anneau UDP/53)

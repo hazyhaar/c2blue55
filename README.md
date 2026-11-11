@@ -221,6 +221,19 @@ Version `v8.2` adds zero-allocation defenses against modern low-query-count and 
 - **Linux Host Process Kinetic Ratios (`internal/cinetique`):**
   - Extends `QuotientsEpisode` to `12` fixed-point ratios (`0 B/op` steady state via a `256x4` socket tuple cache in front of `NETLINK_INET_DIAG`), adding **`part_resolveur_permille`** (index `10`, `16,384`-byte floor, triggering `ConfinementResolveur` for standalone C2 binaries at `>= 500` permille when `ConnexionsHorsResolveur == 0 && !EcouteDNSClairLocale` so local `unbound`/`systemd-resolved` forwarders remain exempt; in-browser tunnels with `ConnexionsHorsResolveur > 0` remain outside its scope) and descriptive **`absorption_reseau_permille`** (index `11`, `1 MiB` ingress floor).
 
+## 4e. Post-Audit Closed Lists & Header-Independent Vectors (2026-11-11, v8.3)
+
+Version `v8.3` is a hardening pass after the 2026-11-10 audit. It adds no detection family; it changes four behaviours:
+
+- **Closed MCP Method List (`cmd/c2blue-mcp-guard`):** only `initialize`, `ping`, `tools/list` and id-less `notifications/*` are forwarded without inspection. Any other method (`resources/read`, `prompts/get`, `completion/complete`, `sampling/createMessage`, ...) is refused with JSON-RPC `-32601` echoing the request id, or dropped when it carries no id. A method-less line is relayed only when shaped as a client response (`id` plus exactly one of `result` or `error`, no `params`); anything else receives `-32600`. `tools/call` still goes through the catalogue grammar. **This breaks clients that relied on those methods passing through the guard.**
+- **Header-Independent Feature Vector (`internal/engine/feature_extractor.go`):** the process ID (`Pid`) and the `Src` header field are no longer projected into the 512-dimensional vector: two events that differ only by these fields receive the same vector. Verdicts are not PID-independent for all that: the batch correlator (`C2bt_correlate_event`) still keys its state on the process ID and can flag an event on its own. `Src` is a source address only on the UDP ring; other probes store a parent PID, a UID pair, an inode or a path hash in it. `cmd/c2forge` does not set these fields when forging `.c2book` floppies; a decision head trained elsewhere on the previous vector must be recalibrated.
+- **Reputation Suffix Walk (`compact_reputation.go`):** a subtree entry is found whatever label precedes it, including labels outside the reputation grammar (`-a.evil.example`, `a-.evil.example`, `ab=.evil.example`). Lower-case names are cleaned in `0 B/op`, with or without a trailing dot.
+- **`c2agent` Listening Tally (`cmd/c2agent`):** every received datagram increments exactly one of four outcomes (pass, refusal, escalation, parse error). Escalations refused by the bounded arbitration queue are additionally counted in a sub-count of escalations. Parse errors and refused escalations are no longer discarded silently, and a summary line is written at shutdown.
+
+Refactors without behaviour change: the live DNS laboratory service type is now `ServiceLive` (`internal/dnslive`), and `runService` in `cmd/c2blue-dns-live` receives its `context.Context`, leaving OS signals to `main`.
+
+**Known limitations of `v8.3`:** four timing-sensitive tests are still flaky in the full suite under the race detector on a loaded host (`TestContextBound_EdgeCases`, `TestBancChaineCompleteBoutEnBout`, `TestLiveP3BeaconMarkovAt100QPS`, `TestBancInvarianceHybrideReel`); they pass when run in isolation. `c2agent` per-event observation lines ignore their write error: on a broken standard output only the shutdown tally reports it.
+
 ---
 
 ## 5. Repository Structure
@@ -230,6 +243,7 @@ c2blue55/
 ├── cmd/
 │   ├── c2agent/               # Autonomous daemon (embedded .c2book + 0 B/op c2slm vector head)
 │   ├── c2blue-arena-web/      # Real-time web visualizer for ArenaPool & telemetry
+│   ├── c2blue-dns-live/       # Live DNS laboratory service (UDP capture, token-protected dashboard)
 │   ├── c2blue-mcp-guard/      # MCP proxy guard inspecting AI agent tool calls
 │   ├── c2cinetique/           # Standalone Linux host process kinetic CLI
 │   ├── c2dnslab-emit/         # Closed-bench DNS campaign emitter (Bearer-authenticated)
@@ -242,7 +256,9 @@ c2blue55/
 ├── internal/
 │   ├── cinetique/             # 12 host kinetic ratios, 256x4 socket cache & SLM arbitrator
 │   ├── dnslab/                # Closed-bench DNS campaign runner & PatternCatalog29
+│   ├── dnslive/               # Live DNS service: run registry, event journal, evidence files
 │   ├── engine/                # Zero-alloc cascade, .c2book mmap, P1..P15 DNS grammar, Ed25519
+│   ├── enveloppedepot/        # Locates the project envelope from any linked Git worktree
 │   ├── goclassifier/          # Standalone FHT512 & RaBitQ conformal probe (MIT)
 │   ├── icmplab/               # ICMP Echo payload parity & unsolicited reply trackers
 │   ├── probes/                # Linux host probes (cn_proc, fanotify, inet_diag, UDP/53 ring)
