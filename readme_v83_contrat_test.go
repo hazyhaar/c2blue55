@@ -46,8 +46,47 @@ var jetonsAttendusReadmeV83 = []string{
 	"`v8.3`", "`cmd/c2blue-mcp-guard`", "`initialize`", "`ping`", "`tools/list`", "`notifications/*`",
 	"`-32601`", "`-32600`", "`resources/read`", "`internal/engine/feature_extractor.go`",
 	"`compact_reputation.go`", "`cmd/c2agent`", "`ServiceLive`", "`internal/dnslive`",
-	"`TestContextBound_EdgeCases`", "`TestBancChaineCompleteBoutEnBout`",
+	"`TestContextBound_EdgeCases`", "`TestBancChaineCompleteBoutEnBout`", "`C2bt_correlate_event`", "`cmd/c2forge`",
 	"│   ├── c2blue-dns-live/", "│   ├── dnslive/", "│   ├── enveloppedepot/",
+}
+
+// affirmationsFaussesReadmeV83 sont des phrases qu'un README ne doit pas porter,
+// parce que le code les dément : le corrélateur tient son état par processus,
+// et une escalade refusée est comptée deux fois (issue et sous-compte).
+var affirmationsFaussesReadmeV83 = []string{
+	"hence the same verdict", "donc le même verdict",
+	"counted in exactly one outcome", "une issue et une seule",
+	"source address are no longer projected", "l'adresse source ne sont plus",
+}
+
+// cheminJournalV83 est le journal des changements, tenu à la racine du dépôt.
+const cheminJournalV83 = "CHANGELOG.md"
+
+// premiereVersionJournalV83 rend le titre de la première section de version du
+// journal (première ligne commençant par « ## »), sans son préfixe.
+func premiereVersionJournalV83(contenu string) string {
+	for ligne := range strings.SplitSeq(contenu, "\n") {
+		if titre, trouve := strings.CutPrefix(ligne, "## "); trouve {
+			return titre
+		}
+	}
+	return ""
+}
+
+// anomaliesJournalV83 rend les défauts du journal des changements : sa
+// première section ne porte pas la version courante, ou il reprend une
+// affirmation que le code dément.
+func anomaliesJournalV83(contenu, versionCourante string) []string {
+	var anomalies []string
+	if premiere := premiereVersionJournalV83(contenu); !strings.HasPrefix(premiere, versionCourante+" ") {
+		anomalies = append(anomalies, fmt.Sprintf("%s : première section %q, attendu la version %s", cheminJournalV83, premiere, versionCourante))
+	}
+	for _, affirmation := range affirmationsFaussesReadmeV83 {
+		if strings.Contains(contenu, affirmation) {
+			anomalies = append(anomalies, fmt.Sprintf("%s affirme %q, que le code dément", cheminJournalV83, affirmation))
+		}
+	}
+	return anomalies
 }
 
 // methodesRefuseesReadmeV83 ne doivent jamais figurer dans la phrase qui liste
@@ -164,6 +203,13 @@ func TestReadmeV83Contrat(t *testing.T) {
 		if versionCourante != "8.3.0" {
 			t.Fatalf("C01: VersionModule() = %q, attendu \"8.3.0\"", versionCourante)
 		}
+		journal, err := lireReadmeV83(cheminJournalV83)
+		if err != nil {
+			t.Fatalf("C01: %v", err)
+		}
+		for _, anomalie := range anomaliesJournalV83(journal, versionCourante) {
+			t.Errorf("C01: %s", anomalie)
+		}
 		for _, document := range readmesV83 {
 			contenu, err := lireReadmeV83(document.chemin)
 			if err != nil {
@@ -182,6 +228,14 @@ func TestReadmeV83Contrat(t *testing.T) {
 		if !formeVersionModuleV83.MatchString(versionCourante) {
 			t.Fatalf("C02: VersionModule() = %q, hors de la forme majeur.mineur.correctif", versionCourante)
 		}
+		// Jumeau négatif du journal : une première section d'une autre version,
+		// ou une affirmation démentie, doit être refusée.
+		if len(anomaliesJournalV83("# Changelog\n\n## 0.0.0 — témoin\n", versionCourante)) == 0 {
+			t.Errorf("C02: un journal dont la première section n'est pas la version courante n'a déclenché aucun refus")
+		}
+		if len(anomaliesJournalV83("## "+versionCourante+" — témoin\nhence the same verdict\n", versionCourante)) == 0 {
+			t.Errorf("C02: un journal portant une affirmation démentie n'a déclenché aucun refus")
+		}
 		mineure := "`v" + versionCourante[:strings.LastIndex(versionCourante, ".")] + "`"
 		for _, document := range readmesV83 {
 			contenu, err := lireReadmeV83(document.chemin)
@@ -193,6 +247,11 @@ func TestReadmeV83Contrat(t *testing.T) {
 			}
 			for _, anomalie := range anomaliesListeTransmiseReadmeV83(document, contenu) {
 				t.Errorf("C02: %s", anomalie)
+			}
+			for _, affirmation := range affirmationsFaussesReadmeV83 {
+				if strings.Contains(contenu, affirmation) {
+					t.Errorf("C02: %s affirme %q, que le code dément", document.chemin, affirmation)
+				}
 			}
 			if !strings.Contains(contenu, mineure) {
 				t.Errorf("C02: %s ne cite pas la version %s rendue par VersionModule", document.chemin, mineure)
